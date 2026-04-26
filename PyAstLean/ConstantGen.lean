@@ -24,7 +24,7 @@ def numToStx (mantissa : Int) (exponent : Nat) : MetaM <| TSyntax `term := do
         `(($mantissaStx : $ratIdent) / $exponentStx)
 
 @[pygen "Constant"]
-def constantSyntax : (kind : SyntaxNodeKinds) → Json →
+def constantSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
   | `term, json => do
     let .ok value := json.getObjValAs? Json "value" | throwError
@@ -55,35 +55,5 @@ def js₀ := json% {
   "node_type": "Constant",
   "value": -1.5
 }
-
--- Example
-def onePlusTwoNode := json% {
-    "node_type": "BinOp",
-    "op": "add",
-    "left": {
-      "node_type": "Constant",
-      "value": 1
-    },
-    "right": {
-      "node_type": "Constant",
-      "value": 2.5
-    }
-  }
-
-class PyHAdd (α β : Type) (γ : outParam Type) where
-  hAdd : α → β → γ
-
-infixl:65 " ⟨+⟩ " => PyHAdd.hAdd
-
-instance : PyHAdd Int Int Int where
-  hAdd x y := x + y
-
-instance : PyHAdd Nat Int Int where
-  hAdd x y := (x : Int) + y
-
-instance : PyHAdd Nat Nat Nat where
-  hAdd x y := x + y
-
-#eval 1 ⟨+⟩ 2
 
 end PyAstLean

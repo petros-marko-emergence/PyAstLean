@@ -31,15 +31,15 @@ initialize
   registerTraceClass `pyastlean.pygen.debug
 
 
-instance : Repr SyntaxNodeKinds where
-  reprPrec kinds n :=
-    let names : List Name := kinds
-    Repr.reprPrec names n
+instance : Repr SyntaxNodeKind where
+  reprPrec kind n :=
+    let name : Name := kind
+    Repr.reprPrec name n
 
-instance : ToString SyntaxNodeKinds where
-  toString kinds :=
-    let names : List Name := kinds
-    ToString.toString names
+instance : ToString SyntaxNodeKind where
+  toString kind :=
+    let name : Name := kind
+    ToString.toString name
 
 /-- Environment extension storing code generation lemmas -/
 initialize pygenExt :
@@ -78,7 +78,7 @@ initialize registerBuiltinAttribute {
   add := fun decl stx kind => MetaM.run' do
     let declTy := (← getConstInfo decl).type
     -- Obtained from Qq.
-    let expectedType : Q(Type) := q((kind : SyntaxNodeKinds) →  (json : Json) → PygenM (TSyntax kind))
+    let expectedType : Q(Type) := q((kind : SyntaxNodeKind) →  (json : Json) → PygenM (TSyntax kind))
     unless ← isDefEq declTy expectedType do
       throwError -- replace with error
         s!"pygen: {decl} has type {declTy}, but expected {expectedType}"
@@ -125,18 +125,18 @@ def pygenMatches (key: String) : CoreM <| Array Name := do
     trace[pyastlean.pygen.debug] m!"no function found for key {key} in {allKeys.toList}"
   return fs
 
-def codeFromFunc (f: Name) (json: Json) (kind: SyntaxNodeKinds)  : PygenM <| TSyntax kind := do
+def codeFromFunc (f: Name) (json: Json) (kind: SyntaxNodeKind)  : PygenM <| TSyntax kind := do
   let fInfo ← getConstInfo f
-  let expectedType : Q(Type) := q((kind : SyntaxNodeKinds) →  (json : Json) → PygenM (TSyntax kind))
+  let expectedType : Q(Type) := q((kind : SyntaxNodeKind) →  (json : Json) → PygenM (TSyntax kind))
   unless ← isDefEq fInfo.type expectedType do
     throwError -- replace with error
       s!"pygen: {f} has type {fInfo.type}, but expected {expectedType}"
-  let fn ← unsafe evalConst ((kind : SyntaxNodeKinds) →  (json : Json) → PygenM (TSyntax kind)) f
+  let fn ← unsafe evalConst ((kind : SyntaxNodeKind) →  (json : Json) → PygenM (TSyntax kind)) f
   fn kind json
 /--
   Get the code generation function for a given key and syntax category. The key is a string that identifies the function, and the syntax category is used to disambiguate between functions that can generate different syntax categories. If no function is found for the key and syntax category, an error is thrown.
 -/
-def getCode (json: Json) (kind: SyntaxNodeKinds) : PygenM <| TSyntax kind := do
+def getCode (json: Json) (kind: SyntaxNodeKind) : PygenM <| TSyntax kind := do
   let .ok key := json.getObjValAs? String "node_type" | throwError
     s!"pygen: JSON object does not have a 'node_type' field or it is not a string: {json}"
   let fs ← pygenMatches key
@@ -148,6 +148,66 @@ def getCode (json: Json) (kind: SyntaxNodeKinds) : PygenM <| TSyntax kind := do
   match code? with
   | some code => return code
   | none => throwError s!"pygen: no function found for key '{key}' and syntax category '{kind}'"
+
+#check liftCommandElabM
+
+def getCodeTerm (json: Json) : PygenM <| Term := do
+  let codeStx ← getCode json `term
+  try
+    let cmd ← `(command| example := $codeStx)
+    liftCommandElabM <| Command.elabCommand cmd
+    -- withoutErrToSorry do
+    -- let codeTerm ← elabTerm codeStx none
+    -- -- let type ← inferType codeTerm
+    -- Term.synthesizeSyntheticMVarsUsingDefault
+    -- if codeTerm.hasMVar then
+    --   throwError s!"Generated code has metavariables, which means it is not fully elaborated: {codeTerm}"
+    -- -- IO.eprintln s!"Elaborated code: {codeTerm} with type {type}"
+    -- PrettyPrinter.delab codeTerm
+    return codeStx
+  catch e =>
+    throwError s!"Error elaborating code: {← e.toMessageData.toString}"
+
+def getCodeCore (json: Json) (kind: SyntaxNodeKind) : CoreM <| Except String Format := do
+  try
+    let code := getCode json kind
+    let codeElab := code.run' {}
+    let codeMeta := codeElab.run' {} {}
+    let codeCore ← codeMeta.run' {} {}
+    let fmt ← PrettyPrinter.ppCategory kind codeCore
+    return .ok fmt
+  catch e =>
+    return .error s!"Error generating code: {← e.toMessageData.toString}"
+
+def getCodeTermCore (json: Json) : CoreM <| Except String Format := do
+  try
+    let code := getCodeTerm json
+    let codeElab := code.run' {}
+    let codeMeta := codeElab.run' {} {}
+    let codeCore ← codeMeta.run' {} {}
+    let fmt ← PrettyPrinter.ppTerm codeCore
+    return .ok fmt
+  catch e =>
+    return .error s!"Error generating code: {← e.toMessageData.toString}"
+
+def getCodeTermIO (json: Json) (ctx : Core.Context) (env: Environment) : IO <| Except String Format := do
+  let code := getCodeTermCore json
+  let eio := code.run' ctx {env := env}
+  match ← eio.toIO' with
+  | .ok code =>
+    return code
+  | .error err =>
+    return .error s!"Error generating code: {← err.toMessageData.toString}"
+
+def getCodeIO (json: Json) (kind: SyntaxNodeKind) (ctx : Core.Context) (env: Environment) :
+  IO <| Except String Format := do
+  let code := getCodeCore json kind
+  let eio := code.run' ctx {env := env}
+  match ← eio.toIO' with
+  | .ok code =>
+    return code
+  | .error err =>
+    return .error s!"Error generating code: {← err.toMessageData.toString}"
 
 open Tactic
 syntax (name:= pyTerm) "py_term%" term : term

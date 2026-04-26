@@ -1,5 +1,7 @@
 import ast
 import json
+from pathlib import Path
+import subprocess
 
 class ASTToJsonLeanVisitorBase:
     def visit(self, node):
@@ -67,3 +69,18 @@ def translate_to_json(source_code):
     ast_tree = ast.parse(source_code)
     data= translator.visit(ast_tree.body[0])  # Assuming we want to translate the first statement only
     return json.dumps(data)
+
+parent_dir = Path(__file__).parent.parent
+
+def translate_to_lean(source_code):
+    """Translates Python source code to Lean code by first converting it to JSON and then invoking the Lean code generator."""
+    json_ir = translate_to_json(source_code)
+    print(f"Generated JSON IR: {json_ir}")  # Debugging output
+    
+    # Call the Lean code generator (assuming it's a standalone executable)
+    result = subprocess.run(["lake", "exe", "expression_to_lean", json_ir], capture_output=True, text=True, cwd=parent_dir)
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"Lean code generation failed: {result.stderr}")
+    # print(result.stderr) # Debugging output
+    return json.loads(result.stdout)

@@ -13,3 +13,7 @@ rev = "v4.30.0-rc2"
 
 [[lean_lib]]
 name = "PyAstLean"
+
+[[lean_exe]]
+name="expression_to_lean"
+supportInterpreter = true
