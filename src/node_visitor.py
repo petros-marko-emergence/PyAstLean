@@ -58,6 +58,24 @@ class ASTToJsonLeanVisitorBase:
     def visit_Expr(self, node):
         """Translates ast.Expr (e.g., a standalone expression) to a JSON IR node."""
         return self.visit(node.value)
+    
+    def visit_Name(self, node):
+        """Translates ast.Name (e.g., variable names) to a JSON IR node."""
+        return {
+            "node_type": "Name",
+            "id": node.id
+        }
+    def visit_Call(self, node):
+        """Translates ast.Call (e.g., function calls) to a JSON IR node."""
+        func_json = self.visit(node.func)
+        args_json = [self.visit(arg) for arg in node.args]
+        keywords_json = {kw.arg: self.visit(kw.value) for kw in node.keywords}
+        return {
+            "node_type": "Call",
+            "func": func_json,
+            "args": args_json,
+            "keywords": keywords_json
+        }
         
 class ASTToJsonLeanVisitor(ASTToJsonLeanVisitorBase):
     """Concrete visitor that implements the translation logic for a specific subset of Python syntax."""

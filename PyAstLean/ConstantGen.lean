@@ -39,6 +39,15 @@ def constantSyntax : (kind : SyntaxNodeKind) → Json →
     | _ => throwError s!"Unsupported constant value: {value}"
   | _, _ => throwError s!"Unsupported syntax category for Constant node"
 
+@[pygen "Name"]
+def nameSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok id := json.getObjValAs? String "id" | throwError
+      s!"Name node does not have an 'id' field or it is not a string: {json}"
+    return mkIdent id.toName
+  | _, _ => throwError s!"Unsupported syntax category for Name node"
+
 def js₀ := json% {
   "node_type": "Constant",
   "value": 1

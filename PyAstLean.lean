@@ -4,4 +4,5 @@ import PyAstLean.Basic
 import PyAstLean.Codegen
 import PyAstLean.ConstantGen
 import PyAstLean.BinOpGen
+import PyAstLean.FuncApplGen
 import Mathlib
