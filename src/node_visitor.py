@@ -2,6 +2,7 @@ import ast
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 class ASTToJsonLeanVisitorBase:
     def visit(self, node):
@@ -75,12 +76,19 @@ parent_dir = Path(__file__).parent.parent
 def translate_to_lean(source_code):
     """Translates Python source code to Lean code by first converting it to JSON and then invoking the Lean code generator."""
     json_ir = translate_to_json(source_code)
-    print(f"Generated JSON IR: {json_ir}")  # Debugging output
+    print(f"Generated JSON IR: {json_ir}", file=sys.stderr)  # Debugging output
+    proc = subprocess.Popen(
+        ["lake", "exe", "py2lean", json_ir],
+        cwd=parent_dir,
+        stdout=subprocess.PIPE,   # keep stdout if you want to read it
+        stderr=None,              # inherit parent's stderr (i.e., sys.stderr)
+        text=True,
+    )
+
+    stdout, _ = proc.communicate()    # Call the Lean code generator (assuming it's a standalone executable)
+    # result = subprocess.run(["lake", "exe", "py2lean", json_ir], capture_output=True, text=True, cwd=parent_dir)
     
-    # Call the Lean code generator (assuming it's a standalone executable)
-    result = subprocess.run(["lake", "exe", "expression_to_lean", json_ir], capture_output=True, text=True, cwd=parent_dir)
-    
-    if result.returncode != 0:
-        raise RuntimeError(f"Lean code generation failed: {result.stderr}")
-    # print(result.stderr) # Debugging output
-    return json.loads(result.stdout)
+    # if result.returncode != 0:
+    #     raise RuntimeError(f"Lean code generation failed: {result.stderr}")
+    # # print(result.stderr) # Debugging output
+    return json.loads(stdout)
