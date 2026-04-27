@@ -149,8 +149,6 @@ def getCode (json: Json) (kind: SyntaxNodeKind) : PygenM <| TSyntax kind := do
   | some code => return code
   | none => throwError s!"pygen: no function found for key '{key}' and syntax category '{kind}'"
 
-#check liftCommandElabM
-
 def getCodeTerm (json: Json) : PygenM <| Term := do
   let codeStx ← getCode json `term
   try

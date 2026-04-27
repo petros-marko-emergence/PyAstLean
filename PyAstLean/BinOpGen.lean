@@ -17,8 +17,8 @@ instance {α β γ} [HAdd α β γ] : PyHAdd α β γ where
 instance : PyHAdd String String String where
   hAdd := String.append
 
-#eval 1 (+) 2
-#eval "Hello, " (+) "World!"
+-- #eval 1 (+) 2
+-- #eval "Hello, " (+) "World!"
 
 @[pygen "BinOp"]
 def binOpSyntax : (kind : SyntaxNodeKind) → Json →
@@ -51,8 +51,8 @@ def onePlusTwoNode := json% {
     }
   }
 
-#eval py_term% onePlusTwoNode
-#eval onePlusTwoNode.compress
+-- #eval py_term% onePlusTwoNode
+-- #eval onePlusTwoNode.compress
 
 
 -- #eval getCodeTerm (json% {

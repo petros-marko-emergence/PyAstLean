@@ -44,16 +44,16 @@ def js₀ := json% {
   "value": 1
 }
 
-#eval py_term% js₀
+-- #eval py_term% js₀
 
-#eval py_term% {
-  "node_type": "Constant",
-  "value": "Hello, World!"
-}
+-- #eval py_term% {
+--   "node_type": "Constant",
+--   "value": "Hello, World!"
+-- }
 
-#eval py_term% {
-  "node_type": "Constant",
-  "value": -1.5
-}
+-- #eval py_term% {
+--   "node_type": "Constant",
+--   "value": -1.5
+-- }
 
 end PyAstLean
