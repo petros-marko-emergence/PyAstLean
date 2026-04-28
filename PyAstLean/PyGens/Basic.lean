@@ -57,7 +57,7 @@ def js₀ := json% {
 class PyHAdd (α β : Type) (γ : outParam Type) where
   hAdd : α → β → γ
 
-infix:65 " (+) " => PyHAdd.hAdd
+infix:65 " +ₚ " => PyHAdd.hAdd
 
 instance {α β γ} [HAdd α β γ] : PyHAdd α β γ where
   hAdd := HAdd.hAdd
@@ -65,8 +65,25 @@ instance {α β γ} [HAdd α β γ] : PyHAdd α β γ where
 instance : PyHAdd String String String where
   hAdd := String.append
 
--- #eval 1 (+) 2
--- #eval "Hello, " (+) "World!"
+class PyHSub (α β : Type) (γ : outParam Type) where
+  hSub : α → β → γ
+
+infix:65 " -ₚ " => PyHSub.hSub
+
+instance (priority:= low) {α β γ} [HSub α β γ] : PyHSub α β γ where
+  hSub := HSub.hSub
+
+instance (priority := high) : PyHSub Nat Nat Int where
+  hSub := fun a b => (a :  Int) - (b : Int)
+-- #eval 1 +ₚ 2
+-- #eval "Hello, " +ₚ "World!"
+
+class PyHMul (α β : Type) (γ : outParam Type) where
+  hMul : α → β → γ
+infix:70 " *ₚ " => PyHMul.hMul
+
+instance {α β γ} [HMul α β γ] : PyHMul α β γ where
+  hMul := HMul.hMul
 
 @[pygen "BinOp"]
 def binOpSyntax : (kind : SyntaxNodeKind) → Json →
@@ -81,7 +98,9 @@ def binOpSyntax : (kind : SyntaxNodeKind) → Json →
     let leftCode ←  getCode leftJson `term
     let rightCode ← getCode rightJson `term
     match op with
-    | "add" => `($leftCode (+) $rightCode)
+    | "add" => `($leftCode +ₚ $rightCode)
+    | "sub" => `($leftCode -ₚ $rightCode)
+    | "mul" => `($leftCode *ₚ $rightCode)
     | _ => throwError s!"Unsupported binary operator: {op}"
   | _, _ => throwError s!"Unsupported syntax category for BinOp node"
 
@@ -122,6 +141,20 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
       t ← `($t ($kwId:ident := $kwValueCode))
     return t
   | _, _ => throwError s!"Unsupported syntax category for Call node"
+
+
+@[pygen "Attribute"]
+def attributeSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok valueJson := json.getObjValAs? Json "value" | throwError
+      s!"Attribute node does not have a 'value' field or it is not a JSON value: {json}"
+    let .ok attr := json.getObjValAs? String "attr" | throwError
+      s!"Attribute node does not have an 'attr' field or it is not a string: {json}"
+    let valueCode ← getCode valueJson `term
+    let attrId := mkIdent attr.toName
+    `($valueCode.$attrId)
+  | _, _ => throwError s!"Unsupported syntax category for Attribute node"
 
 
 -- #eval py_term% onePlusTwoNode

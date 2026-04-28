@@ -76,4 +76,12 @@ class ASTToJsonLeanVisitorBase:
             "args": args_json,
             "keywords": keywords_json
         }
-        
+    
+    def visit_Attribute(self, node):
+        """Translates ast.Attribute (e.g., object.attribute) to a JSON IR node."""
+        value_json = self.visit(node.value)
+        return {
+            "node_type": "Attribute",
+            "value": value_json,
+            "attr": node.attr
+        }
