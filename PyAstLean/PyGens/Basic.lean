@@ -133,29 +133,50 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
       | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
     for argCode in argsCodes do
       t ←  `($t $argCode)
-    let .ok keyWordsJson := json.getObjValAs? (List (Name × Json)) "keywords" | throwError
+    let .ok keyWordsJson := json.getObjVal?  "keywords" | throwError
       s!"Call node does not have a 'keywords' field or it is not json pairs: {json}"
-    for (kwName, kwValueJson) in keyWordsJson do
+    let .ok keyWordsMap := keyWordsJson.getObj? | throwError
+      s!"Call node 'keywords' field is not a JSON object: {keyWordsJson}"
+    for (kwName, kwValueJson) in keyWordsMap.toList do
       let kwValueCode ← getCode kwValueJson `term
-      let kwId := mkIdent kwName
+      let kwId := mkIdent kwName.toName
       t ← `($t ($kwId:ident := $kwValueCode))
     return t
   | _, _ => throwError s!"Unsupported syntax category for Call node"
+
 
 
 @[pygen "Attribute"]
 def attributeSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
   | `term, json => do
+    -- IO.eprintln s!"Generating code for Attribute node with JSON: {json}" -- Debugging output
     let .ok valueJson := json.getObjValAs? Json "value" | throwError
       s!"Attribute node does not have a 'value' field or it is not a JSON value: {json}"
     let .ok attr := json.getObjValAs? String "attr" | throwError
       s!"Attribute node does not have an 'attr' field or it is not a string: {json}"
-    let valueCode ← getCode valueJson `term
-    let attrId := mkIdent attr.toName
-    `($valueCode.$attrId)
+    match valueJson.getObjValAs? String "node_type" with
+    | .ok "Name" => do
+      let .ok id := valueJson.getObjValAs? String "id" | throwError
+        s!"Name node does not have an 'id' field or it is not a string: {valueJson}"
+      return mkIdent <| id.toName ++ attr.toName
+    | _ => do
+      -- IO.eprintln s!"Generating code for Attribute value: {valueJson} as value not a name" -- Debugging output
+      let valueCode ←
+          getCode valueJson `term
+      -- IO.eprintln s!"Generated code for Attribute value: {valueCode} : {← `($valueCode)}" -- Debugging output
+      let attrId := mkIdent attr.toName
+      `($valueCode.$attrId)
   | _, _ => throwError s!"Unsupported syntax category for Attribute node"
 
+
+def fn := fun n => show MetaM _ from  do
+  let m := n + 1
+  return m
+
+#print fn
+-- #eval fn 3
+-- #check fn
 
 -- #eval py_term% onePlusTwoNode
 -- #eval onePlusTwoNode.compress

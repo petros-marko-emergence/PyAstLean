@@ -143,8 +143,8 @@ def getCode (json: Json) (kind: SyntaxNodeKind) : PygenM <| TSyntax kind := do
   let code? ← fs.findSomeM? (fun f => try
     let code ← codeFromFunc f json kind
     pure (some code)
-  catch _ =>
-    pure none)
+  catch e =>
+    throwError s!"Error in code generation function {f} for key '{key}' and syntax category '{kind}': {← e.toMessageData.toString}")
   match code? with
   | some code => return code
   | none => throwError s!"pygen: no function found for key '{key}' and syntax category '{kind}'"
