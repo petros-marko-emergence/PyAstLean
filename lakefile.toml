@@ -2,6 +2,7 @@ name = "PyAstLean"
 version = "0.1.0"
 keywords = ["math"]
 defaultTargets = ["PyAstLean"]
+testDriver = "PyAstLeanTest"
 
 [leanOptions]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
@@ -13,6 +14,9 @@ rev = "v4.30.0-rc2"
 
 [[lean_lib]]
 name = "PyAstLean"
+
+[[lean_lib]]
+name = "PyAstLeanTest"
 
 [[lean_exe]]
 name="py2lean"

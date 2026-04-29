@@ -75,8 +75,6 @@ instance (priority:= low) {α β γ} [HSub α β γ] : PyHSub α β γ where
 
 instance (priority := high) : PyHSub Nat Nat Int where
   hSub := fun a b => (a :  Int) - (b : Int)
--- #eval 1 +ₚ 2
--- #eval "Hello, " +ₚ "World!"
 
 class PyHMul (α β : Type) (γ : outParam Type) where
   hMul : α → β → γ
@@ -174,50 +172,11 @@ def fn := fun n => show IO _ from  do
   let m := n + 1
   return m
 
-#print fn
-
 def fnId := Id.run do
   let n := 3
   let m := n + 1
   return m
 
 def n₀ : Id Nat := 3
-
-#eval let m : Nat := n₀; m + (1 : Nat)
-
-set_option pp.all true in
-#print fnId
--- #eval fn 3
--- #check fn
-
--- #eval py_term% onePlusTwoNode
--- #eval onePlusTwoNode.compress
-
-
--- #eval getCodeTerm (json% {
---     "node_type": "BinOp",
---     "op": "add",
---     "left": {
---       "node_type": "Constant",
---       "value": "Hello"
---     },
---     "right": {
---       "node_type": "Constant",
---       "value": 2
---     }
---   })
-
-
--- #eval py_term% js₀
-
--- #eval py_term% {
---   "node_type": "Constant",
---   "value": "Hello, World!"
--- }
-
--- #eval py_term% {
---   "node_type": "Constant",
---   "value": -1.5
--- }
 
 end PyAstLean
