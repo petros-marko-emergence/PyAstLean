@@ -170,11 +170,19 @@ def attributeSyntax : (kind : SyntaxNodeKind) → Json →
   | _, _ => throwError s!"Unsupported syntax category for Attribute node"
 
 
-def fn := fun n => show MetaM _ from  do
+def fn := fun n => show IO _ from  do
   let m := n + 1
   return m
 
 #print fn
+
+def fnId := Id.run do
+  let n := 3
+  let m := n + 1
+  return m
+
+set_option pp.all true in
+#print fnId
 -- #eval fn 3
 -- #check fn
 
