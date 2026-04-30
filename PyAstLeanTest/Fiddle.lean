@@ -22,3 +22,4 @@ def letEg : MetaM Unit := do
 #check Lean.Parser.Term.do
 #check Lean.Parser.Term.letDecl
 #check Lean.Parser.Term.doLet
+#check Expr.isAppOf

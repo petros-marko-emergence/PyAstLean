@@ -85,3 +85,48 @@ class ASTToJsonLeanVisitorBase:
             "value": value_json,
             "attr": node.attr
         }
+
+    def visit_FunctionDef(self, node):
+        """Translates ast.FunctionDef to a JSON IR node."""
+        if node.decorator_list:
+            raise NotImplementedError("Function decorators are not supported.")
+        if node.returns is not None:
+            raise NotImplementedError("Function return annotations are not supported.")
+        if getattr(node, "type_params", []):
+            raise NotImplementedError("Function type parameters are not supported.")
+        if node.args.posonlyargs:
+            raise NotImplementedError("Positional-only arguments are not supported.")
+        if node.args.vararg is not None:
+            raise NotImplementedError("Variadic positional arguments are not supported.")
+        if node.args.kwonlyargs:
+            raise NotImplementedError("Keyword-only arguments are not supported.")
+        if node.args.kwarg is not None:
+            raise NotImplementedError("Variadic keyword arguments are not supported.")
+        if node.args.defaults or node.args.kw_defaults:
+            raise NotImplementedError("Default argument values are not supported.")
+
+        args_json = [arg.arg for arg in node.args.args]
+        body_json = [self.visit(stmt) for stmt in node.body]
+        return {
+            "node_type": "FunctionDef",
+            "name": node.name,
+            "args": args_json,
+            "body": body_json
+        }
+
+    def visit_Assign(self, node):
+        """Translates ast.Assign (e.g., x = y) to a JSON IR node."""
+        if len(node.targets) != 1:
+            raise NotImplementedError("Multiple assignment targets are not supported.")
+        return {
+            "node_type": "Assign",
+            "target": self.visit(node.targets[0]),
+            "value": self.visit(node.value)
+        }
+
+    def visit_Return(self, node):
+        """Translates ast.Return to a JSON IR node."""
+        return {
+            "node_type": "Return",
+            "value": None if node.value is None else self.visit(node.value)
+        }

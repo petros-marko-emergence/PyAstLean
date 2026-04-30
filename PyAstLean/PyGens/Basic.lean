@@ -190,4 +190,38 @@ def elabCheckTerm : (stx : TSyntax `term) → PygenM (TSyntax `term)
       return codeStx
     catch e =>
       throwError s!"Error elaborating code: {← e.toMessageData.toString}"
+
+@[pygen_transform term]
+def addArrow : (stx : TSyntax `term) → PygenM (TSyntax `term)
+  | codeStx => do
+    unless ← isUseArrowEnabled do
+      return codeStx
+    try
+      let e ← elabTerm codeStx none
+      let eType ← inferType e
+      if eType.isAppOf ``Id then
+        `(← $codeStx)
+      else
+        return codeStx
+    catch e =>
+      trace[pyastlean.pygen.info] m!"addArrow transform failed for {codeStx} with error: {← e.toMessageData.toString}"
+      return codeStx
+
+/-!
+## Function definitions
+
+A sample Python AST:
+
+```python
+Module(body=[FunctionDef(name='f', args=arguments(posonlyargs=[], args=[arg(arg='n')], kwonlyargs=[], kw_defaults=[], defaults=[]), body=[Assign(targets=[Name(id='m', ctx=Store())], value=BinOp(left=Name(id='n', ctx=Load()), op=Add(), right=Constant(value=1))), Return(value=Name(id='m', ctx=Load()))], decorator_list=[], type_params=[])], type_ignores=[])
+```
+
+For the definition:
+
+```python
+def f(n):
+    m = n + 1
+    return m
+```
+-/
 end PyAstLean
