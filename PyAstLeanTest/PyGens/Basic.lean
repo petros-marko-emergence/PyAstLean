@@ -34,7 +34,7 @@ def stringNatBinOpNode := json% {
   }
 
 #eval show CoreM String from do
-  match ← getCodeTermCore stringNatBinOpNode with
+  match ← getCodeCore stringNatBinOpNode `term with
   | .ok fmt => return s!"unexpected success: {fmt}"
   | .error err => return err
 
