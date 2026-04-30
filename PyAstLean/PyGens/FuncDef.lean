@@ -45,7 +45,7 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
         `(doElem| return $valueStx)
     | _, _ => throwError s!"Unsupported syntax category for Return node"
 
-@[pygen "FuncDef"]
+@[pygen "FunctionDef"]
 def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
     | `command, json => do
@@ -64,12 +64,16 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         let argIdents := argStrs.map (fun argName => mkIdent argName.toName)
         let .ok bodyElems := json.getObjValAs? (Array Json) "body" | throwError
           s!"FuncDef node does not have a 'body' field or it is not a JSON value: {json}"
-        let bodyStxArray ← bodyElems.mapM (fun elem => getCode elem `doElem)
+        let bodyStxArray ← bodyElems.mapM (fun elem =>
+            withoutCheck do
+                getCode elem `doElem)
         let idRunIdent := mkIdent ``Id.run
         if argIdents.isEmpty then
           `(def $nameIdent := $idRunIdent do
               $[$bodyStxArray:doElem]*)
         else
-          `(def $nameIdent ($argIdents*) := fun $argIdents* => $idRunIdent do
+          let cmd ← `(def $nameIdent := fun $argIdents* => $idRunIdent do
               $[$bodyStxArray:doElem]*)
-    | _, _ => throwError s!"Unsupported syntax category for FuncDef node"
+          IO.eprintln s!"Generated syntax for FunctionDef node: \n{← PrettyPrinter.ppCommand cmd}" -- Debugging output
+          return cmd
+    | kind, _ => throwError s!"Unsupported syntax category `{kind}` for FuncDef node"
