@@ -67,6 +67,18 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
         `(doElem| return $valueStx)
     | _, _ => throwError s!"Unsupported syntax category for Return node"
 
+/--
+Reformat a list of Json to an object with `node_type` the `node_type` of the original list's first element with "Head_" prefixed, and `args` the original list. This is needed to handle the case where the body of a function definition is a list of statements, which is represented as a JSON array in the input, but we want to treat it as a single JSON object with a specific `node_type` in our code generation. We use this to try to generate *pure* code, i.e., not Monadic code.
+-/
+def splitList : List Json -> PygenM Json
+| [] => throwError "Cannot split an empty list"
+| (first :: rest) => do
+    let .ok nodeType := first.getObjValAs? String "node_type" | throwError
+      s!"First element of list does not have a 'node_type' field or it is not a string: {first}"
+    let newNodeType := "Head_" ++ nodeType
+    let newJson := first.mergeObj (Json.mkObj [("node_type", newNodeType), ("args", toJson rest)])
+    return newJson
+
 @[pygen "FunctionDef"]
 def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -87,6 +99,15 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         let .ok bodyElems := json.getObjValAs? (Array Json) "body" | throwError
           s!"FuncDef node does not have a 'body' field or it is not a JSON value: {json}"
         let mut bodyStxArray := #[]
+        try
+          -- Attempt to generate pure code by treating the body as a single unit and generating syntax for it directly, which will allow us to generate non-monadic code if the body is simple enough (e.g., a single return statement). If this fails, we will fall back to generating monadic code by generating syntax for each element of the body separately.
+          let spl ← splitList bodyElems.toList
+          let bodyStx ← withoutCheck do
+              getCode spl `term
+          let t ← `(def $nameIdent := $bodyStx)
+          return t
+        catch e =>
+          IO.eprintln s!"Could not generate pure function: {← e.toMessageData.toString}"
         for elem in bodyElems do
             let elemStx ← withoutCheck do
                 getCode elem `doElem
