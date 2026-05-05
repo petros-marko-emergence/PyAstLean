@@ -167,3 +167,23 @@ def f' := fun n =>
       let y := x *ₚ 2
       x := y -ₚ 1
       return x +ₚ y
+
+def sumToNWithRec (n: Nat) : Nat :=
+  let rec sumToN (n: Nat) :=
+    match n with
+    | 0 => 0
+    | m + 1 =>  sumToN m + (m + 1)
+  sumToN n
+
+def sumToNWithRec' (n: Nat)  := Id.run do
+    let mut sum := 0
+    let mut i := 0
+    while i < n do
+      sum := sum + (i + 1)
+      i := i + 1
+    return sum
+
+-- #check sumToNWithRec'
+-- #check Id.run
+-- #print Id.run
+-- #print Id
