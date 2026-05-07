@@ -24,6 +24,8 @@ unsafe def main(args : List String) : IO Unit := do
         let code? ← getCodeIO json target.toName ctx env
         match code? with
         | .ok code =>
+          IO.eprintln s!"Successfully generated code for target: {target}"  -- Debugging output
+          IO.eprintln code.pretty  -- Debugging output
           let jsCode := Json.mkObj [("result", Json.bool true), ("lean_" ++ target, code.pretty)]
           IO.println jsCode
         | .error err =>

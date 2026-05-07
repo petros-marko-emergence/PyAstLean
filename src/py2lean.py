@@ -67,9 +67,10 @@ def main(argv=None):
 
         code_key = f"lean_{args.target}"
         if code_key in result:
+            print(f"Successfully translated to Lean", file=sys.stderr)  # Debugging output
             print(result[code_key])
             return 0
-
+    print("Unexpected translation result format.", file=sys.stderr)
     print(result)
     return 0
 
