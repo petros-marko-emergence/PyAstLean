@@ -59,6 +59,8 @@ class ASTToJsonLeanVisitorBase:
             op = "sub"
         elif isinstance(node.op, ast.Mult):
             op = "mul"
+        elif isinstance(node.op, ast.Pow):
+            op = "pow"
         else:
             raise NotImplementedError(f"Operator {type(node.op).__name__} not supported.")
             
@@ -67,6 +69,39 @@ class ASTToJsonLeanVisitorBase:
             "op": op,
             "left": left_json,
             "right": right_json
+        }
+    
+    def visit_BoolOp(self, node):
+        """Translates ast.BoolOp (e.g., a and b) to a JSON IR node."""
+        op_type = type(node.op)
+        if op_type == ast.And:
+            op = "and"
+        elif op_type == ast.Or:
+            op = "or"
+        else:
+            raise NotImplementedError(f"Boolean operator {op_type.__name__} not supported.")
+        
+        return {
+            "node_type": "BoolOp",
+            "op": op,
+            "values": [self.visit(value) for value in node.values]
+        }
+
+    def visit_UnaryOp(self, node):
+        """Translates ast.UnaryOp (e.g., -a) to a JSON IR node."""
+        if isinstance(node.op, ast.USub):
+            op = "neg"
+        elif isinstance(node.op, ast.UAdd):
+            op = "pos"
+        elif isinstance(node.op, ast.Not):
+            op = "not"
+        else:
+            raise NotImplementedError(f"Unary operator {type(node.op).__name__} not supported.")
+        
+        return {
+            "node_type": "UnaryOp",
+            "op": op,
+            "operand": self.visit(node.operand)
         }
 
     def visit_Compare(self, node):

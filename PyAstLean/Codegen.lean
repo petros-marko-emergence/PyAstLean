@@ -291,4 +291,6 @@ syntax (name:= pyTerm) "py_term%" term : term
 macro "py_term%" js:json : term =>
   `(py_term% json% $js)
 
+#eval pygen
+
 end PyAstLean

@@ -69,6 +69,10 @@ infix:65 " +ₚ " => PyHAdd.hAdd
 instance {α β γ} [HAdd α β γ] : PyHAdd α β γ where
   hAdd := HAdd.hAdd
 
+@[default_instance]
+instance (priority := high) : PyHAdd Rat Rat Rat where
+  hAdd := fun a b => (a : Rat) + (b : Rat)
+
 instance : PyHAdd String String String where
   hAdd := String.append
 
@@ -85,6 +89,10 @@ instance (priority:= low) {α β γ} [HSub α β γ] : PyHSub α β γ where
 instance (priority := high) : PyHSub Nat Nat Int where
   hSub := fun a b => (a :  Int) - (b : Int)
 
+@[default_instance]
+instance (priority := high) : PyHSub Rat Int Rat where
+  hSub := fun a b => (a : Rat) - (b : Int)
+
 #eval 3 -ₚ 5
 
 class PyHMul (α β : Type) (γ : outParam Type) where
@@ -95,10 +103,47 @@ infix:70 " *ₚ " => PyHMul.hMul
 instance {α β γ} [HMul α β γ] : PyHMul α β γ where
   hMul := HMul.hMul
 
+@[default_instance]
+instance (priority := high) : PyHMul String Nat String where
+  hMul := fun s n => String.intercalate "" (List.replicate n s)
+
+@[default_instance]
+instance (priority := high) : PyHMul String Int String where
+  hMul := fun s n => if n < 0 then
+                        ""
+                     else
+                        let n := n.toNat
+                        String.intercalate "" (List.replicate n s)
+
+@[default_instance]
+instance (priority := high) : PyHMul Rat Rat Rat where
+  hMul := fun a b => (a : Rat) * (b : Rat)
+
+class PyHPow (α β : Type) (γ : outParam Type) where
+  hPow : α → β → γ
+infix:80 " ^ₚ " => PyHPow.hPow
+
+@[default_instance]
+instance {α β γ} [HPow α β γ] : PyHPow α β γ where
+  hPow := HPow.hPow
+
+@[default_instance]
+instance(priority := high) {α β}  [Pow α β]: PyHPow α β α where
+  hPow := Pow.pow
+
+@[default_instance]
+instance(priority := high) : PyHPow Rat Int Rat where
+  hPow := fun a b => (a : Rat) ^ (b : Int)
+
+@[default_instance]
+instance(priority := high) : Neg Rat where
+  neg := fun a => - (a : Rat)
+
 @[pygen "BinOp"]
 def binOpSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
   | `term, json => do
+    Term.synthesizeSyntheticMVarsNoPostponing
     let .ok op := json.getObjValAs? String "op" | throwError
       s!"BinOp node does not have an 'op' field or it is not a string: {json}"
     let .ok leftJson := json.getObjValAs? Json "left" | throwError
@@ -111,9 +156,47 @@ def binOpSyntax : (kind : SyntaxNodeKind) → Json →
     | "add" => `($leftCode +ₚ $rightCode)
     | "sub" => `($leftCode -ₚ $rightCode)
     | "mul" => `($leftCode *ₚ $rightCode)
+    | "pow" => `($leftCode ^ₚ $rightCode)
     | _ => throwError s!"Unsupported binary operator: {op}"
   | _, _ => throwError s!"Unsupported syntax category for BinOp node"
 
+@[pygen "UnaryOp"]
+def unaryOpSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok op := json.getObjValAs? String "op" | throwError
+      s!"UnaryOp node does not have an 'op' field or it is not a string: {json}"
+    let .ok operandJson := json.getObjValAs? Json "operand" | throwError
+      s!"UnaryOp node does not have an 'operand' field or it is not a JSON value: {json}"
+    let operandCode ← getCode operandJson `term
+    match op with
+    | "not" => `(! $operandCode)
+    | "neg" => `(- $operandCode)
+    | "pos" => `($operandCode)
+    | _ => throwError s!"Unsupported unary operator: {op}"
+  | _, _ => throwError s!"Unsupported syntax category for UnaryOp node"
+
+@[pygen "BoolOp"]
+def boolOpSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok op := json.getObjValAs? String "op" | throwError
+      s!"BoolOp node does not have an 'op' field or it is not a string: {json}"
+    let .ok valuesJson := json.getObjValAs? Json "values" | throwError
+      s!"BoolOp node does not have a 'values' field or it is not a JSON value: {json}"
+    let valuesCodes ← match valuesJson with
+      | .arr arr => arr.mapM (fun valueJson => getCode valueJson `term)
+      | _ => throwError s!"BoolOp node 'values' field is not an array: {valuesJson}"
+    -- let valuesCodes := valuesCodes.toList
+    let l := valuesCodes.toList.length
+    if l = 0 then throwError s!"BoolOp node 'values' array is empty: {valuesJson}"
+    match op with
+    | "and" => return ← valuesCodes.foldlM (fun a b => `($a && $b)) (valuesCodes[0]!) (start := 1)
+    | "or" => return ← valuesCodes.foldlM (fun a b => `($a || $b)) (valuesCodes[0]!) (start := 1)
+    | _ => throwError s!"Unsupported boolean operator: {op}"
+  | _, _ => throwError s!"Unsupported syntax category for BoolOp node"
+
+#eval (-3)^2
 @[pygen "Compare"]
 def compareSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -258,5 +341,7 @@ def elabCheckCmd : (stx : TSyntax `command) → PygenM (TSyntax `command)
       return cmd
     catch e =>
       throwError s!"Error elaborating code: {← e.toMessageData.toString} for {← PrettyPrinter.ppCommand cmd}"
+
+#eval pygen
 
 end PyAstLean
