@@ -1,13 +1,13 @@
-# PyLeanCheck
+# PyAstLeanCheck
 
-`PyLeanCheck` is a FileCheck-style test harness for Python → Lean translation.
+`PyAstLeanCheck` is a FileCheck-style test harness for Python → Lean translation.
 
 It runs as part of `lake test` and checks generated Lean output by **shape**, not exact formatting.
 
 ## Where tests live
 
-- Cases: `PyAstLeanTest/PyLeanCheck/Cases/*.py`
-- Harness: `PyAstLeanTest/PyLeanCheck.lean`
+- Cases: `PyAstLeanTest/PyAstLeanCheck/Cases/*.py`
+- Harness: `PyAstLeanTest/PyAstLeanCheck.lean`
 - Regex engine: [`lean-regex`](https://github.com/pandaman64/lean-regex)
 
 ## Test file format
@@ -76,7 +76,7 @@ Use `\.` for a literal dot.
 
 ### 4. `<=`, `\<=`, and `≤` equivalence
 
-PyLeanCheck treats all of these as equivalent in checks:
+PyAstLeanCheck treats all of these as equivalent in checks:
 
 - `<=`
 - `\<=`
@@ -86,7 +86,7 @@ So `CHECK: while . <= .` will match output containing `while i ≤ n`.
 
 ## Adding a new case
 
-1. Add `PyAstLeanTest/PyLeanCheck/Cases/<name>.py`
+1. Add `PyAstLeanTest/PyAstLeanCheck/Cases/<name>.py`
 2. Add one `PYASTLEANCHECK` block at top (or anywhere in comments)
 3. Prefer shape checks over exact text
 4. Run:

@@ -281,8 +281,8 @@ def listCaseFiles (dir : System.FilePath) : IO (Array System.FilePath) := do
     let trimmed := line.trimAscii.toString
     if trimmed.isEmpty then acc else acc.push (System.FilePath.mk trimmed))
 
-def runPyLeanCheckSuite : IO Unit := do
-  let cases ← listCaseFiles (System.FilePath.mk "PyAstLeanTest/PyLeanCheck/Cases")
+def runPyAstLeanCheckSuite : IO Unit := do
+  let cases ← listCaseFiles (System.FilePath.mk "PyAstLeanTest/PyAstLeanCheck/Cases")
   if cases.isEmpty then
     throw <| IO.userError "PyLeanCheck: no test cases found."
   let mut failures : Array String := #[]
@@ -297,6 +297,6 @@ def runPyLeanCheckSuite : IO Unit := do
   else
     throw <| IO.userError (String.intercalate "\n\n" failures.toList)
 
-#eval runPyLeanCheckSuite
+#eval runPyAstLeanCheckSuite
 
 end PyAstLeanTest
