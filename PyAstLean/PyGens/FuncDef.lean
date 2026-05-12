@@ -57,6 +57,36 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
             return stx
     | _, _ => throwError s!"Unsupported syntax category for Assign node"
 
+/--
+`AnnAssign` represents Python's annotated assignment syntax (`x : T = v` or `x : T`).
+The remaining declaration-only form is currently treated as a no-op in `do` blocks, and
+rejected at top level until the backend grows explicit type-directed declarations.
+-/
+@[pygen "AnnAssign"]
+def annAssignSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+    | `command, json => do
+        let .ok value? := json.getObjVal? "value" | throwError
+          s!"AnnAssign node does not have a 'value' field or it is not a JSON value: {json}"
+        match value? with
+        | .null =>
+            throwError "Declaration-only annotated assignments are not yet supported at top level."
+        | _ =>
+            let targetJson := Json.mkObj [("node_type", Json.str "Assign")]
+            let json := targetJson.mergeObj json
+            assignSyntax `command json
+    | `doElem, json => do
+        let .ok value? := json.getObjVal? "value" | throwError
+          s!"AnnAssign node does not have a 'value' field or it is not a JSON value: {json}"
+        match value? with
+        | .null =>
+            `(doElem| pure ())
+        | _ =>
+            let targetJson := Json.mkObj [("node_type", Json.str "Assign")]
+            let json := targetJson.mergeObj json
+            assignSyntax `doElem json
+    | _, _ => throwError s!"Unsupported syntax category for AnnAssign node"
+
 @[pygen "Return"]
 def returnSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -164,6 +194,25 @@ def assignHeadSyntax : (kind : SyntaxNodeKind) → Json →
         `(let $nameIdent := $valueStx
           $tailCode)
     | _, _ => throwError s!"Unsupported syntax category for Head_Assign node"
+
+@[pygen "Head_AnnAssign"]
+def annAssignHeadSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+    | `term, json => do
+        let .ok value? := json.getObjVal? "value" | throwError
+          s!"AnnAssign node does not have a 'value' field or it is not a JSON value: {json}"
+        match value? with
+        | .null =>
+            let .ok rest := json.getObjValAs? (List Json) "rest" | throwError
+              s!"AnnAssign node does not have a 'rest' field or it is not a JSON value: {json}"
+            let splitRest ← splitList rest
+            withoutCheck do
+              getCode splitRest `term
+        | _ =>
+            let targetJson := Json.mkObj [("node_type", Json.str "Head_Assign")]
+            let json := targetJson.mergeObj json
+            assignHeadSyntax `term json
+    | _, _ => throwError s!"Unsupported syntax category for Head_AnnAssign node"
 
 @[pygen "Head_Return"]
 def returnHeadSyntax : (kind : SyntaxNodeKind) → Json →

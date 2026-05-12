@@ -230,14 +230,26 @@ class ASTToJsonLeanVisitorBase:
         }
     
     def visit_AnnAssign(self, node):
-        """Translates ast.AnnAssign (e.g., x: int = 42) to a JSON IR node."""
+        """Translates ast.AnnAssign (e.g., x: int = 42) to a JSON IR node.
+
+        We normalize the common initialized form `x: T = v` to the same IR node as
+        `x = v`, because the current Lean backend does not yet use Python-side type
+        annotations during code generation. We keep declaration-only annotated
+        assignments (`x: T`) distinct so the backend can decide how to handle them.
+        """
         if node.simple != 1:
             raise NotImplementedError("Only simple annotated assignments are supported.")
+        if node.value is not None:
+            return {
+                "node_type": "Assign",
+                "target": self.visit(node.target),
+                "value": self.visit(node.value)
+            }
         return {
             "node_type": "AnnAssign",
             "target": self.visit(node.target),
             "annotation": self.visit(node.annotation),
-            "value": self.visit(node.value) if node.value is not None else None
+            "value": None
         }
 
     def visit_While(self, node):
