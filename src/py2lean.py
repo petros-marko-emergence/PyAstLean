@@ -8,7 +8,7 @@ import subprocess
 sys.path.append(os.path.dirname(__file__))
 from node_visitor import *
 
-HOMEDIR = Path.cwd().parent
+HOMEDIR = Path.absolute(Path(__name__).parent.parent)
 SRC_DIR = HOMEDIR / "src"
 PY_EXEC = HOMEDIR / ".venv" / "bin" / "python"
 

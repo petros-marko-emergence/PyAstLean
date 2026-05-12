@@ -228,6 +228,17 @@ class ASTToJsonLeanVisitorBase:
             "target": self.visit(node.targets[0]),
             "value": self.visit(node.value)
         }
+    
+    def visit_AnnAssign(self, node):
+        """Translates ast.AnnAssign (e.g., x: int = 42) to a JSON IR node."""
+        if node.simple != 1:
+            raise NotImplementedError("Only simple annotated assignments are supported.")
+        return {
+            "node_type": "AnnAssign",
+            "target": self.visit(node.target),
+            "annotation": self.visit(node.annotation),
+            "value": self.visit(node.value) if node.value is not None else None
+        }
 
     def visit_While(self, node):
         """Translates ast.While to a JSON IR node."""
