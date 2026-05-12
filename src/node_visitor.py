@@ -173,11 +173,51 @@ class ASTToJsonLeanVisitorBase:
             "slice": self.visit(node.slice)
         }
 
+    def visit_List(self, node):
+        """Translates ast.List to a JSON IR node."""
+        return {
+            "node_type": "List",
+            "elts": [self.visit(elt) for elt in node.elts]
+        }
+
+    def visit_Dict(self, node):
+        """Translates ast.Dict to a JSON IR node."""
+        entries = []
+        for key, value in zip(node.keys, node.values):
+            if key is None:
+                raise NotImplementedError("Dictionary unpacking is not supported.")
+            entries.append({
+                "key": self.visit(key),
+                "value": self.visit(value),
+            })
+        return {
+            "node_type": "Dict",
+            "entries": entries
+        }
+
     def visit_Tuple(self, node):
         """Translates ast.Tuple (e.g., tuple slices) to a JSON IR node."""
         return {
             "node_type": "Tuple",
             "elts": [self.visit(elt) for elt in node.elts]
+        }
+
+    def visit_JoinedStr(self, node):
+        """Translates f-strings to a JSON IR node."""
+        return {
+            "node_type": "JoinedStr",
+            "values": [self.visit(value) for value in node.values]
+        }
+
+    def visit_FormattedValue(self, node):
+        """Translates one interpolated f-string segment."""
+        if node.conversion != -1:
+            raise NotImplementedError("FormattedValue conversions are not supported.")
+        if node.format_spec is not None:
+            raise NotImplementedError("FormattedValue format specs are not supported.")
+        return {
+            "node_type": "FormattedValue",
+            "value": self.visit(node.value)
         }
 
     def visit_Module(self, node):
@@ -257,6 +297,42 @@ class ASTToJsonLeanVisitorBase:
             "target": self.visit(node.target),
             "annotation": self.visit(node.annotation),
             "value": None
+        }
+
+    def visit_AugAssign(self, node):
+        """Translates ast.AugAssign (e.g., x += y) to a JSON IR node."""
+        if isinstance(node.op, ast.Add):
+            op = "add"
+        elif isinstance(node.op, ast.Sub):
+            op = "sub"
+        elif isinstance(node.op, ast.Mult):
+            op = "mul"
+        else:
+            raise NotImplementedError(f"Augmented operator {type(node.op).__name__} not supported.")
+        return {
+            "node_type": "AugAssign",
+            "target": self.visit(node.target),
+            "op": op,
+            "value": self.visit(node.value)
+        }
+
+    def visit_For(self, node):
+        """Translates ast.For to a JSON IR node."""
+        return {
+            "node_type": "For",
+            "target": self.visit(node.target),
+            "iter": self.visit(node.iter),
+            "body": [self.visit(stmt) for stmt in node.body],
+            "orelse": [self.visit(stmt) for stmt in node.orelse]
+        }
+
+    def visit_If(self, node):
+        """Translates ast.If to a JSON IR node."""
+        return {
+            "node_type": "If",
+            "test": self.visit(node.test),
+            "body": [self.visit(stmt) for stmt in node.body],
+            "orelse": [self.visit(stmt) for stmt in node.orelse]
         }
 
     def visit_While(self, node):
