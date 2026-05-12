@@ -85,6 +85,9 @@ def translate_to_lean(source_code, target="term", filepath = None):
         if target == "command":
             code_parts = []
             for stmt in body:
+                # A top-level Python `pass` is a true no-op, so there is no Lean command to emit.
+                if stmt.get("node_type") == "Pass":
+                    continue
                 result = invoke_lean_backend(stmt, target, check=False)
                 if result.get("result") is False:
                     return result

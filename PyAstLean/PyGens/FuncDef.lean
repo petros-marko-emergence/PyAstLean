@@ -168,6 +168,17 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
         `(doElem| return $valueStx)
     | _, _ => throwError s!"Unsupported syntax category for Return node"
 
+/-- `Pass` is a statement-level no-op in Python, so we lower it to an empty command
+or a trivial `do` element. -/
+@[pygen "Pass"]
+def passSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+    | `command, _ => do
+        return ⟨mkNullNode #[]⟩
+    | `doElem, _ => do
+        `(doElem| let _ := ())
+    | _, _ => throwError s!"Unsupported syntax category for Pass node"
+
 @[pygen "While"]
 def whileSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)

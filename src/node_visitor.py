@@ -146,6 +146,12 @@ class ASTToJsonLeanVisitorBase:
     def visit_Expr(self, node):
         """Translates ast.Expr (e.g., a standalone expression) to a JSON IR node."""
         return self.visit(node.value)
+
+    def visit_Pass(self, node):
+        """Translates ast.Pass to a JSON IR no-op node."""
+        return {
+            "node_type": "Pass"
+        }
     
     def visit_Name(self, node):
         """Translates ast.Name (e.g., variable names) to a JSON IR node."""
