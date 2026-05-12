@@ -3,7 +3,7 @@
 # CHECK: def check_nesting := fun n m ↦
 # CHECK: Id.run
 # CHECK: if n > (0 : Int) then
-# CHECK: if m > (0 : Int) then
+# CHECK: if m >= (0 : Int) then
 # CHECK: return "Both positive"
 # CHECK: else
 # CHECK: return "n positive, m non-positive"
@@ -42,7 +42,7 @@
 
 def check_nesting(n, m):
     if n > 0:
-        if m > 0:
+        if m >= 0:
             return "Both positive"
         else:
             return "n positive, m non-positive"
