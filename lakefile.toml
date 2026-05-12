@@ -1,7 +1,7 @@
 name = "PyAstLean"
 version = "0.1.0"
 keywords = ["math"]
-defaultTargets = ["PyAstLean"]
+defaultTargets = ["PyAstLean", "py2lean"]
 testDriver = "PyAstLeanTest"
 
 [leanOptions]
@@ -10,7 +10,13 @@ pp.unicode.fun = true # pretty-prints `fun a ↦ b`
 [[require]]
 name = "mathlib"
 scope = "leanprover-community"
-rev = "v4.30.0-rc2"
+rev = "v4.29.0"
+
+[[require]]
+name = "Regex"
+git = "https://github.com/pandaman64/lean-regex"
+rev = "v4.29.0"
+subDir = "regex"
 
 [[lean_lib]]
 name = "PyAstLean"

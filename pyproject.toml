@@ -1,0 +1,22 @@
+[project]
+name = "pyastlean"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "libcst>=1.8.6",
+    "pyrefly>=0.64.1",
+]
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+    "pyrefly>=0.64.1",
+]
