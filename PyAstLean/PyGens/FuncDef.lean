@@ -36,6 +36,48 @@ def withFreshVariables {α : Type} (x : PygenM α) : PygenM α :=
     (HashSet.emptyWithCapacity 100)
     x
 
+def isMainGuardTest (json : Json) : Bool :=
+  match json.getObjValAs? String "node_type" with
+  | .ok "Compare" =>
+      match json.getObjValAs? String "op", json.getObjValAs? Json "left", json.getObjValAs? Json "right" with
+      | .ok "eq", .ok leftJson, .ok rightJson =>
+          match leftJson.getObjValAs? String "node_type", leftJson.getObjValAs? String "id",
+              rightJson.getObjValAs? String "node_type", rightJson.getObjValAs? Json "value" with
+          | .ok "Name", .ok "__name__", .ok "Constant", .ok (.str "__main__") => true
+          | _, _, _, _ => false
+      | _, _, _ => false
+  | _ => false
+
+def rangeIterSyntax (iterJson : Json) : PygenM (TSyntax `term) := do
+  let .ok iterNodeType := iterJson.getObjValAs? String "node_type" | throwError
+    s!"For iterator is missing a node_type field: {iterJson}"
+  if iterNodeType == "Call" then
+    let .ok funcJson := iterJson.getObjValAs? Json "func" | throwError
+      s!"Call iterator is missing a func field: {iterJson}"
+    let .ok funcNodeType := funcJson.getObjValAs? String "node_type" | throwError
+      s!"Call iterator function is missing a node_type field: {funcJson}"
+    if funcNodeType == "Name" then
+      let .ok funcName := funcJson.getObjValAs? String "id" | throwError
+        s!"Call iterator function is missing an id field: {funcJson}"
+      if funcName == "range" then
+        let .ok argsJson := iterJson.getObjValAs? Json "args" | throwError
+          s!"Call iterator is missing an args field: {iterJson}"
+        match argsJson with
+        | .arr arr =>
+            match arr.size with
+            | 1 =>
+                let stopCode ← getCode arr[0]! `term
+                let pyRangeIdent := mkIdent ``pyRange
+                `($pyRangeIdent $stopCode)
+            | _ => throwError "Only range(stop) is supported for for-loops right now."
+        | _ => throwError s!"Call iterator args field is not an array: {argsJson}"
+      else
+        getCode iterJson `term
+    else
+      getCode iterJson `term
+  else
+    getCode iterJson `term
+
 @[pygen "Module"]
 def moduleSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -109,7 +151,7 @@ def annAssignSyntax : (kind : SyntaxNodeKind) → Json →
           s!"AnnAssign node does not have a 'value' field or it is not a JSON value: {json}"
         match value? with
         | .null =>
-            `(doElem| pure ())
+            `(doElem| let _ := ())
         | _ =>
             let targetJson := Json.mkObj [("node_type", Json.str "Assign")]
             let json := targetJson.mergeObj json
@@ -146,6 +188,96 @@ def whileSyntax : (kind : SyntaxNodeKind) → Json →
         `(doElem| while $testStx do
             $[$bodyStxArray:doElem]*)
     | _, _ => throwError s!"Unsupported syntax category for While node"
+
+@[pygen "AugAssign"]
+def augAssignSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+    | `doElem, json => do
+        let .ok targetJson := json.getObjValAs? Json "target" | throwError
+          s!"AugAssign node does not have a 'target' field or it is not a JSON value: {json}"
+        let .ok op := json.getObjValAs? String "op" | throwError
+          s!"AugAssign node does not have an 'op' field or it is not a string: {json}"
+        let .ok valueJson := json.getObjValAs? Json "value" | throwError
+          s!"AugAssign node does not have a 'value' field or it is not a JSON value: {json}"
+        let targetIdent ← getCode targetJson `ident
+        let valueCode ← getCode valueJson `term
+        let updated ← match op with
+          | "add" => `($targetIdent +ₚ $valueCode)
+          | "sub" => `($targetIdent -ₚ $valueCode)
+          | "mul" => `($targetIdent *ₚ $valueCode)
+          | _ => throwError s!"Unsupported augmented assignment operator: {op}"
+        `(doElem| $targetIdent:ident := $updated)
+    | _, _ => throwError s!"Unsupported syntax category for AugAssign node"
+
+@[pygen "For"]
+def forSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+    | `doElem, json => do
+        let .ok targetJson := json.getObjValAs? Json "target" | throwError
+          s!"For node does not have a 'target' field or it is not a JSON value: {json}"
+        let .ok iterJson := json.getObjValAs? Json "iter" | throwError
+          s!"For node does not have an 'iter' field or it is not a JSON value: {json}"
+        let .ok bodyElems := json.getObjValAs? (Array Json) "body" | throwError
+          s!"For node does not have a 'body' field or it is not a JSON array: {json}"
+        let .ok orelseElems := json.getObjValAs? (Array Json) "orelse" | throwError
+          s!"For node does not have an 'orelse' field or it is not a JSON array: {json}"
+        unless orelseElems.isEmpty do
+          throwError "Python for-else blocks are not supported."
+        let targetIdent ← getCode targetJson `ident
+        let iterCode ← rangeIterSyntax iterJson
+        let mut bodyStxArray := #[]
+        for elem in bodyElems do
+          let elemStx ← getCode elem `doElem
+          bodyStxArray := bodyStxArray.push elemStx
+        `(doElem| for $targetIdent:ident in $iterCode do
+            $[$bodyStxArray:doElem]*)
+    | _, _ => throwError s!"Unsupported syntax category for For node"
+
+@[pygen "If"]
+def ifSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+    | `doElem, json => do
+        let .ok testJson := json.getObjValAs? Json "test" | throwError
+          s!"If node does not have a 'test' field or it is not a JSON value: {json}"
+        let .ok bodyElems := json.getObjValAs? (Array Json) "body" | throwError
+          s!"If node does not have a 'body' field or it is not a JSON array: {json}"
+        let .ok orelseElems := json.getObjValAs? (Array Json) "orelse" | throwError
+          s!"If node does not have an 'orelse' field or it is not a JSON array: {json}"
+        let testStx ← getCode testJson `term
+        let mut bodyStxArray := #[]
+        for elem in bodyElems do
+          let elemStx ← getCode elem `doElem
+          bodyStxArray := bodyStxArray.push elemStx
+        let mut orelseStxArray := #[]
+        for elem in orelseElems do
+          let elemStx ← getCode elem `doElem
+          orelseStxArray := orelseStxArray.push elemStx
+        if orelseStxArray.isEmpty then
+          `(doElem| if $testStx then
+              $[$bodyStxArray:doElem]*
+            else
+              pure ())
+        else
+          `(doElem| if $testStx then
+              $[$bodyStxArray:doElem]*
+            else
+              $[$orelseStxArray:doElem]*)
+    | `command, json => do
+        let .ok testJson := json.getObjValAs? Json "test" | throwError
+          s!"If node does not have a 'test' field or it is not a JSON value: {json}"
+        unless isMainGuardTest testJson do
+          throwError "Only top-level `if __name__ == \"__main__\":` blocks are supported."
+        let .ok bodyElems := json.getObjValAs? (Array Json) "body" | throwError
+          s!"If node does not have a 'body' field or it is not a JSON array: {json}"
+        let mut bodyStxArray := #[]
+        for elem in bodyElems do
+          let elemStx ← getCode elem `doElem
+          bodyStxArray := bodyStxArray.push elemStx
+        let mainIdent := mkIdent `main
+        let idRunIdent := mkIdent ``Id.run
+        `(command| def $mainIdent := $idRunIdent do
+            $[$bodyStxArray:doElem]*)
+    | _, _ => throwError s!"Unsupported syntax category for If node"
 
 /--
 Reformat a list of Json to an object with `node_type` the `node_type` of the original list's first element with "Head_" prefixed, and `args` the original list. This is needed to handle the case where the body of a function definition is a list of statements, which is represented as a JSON array in the input, but we want to treat it as a single JSON object with a specific `node_type` in our code generation. We use this to try to generate *pure* code, i.e., not Monadic code.
