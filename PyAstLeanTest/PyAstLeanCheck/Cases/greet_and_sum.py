@@ -1,17 +1,24 @@
-# PYASTLEANCHECK : START
-# CHECK : def answer := . 42 : Int .
-# CHECK : def fruits := . ["apple", "banana", "cherry"] : List String .
-# CHECK : def scores := . { math := 95, science := 90 } .
-# CHECK : 
-# CHECK :
-# CHECK :
-# CHECK :
-# CHECK :
-# CHECK :
-# CHECK :
-# CHECK :
-# CHECK :
-# PYASTLEANCHECK : END
+# PYASTLEANCHECK START
+# TARGET: command
+# CHECK: def answer :=
+# CHECK: (42 : Int)
+# CHECK: def fruits :=
+# CHECK: ["apple", "banana", "cherry"]
+# CHECK: def scores :=
+# CHECK: Std.HashMap.ofList
+# CHECK: def greet := fun name ↦
+# CHECK: ToString.toString name
+# CHECK: def calculate_sum :=
+# CHECK: for i in PyAstLean.pyRange
+# CHECK: total := total +ₚ i
+# CHECK: def not_sure :=
+# CHECK: if answer == (42 : Int) then
+# CHECK: else
+# CHECK: if answer < (42 : Int) then
+# CHECK: def main :=
+# CHECK: print (greet (1 : Int))
+# CHECK: let _ := calculate_sum
+# PYASTLEANCHECK END
 
 
 answer = 42
