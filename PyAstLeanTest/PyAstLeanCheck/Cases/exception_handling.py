@@ -1,3 +1,7 @@
+# PYASTLEANCHECK START
+# CHECK: 
+# PYASTLEANCHECK END
+
 def simple_catch():
     try:
         _ = 1 / 0

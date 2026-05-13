@@ -1,3 +1,5 @@
+import json
+import sys
 import ast
 
 FUNCTION_DEF_SCHEMA = {
@@ -377,3 +379,21 @@ class ASTToJsonLeanVisitorBase:
             "node_type": "Return",
             "value": None if node.value is None else self.visit(node.value)
         }
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python node_visitor.py <python_file.py>")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+    with open(input_file, "r") as f:
+        source_code = f.read()
+
+    # Parse the source code into an AST
+    tree = ast.parse(source_code)
+    print(ast.dump(tree, indent = 4))  # Debugging output to verify AST structure
+    visitor = ASTToJsonLeanVisitorBase()
+    json_ir = visitor.visit(tree)
+
+    print(json.dumps(json_ir, indent=2))
