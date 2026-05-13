@@ -2,6 +2,61 @@ import json
 import sys
 import ast
 
+BINOP_MAP = {
+    ast.Add: "add",
+    ast.Sub: "sub",
+    ast.Mult: "mul",
+    ast.Pow: "pow",
+}
+
+BOOLOP_MAP = {
+    ast.And: "and",
+    ast.Or: "or",
+}
+
+UNARYOP_MAP = {
+    ast.USub: "neg",
+    ast.UAdd: "pos",
+    ast.Not: "not",
+}
+
+COMPAREOP_MAP = {
+    ast.Eq: "eq",
+    ast.NotEq: "ne",
+    ast.Lt: "lt",
+    ast.LtE: "le",
+    ast.Gt: "gt",
+    ast.GtE: "ge",
+}
+
+AUGASSIGN_MAP = {
+    ast.Add: "add",
+    ast.Sub: "sub",
+    ast.Mult: "mul",
+    ast.MatMult: "matmul",
+    ast.Pow: "pow",
+    ast.Mod: "mod",
+    ast.LShift: "lshift",
+    ast.RShift: "rshift",
+    ast.BitAnd: "and",
+    ast.BitOr: "or",
+    ast.BitXor: "xor",
+    ast.Div: "div",
+    ast.FloorDiv: "floordiv",
+}
+
+
+"""
+Use auto-serialize for nodes whose JSON form is basically:
+- node_type = AST class name
+- every field can just be recursively visited
+- no normalization, remapping, filtering, or validation is needed
+"""
+AUTO_SERIALIZED_NODE_NAMES = {
+    "ExceptHandler",
+    "match_case",
+}
+
 FUNCTION_DEF_SCHEMA = {
     "node_type": "FunctionDef",
     "name": "str",
@@ -23,6 +78,37 @@ FUNCTION_DEF_SCHEMA = {
 }
 
 class ASTToJsonLeanVisitorBase:
+    def _map_ast_type(self, node_or_type, mapping, label):
+        """Map an AST node type through a shared lookup table."""
+        node_type = type(node_or_type) if isinstance(node_or_type, ast.AST) else node_or_type
+        mapped = mapping.get(node_type)
+        if mapped is None:
+            raise NotImplementedError(f"{label} {node_type.__name__} not supported.")
+        return mapped
+
+    def _serialize_node_fields(self, node):
+        """Serialize an AST node by visiting all of its fields recursively."""
+        result: dict[str, object] = {"node_type": type(node).__name__}
+        for field_name, value in ast.iter_fields(node):
+            result[field_name] = self._serialize_field_value(value)
+        return result
+
+    def _serialize_field_value(self, value):
+        """Recursively serialize one AST field value."""
+        if isinstance(value, ast.AST):
+            return self.visit(value)
+        if isinstance(value, list):
+            return [self._serialize_field_value(item) for item in value]
+        return value
+
+    def _visit_match_node(self, node):
+        """Generic serializer for Python structural pattern-matching AST nodes."""
+        return self._serialize_node_fields(node)
+
+    def _visit_auto_serialized_node(self, node):
+        """Generic serializer for explicitly whitelisted AST nodes."""
+        return self._serialize_node_fields(node)
+
     def visit_statements(self, statements):
         """Translate a statement list, skipping declaration-only annotations."""
         result = []
@@ -44,7 +130,15 @@ class ASTToJsonLeanVisitorBase:
         method_name = f"visit_{type(node).__name__}"
         
         # Fetch the specific method, falling back to generic_visit if it doesn't exist
-        visitor = getattr(self, method_name, self.generic_visit)
+        visitor = getattr(self, method_name, None)
+        if visitor is None and (
+            type(node).__name__.startswith("Match") or type(node).__name__ == "match_case"
+        ):
+            visitor = self._visit_match_node
+        if visitor is None and type(node).__name__ in AUTO_SERIALIZED_NODE_NAMES:
+            visitor = self._visit_auto_serialized_node
+        if visitor is None:
+            visitor = self.generic_visit
         # print(f"Visiting node type: {type(node).__name__} with visitor method: {visitor.__name__}", file=sys.stderr)  # Debugging output
         
         return visitor(node)
@@ -58,18 +152,7 @@ class ASTToJsonLeanVisitorBase:
         """Translates ast.BinOp (e.g., a + b) to a JSON IR node."""
         left_json = self.visit(node.left)
         right_json = self.visit(node.right)
-        
-        # Map Python operators to Lean-compatible strings
-        if isinstance(node.op, ast.Add):
-            op = "add"
-        elif isinstance(node.op, ast.Sub):
-            op = "sub"
-        elif isinstance(node.op, ast.Mult):
-            op = "mul"
-        elif isinstance(node.op, ast.Pow):
-            op = "pow"
-        else:
-            raise NotImplementedError(f"Operator {type(node.op).__name__} not supported.")
+        op = self._map_ast_type(node.op, BINOP_MAP, "Operator")
             
         return {
             "node_type": "BinOp",
@@ -80,13 +163,7 @@ class ASTToJsonLeanVisitorBase:
     
     def visit_BoolOp(self, node):
         """Translates ast.BoolOp (e.g., a and b) to a JSON IR node."""
-        op_type = type(node.op)
-        if op_type == ast.And:
-            op = "and"
-        elif op_type == ast.Or:
-            op = "or"
-        else:
-            raise NotImplementedError(f"Boolean operator {op_type.__name__} not supported.")
+        op = self._map_ast_type(node.op, BOOLOP_MAP, "Boolean operator")
         
         return {
             "node_type": "BoolOp",
@@ -96,14 +173,7 @@ class ASTToJsonLeanVisitorBase:
 
     def visit_UnaryOp(self, node):
         """Translates ast.UnaryOp (e.g., -a) to a JSON IR node."""
-        if isinstance(node.op, ast.USub):
-            op = "neg"
-        elif isinstance(node.op, ast.UAdd):
-            op = "pos"
-        elif isinstance(node.op, ast.Not):
-            op = "not"
-        else:
-            raise NotImplementedError(f"Unary operator {type(node.op).__name__} not supported.")
+        op = self._map_ast_type(node.op, UNARYOP_MAP, "Unary operator")
         
         return {
             "node_type": "UnaryOp",
@@ -115,21 +185,7 @@ class ASTToJsonLeanVisitorBase:
         """Translates ast.Compare (e.g., a <= b) to a JSON IR node."""
         if len(node.ops) != 1 or len(node.comparators) != 1:
             raise NotImplementedError("Chained comparisons are not supported.")
-
-        if isinstance(node.ops[0], ast.Eq):
-            op = "eq"
-        elif isinstance(node.ops[0], ast.NotEq):
-            op = "ne"
-        elif isinstance(node.ops[0], ast.Lt):
-            op = "lt"
-        elif isinstance(node.ops[0], ast.LtE):
-            op = "le"
-        elif isinstance(node.ops[0], ast.Gt):
-            op = "gt"
-        elif isinstance(node.ops[0], ast.GtE):
-            op = "ge"
-        else:
-            raise NotImplementedError(f"Comparison operator {type(node.ops[0]).__name__} not supported.")
+        op = self._map_ast_type(node.ops[0], COMPAREOP_MAP, "Comparison operator")
 
         return {
             "node_type": "Compare",
@@ -330,14 +386,7 @@ class ASTToJsonLeanVisitorBase:
 
     def visit_AugAssign(self, node):
         """Translates ast.AugAssign (e.g., x += y) to a JSON IR node."""
-        if isinstance(node.op, ast.Add):
-            op = "add"
-        elif isinstance(node.op, ast.Sub):
-            op = "sub"
-        elif isinstance(node.op, ast.Mult):
-            op = "mul"
-        else:
-            raise NotImplementedError(f"Augmented operator {type(node.op).__name__} not supported.")
+        op = self._map_ast_type(node.op, AUGASSIGN_MAP, "Augmented operator")
         return {
             "node_type": "AugAssign",
             "target": self.visit(node.target),
@@ -380,6 +429,15 @@ class ASTToJsonLeanVisitorBase:
             "value": None if node.value is None else self.visit(node.value)
         }
 
+    def visit_Try(self, node):
+        """Translates ast.Try (Exception handling) to a JSON IR node."""
+        return {
+            "node_type": "Try",
+            "body": self.visit_statements(node.body),
+            "handlers": [self.visit(handler) for handler in node.handlers],
+            "orelse": self.visit_statements(node.orelse),
+            "finalbody": self.visit_statements(node.finalbody)
+        }
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
