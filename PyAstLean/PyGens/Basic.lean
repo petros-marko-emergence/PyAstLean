@@ -4,6 +4,8 @@ open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
+#map_names [print → pyPrint]
+
 def intToStx (n : Int) : MetaM <| TSyntax `term := do
   if n < 0 then
     let nStx := Syntax.mkNumLit (toString (-n))
@@ -53,6 +55,81 @@ def nameSyntax : (kind : SyntaxNodeKind) → Json →
       s!"Name node does not have an 'id' field or it is not a string: {json}"
     return mkIdent id.toName
   | _, _ => throwError s!"Unsupported syntax category for Name node"
+
+@[pygen "List"]
+def listSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
+      s!"List node does not have an 'elts' field or it is not a JSON value: {json}"
+    let eltCodes ← match eltsJson with
+      | .arr arr => arr.mapM (fun eltJson => getCode eltJson `term)
+      | _ => throwError s!"List node 'elts' field is not an array: {eltsJson}"
+    `([$eltCodes,*])
+  | _, _ => throwError s!"Unsupported syntax category for List node"
+
+@[pygen "Tuple"]
+def tupleSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
+      s!"Tuple node does not have an 'elts' field or it is not a JSON value: {json}"
+    let eltCodes ← match eltsJson with
+      | .arr arr => arr.mapM (fun eltJson => getCode eltJson `term)
+      | _ => throwError s!"Tuple node 'elts' field is not an array: {eltsJson}"
+    match eltCodes.size with
+    | 0 => `(())
+    | 1 => return eltCodes[0]!
+    | 2 => `(($(eltCodes[0]!), $(eltCodes[1]!)))
+    | _ => throwError "Tuple literals with more than two elements are not yet supported."
+  | _, _ => throwError s!"Unsupported syntax category for Tuple node"
+
+@[pygen "Dict"]
+def dictSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok entriesJson := json.getObjValAs? Json "entries" | throwError
+      s!"Dict node does not have an 'entries' field or it is not a JSON value: {json}"
+    let entryCodes ← match entriesJson with
+      | .arr arr => arr.mapM fun entryJson => do
+          let .ok keyJson := entryJson.getObjValAs? Json "key" | throwError
+            s!"Dict entry is missing a 'key' field: {entryJson}"
+          let .ok valueJson := entryJson.getObjValAs? Json "value" | throwError
+            s!"Dict entry is missing a 'value' field: {entryJson}"
+          let keyCode ← getCode keyJson `term
+          let valueCode ← getCode valueJson `term
+          `(($keyCode, $valueCode))
+      | _ => throwError s!"Dict node 'entries' field is not an array: {entriesJson}"
+    let ofListIdent := mkIdent ``Std.HashMap.ofList
+    `($ofListIdent [$entryCodes,*])
+  | _, _ => throwError s!"Unsupported syntax category for Dict node"
+
+@[pygen "FormattedValue"]
+def formattedValueSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok valueJson := json.getObjValAs? Json "value" | throwError
+      s!"FormattedValue node does not have a 'value' field or it is not a JSON value: {json}"
+    let valueCode ← getCode valueJson `term
+    let toStringIdent := mkIdent ``toString
+    `($toStringIdent $valueCode)
+  | _, _ => throwError s!"Unsupported syntax category for FormattedValue node"
+
+@[pygen "JoinedStr"]
+def joinedStrSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok valuesJson := json.getObjValAs? Json "values" | throwError
+      s!"JoinedStr node does not have a 'values' field or it is not a JSON value: {json}"
+    let valuesCodes ← match valuesJson with
+      | .arr arr => arr.mapM (fun valueJson => getCode valueJson `term)
+      | _ => throwError s!"JoinedStr node 'values' field is not an array: {valuesJson}"
+    let mut res : TSyntax `term ← `("")
+    let appendIdent := mkIdent ``String.append
+    for valueCode in valuesCodes do
+      res ← `($appendIdent $res $valueCode)
+    return res
+  | _, _ => throwError s!"Unsupported syntax category for JoinedStr node"
 
 def js₀ := json% {
   "node_type": "Constant",
@@ -139,6 +216,30 @@ instance(priority := high) : PyHPow Rat Int Rat where
 instance(priority := high) : Neg Rat where
   neg := fun a => - (a : Rat)
 
+class PyHDiv (α β : Type) (γ : outParam Type) where
+  hDiv : α → β → γ
+
+infix:70 " /ₚ " => PyHDiv.hDiv
+
+@[default_instance]
+instance {α β γ} [HDiv α β γ] : PyHDiv α β γ where
+  hDiv := HDiv.hDiv
+
+@[default_instance]
+instance (priority := high) : PyHDiv Int Int Rat where
+  hDiv := fun a b => (a : Rat) / (b : Rat)
+
+@[default_instance]
+instance (priority := high) : PyHDiv Nat Nat Rat where
+  hDiv := fun a b => (a : Rat) / (b : Rat)
+
+@[default_instance]
+instance (priority := high) : PyHDiv Rat Rat Rat where
+  hDiv := fun a b => (a : Rat) / (b : Rat)
+
+def pyRange (stop : Int) : List Int :=
+  (List.range stop.toNat).map Int.ofNat
+
 @[pygen "BinOp"]
 def binOpSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -156,6 +257,7 @@ def binOpSyntax : (kind : SyntaxNodeKind) → Json →
     | "add" => `($leftCode +ₚ $rightCode)
     | "sub" => `($leftCode -ₚ $rightCode)
     | "mul" => `($leftCode *ₚ $rightCode)
+    | "div" => `($leftCode /ₚ $rightCode)
     | "pow" => `($leftCode ^ₚ $rightCode)
     | _ => throwError s!"Unsupported binary operator: {op}"
   | _, _ => throwError s!"Unsupported syntax category for BinOp node"
@@ -241,7 +343,12 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
       s!"Call node does not have a 'func' field or it is not a JSON value: {json}"
     let .ok argsJson := json.getObjValAs? Json "args" | throwError
       s!"Call node does not have an 'args' field or it is not a JSON value: {json}"
-    let funcCode ← getCode funcJson `term
+    let funcCode : TSyntax `term ← match funcJson.getObjValAs? String "node_type", funcJson.getObjValAs? String "id" with
+      | .ok "Name", .ok funcName =>
+          let mappedName ← leanName funcName.toName
+          pure <| (mkIdent mappedName : TSyntax `term)
+      | _, _ =>
+          getCode funcJson `term
     let mut t ← `($funcCode)
     let argsCodes ← match argsJson with
       | .arr arr => arr.mapM (fun argJson => getCode argJson `term)
@@ -257,6 +364,33 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
       let kwId := mkIdent kwName.toName
       t ← `($t ($kwId:ident := $kwValueCode))
     return t
+  | `doElem, json => do
+    let .ok funcJson := json.getObjValAs? Json "func" | throwError
+      s!"Call node does not have a 'func' field or it is not a JSON value: {json}"
+    let .ok argsJson := json.getObjValAs? Json "args" | throwError
+      s!"Call node does not have an 'args' field or it is not a JSON value: {json}"
+    let funcCode : TSyntax `term ← match funcJson.getObjValAs? String "node_type", funcJson.getObjValAs? String "id" with
+      | .ok "Name", .ok funcName =>
+          let mappedName ← leanName funcName.toName
+          pure <| (mkIdent mappedName : TSyntax `term)
+      | _, _ =>
+          getCode funcJson `term
+    let mut t ← `($funcCode)
+    let argsCodes ← match argsJson with
+      | .arr arr => arr.mapM (fun argJson => getCode argJson `term)
+      | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
+    for argCode in argsCodes do
+      t ← `($t $argCode)
+    let .ok keyWordsJson := json.getObjVal? "keywords" | throwError
+      s!"Call node does not have a 'keywords' field or it is not json pairs: {json}"
+    let .ok keyWordsMap := keyWordsJson.getObj? | throwError
+      s!"Call node 'keywords' field is not a JSON object: {keyWordsJson}"
+    for (kwName, kwValueJson) in keyWordsMap.toList do
+      let kwValueCode ← getCode kwValueJson `term
+      let kwId := mkIdent kwName.toName
+      t ← `($t ($kwId:ident := $kwValueCode))
+    let callCode := t
+    `(doElem| let _ := $callCode)
   | _, _ => throwError s!"Unsupported syntax category for Call node"
 
 
@@ -336,7 +470,10 @@ def elabCheckCmd : (stx : TSyntax `command) → PygenM (TSyntax `command)
     unless ← isCheckEnabled do
       return cmd
     try
-      liftCommandElabM <| Command.elabCommand cmd
+      if cmd.raw.isOfKind nullKind then
+        return cmd
+      else
+        liftCommandElabM <| Command.elabCommand cmd
       -- IO.eprintln s!"Successfully elaborated command: {← PrettyPrinter.ppCommand cmd}"  -- Debugging output
       return cmd
     catch e =>
