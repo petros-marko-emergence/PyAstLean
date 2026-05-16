@@ -136,6 +136,23 @@ def js₀ := json% {
   "value": 1
 }
 
+/-- Local copy of the exception-effect probe so `Call.doElem` can avoid a cyclic import on `Utils`. -/
+partial def basicJsonUsesExceptionEffect (json : Json) : Bool :=
+  let directMatches :=
+    match json.getObjValAs? String "effect_mode" with
+    | .ok "except" => true
+    | _ =>
+        match json.getObjValAs? String "node_type" with
+        | .ok nodeType => nodeType == "Try" || nodeType == "Raise"
+        | .error _ => false
+  if directMatches then
+    true
+  else
+    match json with
+    | .arr elems => elems.toList.any basicJsonUsesExceptionEffect
+    | .obj fields => fields.toList.any (fun (_, value) => basicJsonUsesExceptionEffect value)
+    | _ => false
+
 
 class PyHAdd (α β : Type) (γ : outParam Type) where
   hAdd : α → β → γ
@@ -418,7 +435,10 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
       let kwId := mkIdent kwName.toName
       t ← `($t ($kwId:ident := $kwValueCode))
     let callCode := t
-    `(doElem| let _ := $callCode)
+    if basicJsonUsesExceptionEffect json then
+      `(doElem| let _ ← $callCode:term)
+    else
+      `(doElem| let _ := $callCode)
   | _, _ => throwError s!"Unsupported syntax category for Call node"
 
 

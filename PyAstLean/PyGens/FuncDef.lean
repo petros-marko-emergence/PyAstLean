@@ -115,23 +115,25 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
         | some ty => `(fun ($argIdent : $ty) ↦ $result)
         | none => `(fun $argIdent ↦ $result)
     pure result
-  try
-    let bodyStx ← pureFunctionBodySyntax bodyElems
-    if argInfos.isEmpty then
-      pure bodyStx
-    else
-      mkLambda bodyStx
-  catch e =>
-    IO.eprintln s!"Could not generate pure function term: {← e.toMessageData.toString}"
+  if usesExceptions then
     let bodyStxArray ← monadicFunctionBodySyntax bodyElems
-    if usesExceptions then
-      if argInfos.isEmpty then
-        `(do
-            $[$bodyStxArray:doElem]*)
-      else
-        mkLambda (← `(do
-            $[$bodyStxArray:doElem]*))
+    let exceptIdent := mkIdent ``PyAstLean.PyExcept
+    let exceptBody ← `(((do
+          $[$bodyStxArray:doElem]*) : $exceptIdent _))
+    if argInfos.isEmpty then
+      pure exceptBody
     else
+      mkLambda exceptBody
+  else
+    try
+      let bodyStx ← pureFunctionBodySyntax bodyElems
+      if argInfos.isEmpty then
+        pure bodyStx
+      else
+        mkLambda bodyStx
+    catch e =>
+      IO.eprintln s!"Could not generate pure function term: {← e.toMessageData.toString}"
+      let bodyStxArray ← monadicFunctionBodySyntax bodyElems
       let idRunIdent := mkIdent ``Id.run
       if argInfos.isEmpty then
         `($idRunIdent do

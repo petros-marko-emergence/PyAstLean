@@ -1,4 +1,10 @@
 
+# PYASTLEANCHECK START
+# TARGET: command
+# EXIT: 1
+# CHECK-ERR: Translation for ListComp is not supported in the current subset.
+# PYASTLEANCHECK END
+
 def simple_lc():
     return [x for x in range(10)]
 
@@ -49,4 +55,10 @@ def lc_with_generator_expression():
 def lc_with_if_else():
     a = [x for x in range(10)]
     return [x if x % 2 == 0 else -x for x in range(10)]
+
+def lc_with_string_literal_list():
+    return [x for x in ["me", "you"]]
+
+def nested_lc_return_only():
+    return [[x for x in range(2)] for _ in range(3)]
  

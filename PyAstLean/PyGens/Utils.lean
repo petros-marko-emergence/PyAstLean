@@ -142,9 +142,26 @@ partial def jsonContainsNodeType (json : Json) (targets : List String) : Bool :=
     | .obj fields => fields.toList.any (fun (_, value) => jsonContainsNodeType value targets)
     | _ => false
 
-/-- Detect whether a statement list uses Python exceptions and therefore should not run under `Id`. -/
+/-- Recursively check whether a JSON subtree is marked as using translated exceptions. -/
+partial def jsonUsesExceptionEffect (json : Json) : Bool :=
+  let directMatches :=
+    match json.getObjValAs? String "effect_mode" with
+    | .ok "except" => true
+    | _ =>
+        match json.getObjValAs? String "node_type" with
+        | .ok nodeType => nodeType == "Try" || nodeType == "Raise"
+        | .error _ => false
+  if directMatches then
+    true
+  else
+    match json with
+    | .arr elems => elems.toList.any jsonUsesExceptionEffect
+    | .obj fields => fields.toList.any (fun (_, value) => jsonUsesExceptionEffect value)
+    | _ => false
+
+/-- Detect whether a statement list uses translated exceptions and therefore should not run under `Id`. -/
 def bodyNeedsExceptionMonad (bodyElems : Array Json) : Bool :=
-  bodyElems.toList.any (fun elem => jsonContainsNodeType elem ["Try", "Raise"])
+  bodyElems.toList.any jsonUsesExceptionEffect
 
 /-- Sequence a list of `doElem`s into one `doElem`, using `fallback` for the empty case. -/
 def sequenceDoElems (elems : Array (TSyntax `doElem)) (fallback : TSyntax `doElem) :
