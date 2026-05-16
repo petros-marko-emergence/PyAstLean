@@ -19,7 +19,7 @@
 # CHECK: Id.run
 # CHECK: let mut res := x *ₚ y
 # CHECK: res := res +ₚ z
-# CHECK: return res
+# CHECK: return (res))
 # PYASTLEANCHECK END
 
 def add(a: Any, b: Any) -> Any:

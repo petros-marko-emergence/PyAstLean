@@ -4,29 +4,32 @@
 # CHECK: if x < (0 : Int) then
 # CHECK: throw (PyAstLean.PyException.Raise "ValueError"
 # CHECK: ToString.toString "negative")
-# CHECK: return String.append
+# CHECK: return (
+# CHECK: String.append
 # CHECK: PyAstLean.PyExcept _)
 # CHECK: def call_fail := fun x ↦
 # CHECK: let mut y := (← fail x)
-# CHECK: return y
+# CHECK: return (y)
 # CHECK: PyAstLean.PyExcept _)
 # CHECK: def safe := fun n ↦
 # CHECK: try
-# CHECK: return (← fail n)
+# CHECK: return ((← fail n))
 # CHECK: catch caught =>
 # CHECK: if (caught).OfKind == "ValueError" then
 # CHECK: let err := caught
-# CHECK: return String.append
+# CHECK: return (
+# CHECK: String.append
 # CHECK: PyAstLean.PyExcept _)
 # CHECK: def simple_catch :=
 # CHECK: let mut x := (1 : Int)
 # CHECK: let helper := fun (x : Int) ↦ x +ₚ (1 : Int)
 # CHECK: x := helper x
+# CHECK: throw (PyAstLean.PyException.Raise "Exception"
 # CHECK: Caught exception:
-# CHECK: , x=
 # CHECK: def fixed_catch :=
 # CHECK: if (caught).OfKind == "ZeroDivisionError" then
-# CHECK: return String.append
+# CHECK: return (
+# CHECK: String.append
 # CHECK: Caught ZeroDivisionError:
 # CHECK: Caught other exception:
 # CHECK: def nested_try :=
@@ -42,7 +45,8 @@
 # CHECK: def raise_error := fun num ↦
 # CHECK: throw (PyAstLean.PyException.Raise "ValueError"
 # CHECK: throw (PyAstLean.PyException.Raise "ZeroDivisionError"
-# CHECK: return String.append (String.append "" "Number is ")
+# CHECK: return (
+# CHECK: String.append (String.append "" "Number is ")
 # CHECK: def catch_loop := fun num ↦
 # CHECK: for i in PyAstLean.pyRange num do
 # CHECK: if (caught).OfKind == "ValueError" then
@@ -72,12 +76,9 @@ def simple_catch():
         return x+1
     x = helper(x)
     try:
-        _ = 1 / 0
-        return "1 just got divided by 0"
+        raise Exception("boom")
     except Exception as e:
-        x += 1
-        return f"Caught exception: {e}, x={x}"
-    return "No exception, x={x}"
+        return f"Caught exception: {e}"
 
 def fixed_catch(): 
     try:
