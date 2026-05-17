@@ -39,6 +39,11 @@ def pyLower : String → String
 def pyUpper : String → String
   | s => s.toUpper
 
+def pyAppend : List α → α → List α
+  | lst, elem => lst ++ [elem]
+
+def pyItems [BEq α] [Hashable α]: Std.HashMap α β → List (α × β)
+  | m => m.toList
 
 def pythonMethodMap (attr : String) : Option Name :=
   match attr with
@@ -52,6 +57,8 @@ def pythonMethodMap (attr : String) : Option Name :=
   | "endswith"   => some ``pyEndswith
   | "lower"      => some ``pyLower
   | "upper"      => some ``pyUpper
+  | "append"     => some ``pyAppend
+  | "items"      => some ``pyItems
   | _            => none
 
 
@@ -78,25 +85,5 @@ def pythonMethodMap (attr : String) : Option Name :=
 --     | _ => throwError s!"Unsupported attribute '{attr}' in Attribute node"
 --   | _, _ => throwError "Expected Attribute node"
 
-def l :=
-  pySplit "gh yy uu"
-
-def t :=
-  pyJoin " " l
-
-def s :=
-  pyStrip t "g"
-
-def b1 :=
-  pyStartswith s "h"
-
-def b2 :=
-  pyEndswith s "u"
-
-def s1 :=
-  pyUpper s
-
-def s2 :=
-  pyLower s
 
 end PyAstLean

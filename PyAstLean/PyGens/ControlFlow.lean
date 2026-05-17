@@ -151,21 +151,5 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
               $[$bodyStxArray:doElem]*)
     | _, _ => throwError s!"Unsupported syntax category for If node"
 
-@[pygen "IfExp"]
-def ifExpSyntax : (kind : SyntaxNodeKind) → Json →
-    PygenM (TSyntax kind)
-    | `term, json => do
-        let .ok testJson := json.getObjValAs? Json "test" | throwError
-          s!"IfExp node does not have a 'test' field or it is not a JSON value: {json}"
-        let .ok bodyJson := json.getObjValAs? Json "body" | throwError
-          s!"IfExp node does not have a 'body' field or it is not a JSON value: {json}"
-        let .ok orelseJson := json.getObjValAs? Json "orelse" | throwError
-          s!"IfExp node does not have an 'orelse' field or it is not a JSON value: {json}"
-        let testStx ← getCode testJson `term
-        let bodyStx ← getCode bodyJson `term
-        let orelseStx ← getCode orelseJson `term
-        `(if $testStx then $bodyStx else $orelseStx)
-    | _, _ => throwError s!"Unsupported syntax category for IfExp node"
-
 
 end PyAstLean

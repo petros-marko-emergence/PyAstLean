@@ -598,7 +598,6 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
       let kwValueCode ← getCode kwValueJson `term
       let kwId := mkIdent kwName.toName
       t ← `($t ($kwId:ident := $kwValueCode))
-
     return t
   | `doElem, json => do
     let .ok funcJson := json.getObjValAs? Json "func" | throwError
