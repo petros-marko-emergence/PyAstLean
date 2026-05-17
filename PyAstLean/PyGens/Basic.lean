@@ -41,6 +41,9 @@ def constantSyntax : (kind : SyntaxNodeKind) → Json →
         let trueStx := mkIdent ``true
         let falseStx := mkIdent ``false
         if b then `($trueStx) else `($falseStx)
+    | .null =>
+        let noneIdent := mkIdent ``none
+        `($noneIdent)
     | _ => throwError s!"Unsupported constant value: {value}"
   | _, _ => throwError s!"Unsupported syntax category for Constant node"
 
@@ -78,11 +81,14 @@ def tupleSyntax : (kind : SyntaxNodeKind) → Json →
     let eltCodes ← match eltsJson with
       | .arr arr => arr.mapM (fun eltJson => getCode eltJson `term)
       | _ => throwError s!"Tuple node 'elts' field is not an array: {eltsJson}"
-    match eltCodes.size with
-    | 0 => `(())
-    | 1 => return eltCodes[0]!
-    | 2 => `(($(eltCodes[0]!), $(eltCodes[1]!)))
-    | _ => throwError "Tuple literals with more than two elements are not yet supported."
+    let rec buildTuple (elts : List (TSyntax `term)) : PygenM (TSyntax `term) := do
+      match elts with
+      | [] => `(())
+      | [single] => pure single
+      | first :: rest => do
+          let restTuple ← buildTuple rest
+          `(($first, $restTuple))
+    buildTuple eltCodes.toList
   | _, _ => throwError s!"Unsupported syntax category for Tuple node"
 
 @[pygen "Dict"]
@@ -136,6 +142,23 @@ def js₀ := json% {
   "node_type": "Constant",
   "value": 1
 }
+
+/-- Local copy of the exception-effect probe so `Call.doElem` can avoid a cyclic import on `Utils`. -/
+partial def basicJsonUsesExceptionEffect (json : Json) : Bool :=
+  let directMatches :=
+    match json.getObjValAs? String "effect_mode" with
+    | .ok "except" => true
+    | _ =>
+        match json.getObjValAs? String "node_type" with
+        | .ok nodeType => nodeType == "Try" || nodeType == "Raise"
+        | .error _ => false
+  if directMatches then
+    true
+  else
+    match json with
+    | .arr elems => elems.toList.any basicJsonUsesExceptionEffect
+    | .obj fields => fields.toList.any (fun (_, value) => basicJsonUsesExceptionEffect value)
+    | _ => false
 
 
 class PyHAdd (α β : Type) (γ : outParam Type) where
@@ -267,6 +290,46 @@ def pyRange (stop : Int) (start : Int := 0) (step : Int := 1) : List Int := do
   else
     []
 
+class PyIterable (α : Type) where
+  Elem : Type
+  toPyList : α → List Elem
+
+def pyIter {α : Type} [inst : PyIterable α] (value : α) : List inst.Elem :=
+  inst.toPyList value
+
+instance : PyIterable (List α) where
+  Elem := α
+  toPyList := id
+
+instance : PyIterable (Array α) where
+  Elem := α
+  toPyList := Array.toList
+
+instance : PyIterable String where
+  Elem := Char
+  toPyList := String.toList
+
+class PyContains (α : Type) where
+  Elem : Type
+  contains : α → Elem → Bool
+
+def pyContains {α : Type} [inst : PyContains α] (container : α) (value : inst.Elem) : Bool :=
+  inst.contains container value
+
+instance [BEq α] : PyContains (List α) where
+  Elem := α
+  contains := fun xs x => xs.contains x
+
+instance : PyContains String where
+  Elem := Char
+  contains := fun s c => s.contains c
+
+/-- Detect the JSON encoding of Python's `None`. -/
+def isNoneConstantJson (json : Json) : Bool :=
+  match json.getObjValAs? String "node_type", json.getObjValAs? Json "value" with
+  | .ok "Constant", .ok .null => true
+  | _, _ => false
+
 -- #eval pyRange 10 (17:Int) (-2)
 @[pygen "BinOp"]
 def binOpSyntax : (kind : SyntaxNodeKind) → Json →
@@ -340,6 +403,14 @@ def compareSyntax : (kind : SyntaxNodeKind) → Json →
       s!"Compare node does not have a 'right' field or it is not a JSON value: {json}"
     let leftCode ← getCode leftJson `term
     let rightCode ← getCode rightJson `term
+    let usePyContains :=
+      match rightJson.getObjValAs? String "node_type" with
+      | .ok "BinOp" => true
+      | .ok "Constant" =>
+          match rightJson.getObjValAs? Json "value" with
+          | .ok (.str _) => true
+          | _ => false
+      | _ => false
     match op with
     | "eq" => `($leftCode == $rightCode)
     | "ne" => `($leftCode != $rightCode)
@@ -347,8 +418,47 @@ def compareSyntax : (kind : SyntaxNodeKind) → Json →
     | "le" => `($leftCode <= $rightCode)
     | "gt" => `($leftCode > $rightCode)
     | "ge" => `($leftCode >= $rightCode)
+    | "in" =>
+        if usePyContains = true then
+          let containsIdent := mkIdent ``pyContains
+          `($containsIdent $rightCode $leftCode)
+        else
+          `(decide ($leftCode ∈ $rightCode))
+    | "notin" =>
+        if usePyContains = true then
+          let containsIdent := mkIdent ``pyContains
+          `(! ($containsIdent $rightCode $leftCode))
+        else
+          `(decide ($leftCode ∉ $rightCode))
     | _ => throwError s!"Unsupported comparison operator: {op}"
   | _, _ => throwError s!"Unsupported syntax category for Compare node"
+
+@[pygen "IfExp"]
+def ifExpSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok testJson := json.getObjValAs? Json "test" | throwError
+      s!"IfExp node does not have a 'test' field or it is not a JSON value: {json}"
+    let .ok bodyJson := json.getObjValAs? Json "body" | throwError
+      s!"IfExp node does not have a 'body' field or it is not a JSON value: {json}"
+    let .ok orelseJson := json.getObjValAs? Json "orelse" | throwError
+      s!"IfExp node does not have an 'orelse' field or it is not a JSON value: {json}"
+    let testCode ← getCode testJson `term
+    let bodyIsNone := isNoneConstantJson bodyJson
+    let orelseIsNone := isNoneConstantJson orelseJson
+    if bodyIsNone && orelseIsNone then
+      `(none)
+    else if bodyIsNone then
+      let orelseCode ← getCode orelseJson `term
+      `(if $testCode then none else some $orelseCode)
+    else if orelseIsNone then
+      let bodyCode ← getCode bodyJson `term
+      `(if $testCode then some $bodyCode else none)
+    else
+      let bodyCode ← getCode bodyJson `term
+      let orelseCode ← getCode orelseJson `term
+      `(if $testCode then $bodyCode else $orelseCode)
+  | _, _ => throwError s!"Unsupported syntax category for IfExp node"
 
 -- Example
 def onePlusTwoNode := json% {
@@ -560,21 +670,13 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
 def attributeSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
   | `term, json => do
-    -- IO.eprintln s!"Generating code for Attribute node with JSON: {json}" -- Debugging output
     let .ok valueJson := json.getObjValAs? Json "value" | throwError
       s!"Attribute node does not have a 'value' field or it is not a JSON value: {json}"
     let .ok attr := json.getObjValAs? String "attr" | throwError
       s!"Attribute node does not have an 'attr' field or it is not a string: {json}"
-    try
-      let id ← getCode valueJson `ident
-      return mkIdent <| id.getId ++ attr.toName
-    catch _ => do
-      -- IO.eprintln s!"Generating code for Attribute value: {valueJson} as value not a name" -- Debugging output
-      let valueCode ←
-          getCode valueJson `term
-      -- IO.eprintln s!"Generated code for Attribute value: {valueCode} : {← `($valueCode)}" -- Debugging output
-      let attrId := mkIdent attr.toName
-      `($valueCode.$attrId)
+    let valueCode ← getCode valueJson `term
+    let attrId := mkIdent attr.toName
+    `($valueCode.$attrId)
   | `ident, json => do
     let .ok valueJson := json.getObjValAs? Json "value" | throwError
       s!"Attribute node does not have a 'value' field or it is not a JSON value: {json}"
@@ -583,6 +685,26 @@ def attributeSyntax : (kind : SyntaxNodeKind) → Json →
     let id ← getCode valueJson `ident
     return mkIdent <| id.getId ++ attr.toName
   | _, _ => throwError s!"Unsupported syntax category for Attribute node"
+
+@[pygen "Subscript"]
+def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok valueJson := json.getObjValAs? Json "value" | throwError
+      s!"Subscript node does not have a 'value' field or it is not a JSON value: {json}"
+    let .ok sliceJson := json.getObjValAs? Json "slice" | throwError
+      s!"Subscript node does not have a 'slice' field or it is not a JSON value: {json}"
+    let valueCode ← getCode valueJson `term
+    match sliceJson.getObjValAs? String "node_type", sliceJson.getObjValAs? Json "value" with
+    | .ok "Constant", .ok (.num (JsonNumber.mk 0 0)) =>
+        let fstIdent := mkIdent ``Prod.fst
+        `($fstIdent $valueCode)
+    | .ok "Constant", .ok (.num (JsonNumber.mk 1 0)) =>
+        let sndIdent := mkIdent ``Prod.snd
+        `($sndIdent $valueCode)
+    | _, _ =>
+        throwError "Only tuple subscript projections `[0]` and `[1]` are supported right now."
+  | _, _ => throwError s!"Unsupported syntax category for Subscript node"
 
 
 def fn := fun n => show IO _ from  do
