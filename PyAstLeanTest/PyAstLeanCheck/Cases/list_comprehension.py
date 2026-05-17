@@ -1,8 +1,22 @@
 
 # PYASTLEANCHECK START
 # TARGET: command
-# EXIT: 1
-# CHECK-ERR: Translation for ListComp is not supported in the current subset.
+# CHECK: def simple_lc :=
+# CHECK: List.map (fun x => x) (PyAstLean.pyRange (10 : Int))
+# CHECK: def lc_with_condition :=
+# CHECK: List.filter (fun x => x %ₚ (2 : Int) == (0 : Int))
+# CHECK: def nested_lc :=
+# CHECK: List.map (fun _ => List.map (fun x => x)
+# CHECK: def lc_with_tuple_unpacking :=
+# CHECK: let another_pairs :=
+# CHECK: let (num, char) := _pair
+# CHECK: def lc_with_side_effects :=
+# CHECK: Id.run
+# CHECK: result := result ++ [x *ₚ x]
+# CHECK: def lc_with_dict :=
+# CHECK: Std.HashMap.toList d
+# CHECK: def lc_multi_list :=
+# CHECK: List.flatMap
 # PYASTLEANCHECK END
 
 def simple_lc():
@@ -59,6 +73,16 @@ def lc_with_if_else():
 def lc_with_string_literal_list():
     return [x for x in ["me", "you"]]
 
-def nested_lc_return_only():
-    return [[x for x in range(2)] for _ in range(3)]
- 
+def lc_with_dict():
+    d = {'a': 1, 'b': 2, 'c': 3}
+    return [f"{k}:{v}" for k, v in d.items()]
+
+def lc_multi_list():
+    ll = [x * y for a in [[1, 2], [3,4]] for x in a for y in a]
+    lt = [x * y for x in ll for y in ll]
+    return ll, lt
+
+def lc_multi_invoke():
+    a = [x * y * z for x in range(5) for y in range(5) for z in range(5)]
+    b = [(x, y, z) for x in range(5) for y in range(5) for z in range(5)]
+    return a, b
