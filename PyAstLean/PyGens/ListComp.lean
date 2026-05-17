@@ -1,5 +1,6 @@
 import Mathlib
 import PyAstLean.Codegen
+import PyAstLean.PyGens.Basic
 open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
@@ -50,10 +51,11 @@ def range : (kind : SyntaxNodeKind) → Json →
     let argsCodes ← match argsjson with
       | .arr arr => arr.mapM (fun json => getCode json `term)
       | _ => throwError "Range node 'args' field is not a Json array"
+    let pyRangeIdent := mkIdent ``pyRange
     match argsCodes.size with
-    | 1 => `(pyRange $(argsCodes[0]!))
-    | 2 => `(pyRange $(argsCodes[1]!) $(argsCodes[0]!))
-    | 3 => `(pyRange $(argsCodes[1]!) $(argsCodes[0]!) $(argsCodes[1]!))
+    | 1 => `($pyRangeIdent $(argsCodes[0]!))
+    | 2 => `($pyRangeIdent $(argsCodes[1]!) $(argsCodes[0]!))
+    | 3 => `($pyRangeIdent $(argsCodes[1]!) $(argsCodes[0]!) $(argsCodes[1]!))
     | _ => throwError "Range node 'args' field must have 1, 2, or 3 elements"
   | _, _ => throwError "Expected Range node"
 

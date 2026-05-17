@@ -237,13 +237,14 @@ class ASTToJsonLeanVisitorBase:
         func_json = self.visit(node.func)
         args_json = [self.visit(arg) for arg in node.args]
         keywords_json = {kw.arg: self.visit(kw.value) for kw in node.keywords}
-        if func_json["id"] == "range" :
-            return {
-                "node_type": "Range",
-                "func": func_json,
-                "args": args_json,
-                "keywords": keywords_json
-            }
+        if "id" in func_json:
+            if func_json["id"] == "range" :
+                return {
+                    "node_type": "Range",
+                    "func": func_json,
+                    "args": args_json,
+                    "keywords": keywords_json
+                }
         return {
             "node_type": "Call",
             "func": func_json,
@@ -254,10 +255,12 @@ class ASTToJsonLeanVisitorBase:
     def visit_Attribute(self, node):
         """Translates ast.Attribute (e.g., object.attribute) to a JSON IR node."""
         value_json = self.visit(node.value)
+        attribute = node.attr
         return {
             "node_type": "Attribute",
             "value": value_json,
-            "attr": node.attr
+            "attr": node.attr,
+            
         }
 
     def visit_Subscript(self, node):
@@ -438,6 +441,15 @@ class ASTToJsonLeanVisitorBase:
             "orelse": self.visit_statements(node.orelse)
         }
 
+    def visit_IfExp(self, node):
+        """Translates ast.IfExp (ternary expressions) to a JSON IR node."""
+        return {
+            "node_type": "IfExp",
+            "test": self.visit(node.test),
+            "body": self.visit(node.body),
+            "orelse": self.visit(node.orelse)
+        }
+
     def visit_Return(self, node):
         """Translates ast.Return to a JSON IR node."""
         return {
@@ -480,6 +492,8 @@ class ASTToJsonLeanVisitorBase:
             "ifs": [self.visit(if_cond) for if_cond in node.ifs],
             "is_async": node.is_async
         }
+    
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
