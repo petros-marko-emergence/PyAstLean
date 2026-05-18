@@ -434,12 +434,29 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
 
     -- 2. STANDARD FUNCTION CALLS
     else
-      funcIdent ← match funcJson.getObjValAs? String "node_type", funcJson.getObjValAs? String "id" with
+      match funcJson.getObjValAs? String "node_type", funcJson.getObjValAs? String "id" with
+        | .ok "Name", .ok "print" => do
+            let supportedKeywords := ["sep", "end"]
+            for (kwName, _) in keyWordsMap.toList do
+              unless supportedKeywords.contains kwName do
+                throwError s!"print() keyword argument '{kwName}' is not supported yet."
+            let pyPrintIOIdent := mkIdent ``pyPrintIO
+            match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
+            | none, none =>
+                return ← `($pyPrintIOIdent [$argsCodes,*])
+            | _, _ =>
+                let sepCode ← match keyWordsMap.get? "sep" with
+                  | some sepJson => getCode sepJson `term
+                  | none => `(" ")
+                let endCode ← match keyWordsMap.get? "end" with
+                  | some endJson => getCode endJson `term
+                  | none => `("\n")
+                return ← `($pyPrintIOIdent [$argsCodes,*] $sepCode $endCode)
         | .ok "Name", .ok funcName =>
             let mappedName ← leanName funcName.toName
-            pure <| (mkIdent mappedName : TSyntax `term)
+            funcIdent := (mkIdent mappedName : TSyntax `term)
         | _, _ =>
-            getCode funcJson `term
+            funcIdent ← getCode funcJson `term
 
     -- 3. APPLY POSITIONAL ARGUMENTS
     for argCode in argsCodes do
@@ -539,12 +556,30 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
 
     -- 2. STANDARD FUNCTION CALLS
     else
-      funcIdent ← match funcJson.getObjValAs? String "node_type", funcJson.getObjValAs? String "id" with
+      match funcJson.getObjValAs? String "node_type", funcJson.getObjValAs? String "id" with
+        | .ok "Name", .ok "print" => do
+            let supportedKeywords := ["sep", "end"]
+            for (kwName, _) in keyWordsMap.toList do
+              unless supportedKeywords.contains kwName do
+                throwError s!"print() keyword argument '{kwName}' is not supported yet."
+            let pyPrintIOIdent := mkIdent ``pyPrintIO
+            let t ← match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
+              | none, none =>
+                  `($pyPrintIOIdent [$argsCodes,*])
+              | _, _ =>
+                  let sepCode ← match keyWordsMap.get? "sep" with
+                    | some sepJson => getCode sepJson `term
+                    | none => `(" ")
+                  let endCode ← match keyWordsMap.get? "end" with
+                    | some endJson => getCode endJson `term
+                    | none => `("\n")
+                  `($pyPrintIOIdent [$argsCodes,*] $sepCode $endCode)
+            return ← `(doElem| let _ ← $t:term)
         | .ok "Name", .ok funcName =>
             let mappedName ← leanName funcName.toName
-            pure <| (mkIdent mappedName : TSyntax `term)
+            funcIdent := (mkIdent mappedName : TSyntax `term)
         | _, _ =>
-            getCode funcJson `term
+            funcIdent ← getCode funcJson `term
 
     -- 3. APPLY POSITIONAL ARGUMENTS
     for argCode in argsCodes do

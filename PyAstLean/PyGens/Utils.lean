@@ -186,9 +186,31 @@ partial def jsonUsesExceptionEffect (json : Json) : Bool :=
     | .obj fields => fields.toList.any (fun (_, value) => jsonUsesExceptionEffect value)
     | _ => false
 
+/-- Recursively check whether a JSON subtree is marked as using translated `IO` effects. -/
+partial def jsonUsesIOEffect (json : Json) : Bool :=
+  let directMatches :=
+    match json.getObjValAs? String "effect_mode" with
+    | .ok "io" => true
+    | _ => false
+  if directMatches then
+    true
+  else
+    match json with
+    | .arr elems => elems.toList.any jsonUsesIOEffect
+    | .obj fields => fields.toList.any (fun (_, value) => jsonUsesIOEffect value)
+    | _ => false
+
 /-- Detect whether a statement list uses translated exceptions and therefore should not run under `Id`. -/
 def bodyNeedsExceptionMonad (bodyElems : Array Json) : Bool :=
   bodyElems.toList.any jsonUsesExceptionEffect
+
+/-- Detect whether a statement list uses translated `IO` effects and therefore should run under `IO`. -/
+def bodyNeedsIOMonad (bodyElems : Array Json) : Bool :=
+  bodyElems.toList.any jsonUsesIOEffect
+
+/-- Values using either translated exceptions or translated `IO` require monadic binding in `do`. -/
+def jsonUsesMonadicEffect (json : Json) : Bool :=
+  jsonUsesExceptionEffect json || jsonUsesIOEffect json
 
 /-- Sequence a list of `doElem`s into one `doElem`, using `fallback` for the empty case. -/
 def sequenceDoElems (elems : Array (TSyntax `doElem)) (fallback : TSyntax `doElem) :

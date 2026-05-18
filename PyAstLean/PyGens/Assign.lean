@@ -7,7 +7,7 @@ namespace PyAstLean
 /-- Simple returned expressions can stay unparenthesized; more complex or effectful ones
 keep parentheses so Lean parses multiline `return` expressions reliably. -/
 def shouldParenthesizeReturnValue (value : Json) : Bool :=
-  if jsonUsesExceptionEffect value then
+  if jsonUsesMonadicEffect value then
     true
   else
     match jsonNodeType? value with
@@ -35,7 +35,7 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
         let valueStx ← getCode value `term
         let rhs ←
-          if jsonUsesExceptionEffect value then
+          if jsonUsesMonadicEffect value then
             `((← $valueStx))
           else
             pure valueStx
@@ -89,7 +89,7 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
         | _ =>
             let valueStx ← getCode value `term
             let retValue ←
-              if jsonUsesExceptionEffect value then
+              if jsonUsesMonadicEffect value then
                 `((← $valueStx))
               else
                 pure valueStx

@@ -123,6 +123,7 @@ definitions, nested local functions, and `Head_FunctionDef` threading. -/
 def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) (bodyElems : Array Json) :
     PygenM (TSyntax `term) := do
   let usesExceptions := bodyNeedsExceptionMonad bodyElems
+  let usesIO := !usesExceptions && bodyNeedsIOMonad bodyElems
   let mkLambda (body : TSyntax `term) : PygenM (TSyntax `term) := do
     let mut result := body
     for (argIdent, ty?) in argInfos.toList.reverse do
@@ -139,6 +140,15 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
       pure exceptBody
     else
       mkLambda exceptBody
+  else if usesIO then
+    let bodyStxArray ← monadicFunctionBodySyntax bodyElems
+    let ioIdent := mkIdent ``IO
+    let ioBody ← `(((do
+          $[$bodyStxArray:doElem]*) : $ioIdent _))
+    if argInfos.isEmpty then
+      pure ioBody
+    else
+      mkLambda ioBody
   else
     try
       let bodyStx ← pureFunctionBodySyntax bodyElems
