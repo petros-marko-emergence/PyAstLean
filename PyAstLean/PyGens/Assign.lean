@@ -1,4 +1,5 @@
 import PyAstLean.PyGens.Utils
+import PyAstLean.PyGens.CallExpr
 
 open Lean Meta Elab Term Qq Std
 
@@ -7,7 +8,7 @@ namespace PyAstLean
 /-- Simple returned expressions can stay unparenthesized; more complex or effectful ones
 keep parentheses so Lean parses multiline `return` expressions reliably. -/
 def shouldParenthesizeReturnValue (value : Json) : Bool :=
-  if jsonUsesExceptionEffect value then
+  if jsonUsesMonadicEffect value then
     true
   else
     match jsonNodeType? value with
@@ -33,12 +34,15 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
         let nameIdent ← getCode target `ident
         let .ok value := json.getObjVal? "value" | throwError
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
-        let valueStx ← getCode value `term
         let rhs ←
-          if jsonUsesExceptionEffect value then
-            `((← $valueStx))
+          if jsonUsesIOEffect value then
+            inlineIOTerm value
           else
-            pure valueStx
+            let valueStx ← getCode value `term
+            if jsonUsesMonadicEffect value then
+              `((← $valueStx))
+            else
+              pure valueStx
         if ← hasVar nameIdent.getId then
             `(doElem| $nameIdent:ident := $rhs)
         else
@@ -87,16 +91,23 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
         | .null =>
             `(doElem| return (()))
         | _ =>
-            let valueStx ← getCode value `term
-            let retValue ←
-              if jsonUsesExceptionEffect value then
-                `((← $valueStx))
+            if jsonUsesIOEffect value then
+              let valueStx ← inlineIOTerm value
+              if shouldParenthesizeReturnValue value then
+                `(doElem| return ($valueStx))
               else
-                pure valueStx
-            if shouldParenthesizeReturnValue value then
-              `(doElem| return ($retValue))
+                `(doElem| return $valueStx)
             else
-              `(doElem| return $retValue)
+              let valueStx ← getCode value `term
+              if jsonUsesMonadicEffect value then
+                `(doElem| do
+                  let __py_ret ← $valueStx:term
+                  return __py_ret)
+              else
+                if shouldParenthesizeReturnValue value then
+                  `(doElem| return ($valueStx))
+                else
+                  `(doElem| return $valueStx)
     | _, _ => throwError s!"Unsupported syntax category for Return node"
 
 end PyAstLean

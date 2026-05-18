@@ -4,6 +4,7 @@ import os
 import json
 import ast
 import atexit
+import select
 from pathlib import Path
 import subprocess
 import logging
@@ -55,6 +56,21 @@ def _body_has_direct_exception_syntax(body):
     return False
 
 
+def _body_has_direct_io_syntax(body):
+    for stmt in body:
+        for node in _walk_json_nodes(stmt, skip_nested_function_bodies=True):
+            if _node_type(node) != "Call":
+                continue
+            func = node.get("func")
+            if (
+                isinstance(func, dict)
+                and func.get("node_type") == "Name"
+                and func.get("id") in {"print", "input"}
+            ):
+                return True
+    return False
+
+
 def _body_calls_known_functions(body, known_names):
     called = set()
     for stmt in body:
@@ -83,6 +99,42 @@ def _annotate_calls(node, effectful_names):
     elif isinstance(node, list):
         for item in node:
             _annotate_calls(item, effectful_names)
+
+
+def _annotate_calls_with_mode(node, effectful_names, effect_mode):
+    if isinstance(node, dict):
+        if node.get("node_type") == "Call":
+            func = node.get("func")
+            if isinstance(func, dict) and func.get("node_type") == "Name" and func.get("id") in effectful_names:
+                node.setdefault("effect_mode", effect_mode)
+        node_type = node.get("node_type")
+        for key, value in node.items():
+            if node_type == "FunctionDef" and key == "body":
+                continue
+            _annotate_calls_with_mode(value, effectful_names, effect_mode)
+    elif isinstance(node, list):
+        for item in node:
+            _annotate_calls_with_mode(item, effectful_names, effect_mode)
+
+
+def _annotate_direct_io_calls(node):
+    if isinstance(node, dict):
+        if node.get("node_type") == "Call":
+            func = node.get("func")
+            if (
+                isinstance(func, dict)
+                and func.get("node_type") == "Name"
+                and func.get("id") in {"print", "input"}
+            ):
+                node.setdefault("effect_mode", "io")
+        node_type = node.get("node_type")
+        for key, value in node.items():
+            if node_type == "FunctionDef" and key == "body":
+                continue
+            _annotate_direct_io_calls(value)
+    elif isinstance(node, list):
+        for item in node:
+            _annotate_direct_io_calls(item)
 
 
 def annotate_exception_effects(module_json):
@@ -122,6 +174,51 @@ def annotate_exception_effects(module_json):
     if isinstance(module_json, dict) and module_json.get("node_type") == "Module":
         annotate_scope(module_json.get("body", []))
 
+
+def annotate_io_effects(module_json):
+    """Mark input/print-bearing function defs and direct calls that require translated `IO` handling."""
+    def annotate_scope(body):
+        local_functions = {
+            stmt["name"]: stmt
+            for stmt in body
+            if isinstance(stmt, dict) and stmt.get("node_type") == "FunctionDef"
+        }
+        for fn in local_functions.values():
+            annotate_scope(fn.get("body", []))
+
+        io_effectful = {
+            name: _body_has_direct_io_syntax(fn.get("body", []))
+            for name, fn in local_functions.items()
+            if fn.get("effect_mode") != "except"
+        }
+        changed = True
+        while changed:
+            changed = False
+            for name, fn in local_functions.items():
+                if fn.get("effect_mode") == "except":
+                    continue
+                if io_effectful.get(name, False):
+                    continue
+                called = _body_calls_known_functions(fn.get("body", []), local_functions.keys())
+                if any(io_effectful.get(callee, False) for callee in called):
+                    io_effectful[name] = True
+                    changed = True
+
+        io_effectful_names = {name for name, is_effectful in io_effectful.items() if is_effectful}
+        for name, fn in local_functions.items():
+            if fn.get("effect_mode") == "except":
+                continue
+            if io_effectful.get(name, False):
+                fn["effect_mode"] = "io"
+            _annotate_direct_io_calls(fn.get("body", []))
+            _annotate_calls_with_mode(fn.get("body", []), io_effectful_names, "io")
+
+        _annotate_direct_io_calls(body)
+        _annotate_calls_with_mode(body, io_effectful_names, "io")
+
+    if isinstance(module_json, dict) and module_json.get("node_type") == "Module":
+        annotate_scope(module_json.get("body", []))
+
 def translate_to_json(source_code, filepath=None):
     """
     Parses Python source code and translates it to a JSON IR.
@@ -146,6 +243,7 @@ def translate_to_json(source_code, filepath=None):
     logger.debug("Parsed Python AST:\n%s", ast.dump(ast_tree, indent=4))
     data = translator.visit(ast_tree)
     annotate_exception_effects(data)
+    annotate_io_effects(data)
     logger.debug("Generated JSON IR: %s", json.dumps(data))
     return json.dumps(data)
 
@@ -189,6 +287,34 @@ class LeanBackendClient:
 
     def _recent_stderr(self):
         return "\n".join(self._stderr_lines)
+
+    def _one_shot_request(self, ast_json, target, check=True):
+        """Fallback backend path that avoids the persistent server when it misbehaves."""
+        json_task = json.dumps(
+            {"task": "translate", "ast": ast_json, "target": target, "check": check},
+            separators=(",", ":"),
+        )
+        cmd = ["lake", "exe", "py2lean", json_task, target]
+        logger.debug("Falling back to one-shot Lean backend: %s", cmd)
+        proc = subprocess.run(
+            cmd,
+            cwd=self.cwd,
+            text=True,
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            return {
+                "result": False,
+                "error": proc.stderr.strip() or proc.stdout.strip() or "Lean backend failed",
+            }
+        output = proc.stdout.strip()
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError as err:
+            return {
+                "result": False,
+                "error": f"Invalid JSON response from one-shot Lean backend: {err}\n{output}",
+            }
 
     def start(self):
         if self.proc is not None and self.proc.poll() is None:
@@ -246,24 +372,27 @@ class LeanBackendClient:
             self.proc.stdin.flush()
         except BrokenPipeError:
             self.close()
-            return {"result": False, "error": self._recent_stderr() or "Lean backend pipe closed unexpectedly"}
+            return self._one_shot_request(ast_json, target, check)
+
+        assert self.proc.stdout is not None
+        ready, _, _ = select.select([self.proc.stdout], [], [], 5.0)
+        if not ready:
+            logger.debug("Persistent Lean backend timed out waiting for a response; retrying once-shot.")
+            self.close()
+            return self._one_shot_request(ast_json, target, check)
 
         response_line = self.proc.stdout.readline()
         if not response_line:
             self.close()
-            return {
-                "result": False,
-                "error": self._recent_stderr() or "Lean backend terminated without responding",
-            }
+            return self._one_shot_request(ast_json, target, check)
         response_line = response_line.strip()
         logger.debug("Lean backend response: %s", response_line)
         try:
             return json.loads(response_line)
         except json.JSONDecodeError as err:
-            return {
-                "result": False,
-                "error": f"Invalid JSON response from Lean backend: {err}\n{response_line}",
-            }
+            logger.debug("Persistent Lean backend returned invalid JSON; retrying one-shot.")
+            self.close()
+            return self._one_shot_request(ast_json, target, check)
 
     def __enter__(self):
         self.start()

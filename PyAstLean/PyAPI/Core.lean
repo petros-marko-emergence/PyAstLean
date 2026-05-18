@@ -30,9 +30,6 @@ instance : ToString PyException where
     else
       s!"{exc.kind}: {exc.msg}"
 
-/-- Current lightweight runtime stub for Python-style printing. -/
-def pyPrint {α : Type} [ToString α] (_ : α) : Unit := ()
-
 /-- Python-style `range` supporting positive and negative steps. -/
 def pyRange (stop : Int) (start : Int := 0) (step : Int := 1) : List Int := do
   if step > 0 then

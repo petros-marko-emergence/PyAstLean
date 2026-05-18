@@ -4,44 +4,54 @@ import PyAstLean.PyGens
 import PyAstLean.PyGens.Basic
 namespace PyAstLean
 
-def lmbda_expr := fun x ↦ x +ₚ (1 : Int)
+def read_line : IO String := do
+  let mut raw ← PyAstLean.pyInputIO ""
+  return raw
 
-def lmbda_with_condition := fun x ↦ if x %ₚ (2 : Int) == (0 : Int) then x +ₚ (1 : Int) else x -ₚ (1 : Int)
+def read_prompted : IO String := do
+  return ((← PyAstLean.pyInputIO "n = "))
 
-def lmbda_with_array :=
-  let a := [(1 : Int), (2 : Int), (3 : Int), (4 : Int), (5 : Int)]
-  let b := fun x ↦ if decide (x ∈ a) then some (x *ₚ x) else none
-  let c := b
-  c
+def read_nested_int :=
+  ((do
+      let mut a ←
+        ((do
+              let __py_input0 ← PyAstLean.pyInputIO "Enter a: "
+              return PyAstLean.pyInt __py_input0) :
+            IO _)
+      let mut b ←
+        ((do
+              let __py_input0 ← PyAstLean.pyInputIO "Enter b: "
+              return PyAstLean.pyInt __py_input0) :
+            IO _)
+      let mut c ← PyAstLean.pyInputIO "Enter c: "
+      a := a +ₚ b
+      return ((a, c))) :
+    IO _)
 
-def lmbda_with_string :=
-  let s := "hello"
-  fun char ↦ PyAstLean.pyContains (s +ₚ " world")
-  char
+def echo_input : IO Int := do
+  let _ ←
+    ((do
+          let __py_input0 ← PyAstLean.pyInputIO ""
+          let __py_result ← PyAstLean.pyPrintIO [__py_input0]
+          return __py_result) :
+        IO _)
+  return (0 : Int)
 
-def nested_lmbda := fun () ↦ fun x ↦ x *ₚ x
+def input_inside_print :=
+  ((do
+      let _ ←
+        ((do
+              let __py_input0 ← PyAstLean.pyInputIO ""
+              let __py_result ←
+                PyAstLean.pyPrintIO
+                    [String.append (String.append "" "Enter a number: ")
+                        (ToString.toString (PyAstLean.pyInt __py_input0))]
+              return __py_result) :
+            IO _)) :
+    IO _)
 
-def lmbda_with_function_call :=
-  let add_one := fun x ↦ x +ₚ (1 : Int)
-  fun x ↦ add_one x
+end PyAstLean
 
-def lmbda_ds := fun x ↦ [x, x *ₚ (2 : Int), x *ₚ (3 : Int)]
-
-def lmbda_with_nested_conditions := fun x ↦
-  if x %ₚ (2 : Int) == (0 : Int) && x %ₚ (3 : Int) == (0 : Int) || x %ₚ (5 : Int) == (0 : Int) then x +ₚ (1 : Int)
-  else x -ₚ (1 : Int)
-
-def lmbda_with_tuple_unpacking := fun {α β} [ToString α] [ToString β] (pair : α × β) ↦
-  String.append (String.append (String.append "" (ToString.toString (Prod.fst pair))) ":")
-    (ToString.toString (Prod.snd pair))
-
-def lmbda_with_side_effects :=
-  Id.run
-    (do
-      let mut result := []
-      for x in PyAstLean.pyRange (5 : Int)do
-        result := result ++ [x *ₚ x]
-      return (fun (y : Unit) ↦ result))
-
-def lmbda_with_generator_expression := fun () ↦
-  List.map (fun x => x *ₚ x) (List.map (fun i => i) (PyAstLean.pyRange (5 : Int)))
+def main : IO Unit := do
+  let x <- PyAstLean.read_nested_int
+  IO.println s!"returned: {x}"

@@ -4,7 +4,7 @@
 # CHECK: fun (b : Int) ↦
 # CHECK: a +ₚ b
 # CHECK: def call_add := fun n ↦
-# CHECK: (add n) (1 : Int)
+# CHECK: add n (1 : Int)
 # CHECK: def keyword_call := fun n ↦
 # CHECK: (add (a := n)) (b := (2 : Int))
 # CHECK: def many_args := fun a ↦

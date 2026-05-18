@@ -35,10 +35,6 @@ def pyValues [BEq α] [Hashable α] : Std.HashMap α β → List β :=
 def pyDictClear [BEq α] [Hashable α] (_ : Std.HashMap α β) : Std.HashMap α β :=
   {}
 
-/-- Public runtime surface for Python `clear()`. -/
-def pyClear [BEq α] [Hashable α] (m : Std.HashMap α β) : Std.HashMap α β :=
-  pyDictClear m
-
 /--
 For `dict.pop(key, default)`, return the value associated with the key (or the
 default if missing) together with the updated map.
@@ -48,10 +44,6 @@ def pyDictPop [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) (default
   | some value => (some value, m.erase key)
   | none => (default, m)
 
-/-- Public runtime surface for Python `pop()`. -/
-def pyPop [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) (default : Option β := none) : (Option β × Std.HashMap α β) :=
-  pyDictPop m key default
-
 def pyDictUpdate [BEq α] [Hashable α] (m : Std.HashMap α β) (updates : List (α × β)) : Std.HashMap α β :=
   updates.foldl (fun acc (k, v) => acc.insert k v) m
 
@@ -59,12 +51,43 @@ def pyDictUpdate [BEq α] [Hashable α] (m : Std.HashMap α β) (updates : List 
 def pyUpdate [BEq α] [Hashable α] (m : Std.HashMap α β) (updates : List (α × β)) : Std.HashMap α β :=
   pyDictUpdate m updates
 
--- #eval do
---   let myMap : Std.HashMap String Nat := {}
 
---   -- Inserting values
---   let updatedMap := myMap.insert "apple" 1
---   let updatedMap2 := updatedMap.insert "banana" 2
+/--
+Optional form of `dict.get(key)`.
+
+When the key is missing and no default is supplied, Python returns `None`, so the
+natural Lean model is `Option β`.
+-/
+def pyDictGetOpt [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) : Option β :=
+  match m.get? key with
+  | some value => some value
+  | none => none
+
+/--
+Defaulted form of `dict.get(key, default)`.
+
+When a default is supplied, Python returns a plain value, not an optional wrapper.
+-/
+def pyDictGetD [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) (default : β) : β :=
+  match m.get? key with
+  | some value => value
+  | none => default
+
+/-- Public runtime surface for Python `get(key)`. -/
+def pyGetOpt [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) : Option β :=
+  pyDictGetOpt m key
+
+/-- Public runtime surface for Python `get(key, default)`. -/
+def pyGetD [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) (default : β) : β :=
+  pyDictGetD m key default
+
+#eval do
+  let myMap : Std.HashMap String Nat := {}
+
+  -- Inserting values
+  let updatedMap := myMap.insert "apple" 1
+  let updatedMap2 := updatedMap.insert "banana" 2
+  pyDictGetOpt updatedMap2 "apple" -- some 1
 
 --   pyItems updatedMap2 -- [("apple", 1), ("banana", 2)]
 
