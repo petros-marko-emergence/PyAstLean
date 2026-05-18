@@ -103,6 +103,12 @@ def functionBodyElems (json : Json) : PygenM (Array Json) := do
     s!"FuncDef node does not have a 'body' field or it is not a JSON value: {json}"
   return bodyElems
 
+/-- Read a Python function return annotation when it maps cleanly to a Lean runtime type. -/
+def functionReturnTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
+  match jsonFieldOption json "returns" with
+  | some returnJson => functionArgTypeSyntax? returnJson
+  | none => pure none
+
 /-- Check whether a JSON subtree references a given variable name. -/
 partial def jsonReferencesName (json : Json) (target : String) : Bool :=
   let directMatch :=
@@ -167,6 +173,66 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
         mkLambda (← `($idRunIdent do
             $[$bodyStxArray:doElem]*))
 
+/-- Build a lambda-wrapped monadic body term without adding an inner effect cast. -/
+def functionMonadicValueNoCast (argInfos : Array (TSyntax `ident × Option (TSyntax `term)))
+    (bodyElems : Array Json) : PygenM (TSyntax `term) := do
+  let bodyStxArray ← monadicFunctionBodySyntax bodyElems
+  let mut result ← `(do
+    $[$bodyStxArray:doElem]*)
+  for (argIdent, ty?) in argInfos.toList.reverse do
+    result ← match ty? with
+      | some ty => `(fun ($argIdent : $ty) ↦ $result)
+      | none => `(fun $argIdent ↦ $result)
+  pure result
+
+/-- Build a function type like `A → B → IO _` when every argument type is known. -/
+def functionArrowTypeSyntax? (argInfos : Array (TSyntax `ident × Option (TSyntax `term)))
+    (codomain : TSyntax `term) : PygenM (Option (TSyntax `term)) := do
+  let mut result := codomain
+  for (_, ty?) in argInfos.toList.reverse do
+    match ty? with
+    | some ty =>
+        result ← `($ty → $result)
+    | none =>
+        return none
+  return some result
+
+/--
+For top-level effectful defs, prefer putting the effect in the signature instead of on
+the body cast when the argument types are known.
+-/
+def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
+    (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) (json : Json) :
+    PygenM (Option (TSyntax `command)) := do
+  let bodyElems ← functionBodyElems json
+  let returnTy? ← functionReturnTypeSyntax? json
+  if bodyNeedsIOMonad bodyElems then
+    match returnTy? with
+    | none => return none
+    | some retTy =>
+        let ioIdent := mkIdent ``IO
+        let codomain ← `($ioIdent $retTy)
+        match ← functionArrowTypeSyntax? argInfos codomain with
+        | some fullTy =>
+            let valueStx ← functionMonadicValueNoCast argInfos bodyElems
+            return some (← `(command| def $nameIdent : $fullTy := $valueStx))
+        | none =>
+            return none
+  else if bodyNeedsExceptionMonad bodyElems then
+    match returnTy? with
+    | none => return none
+    | some retTy =>
+        let exceptIdent := mkIdent ``PyAstLean.PyExcept
+        let codomain ← `($exceptIdent $retTy)
+        match ← functionArrowTypeSyntax? argInfos codomain with
+        | some fullTy =>
+            let valueStx ← functionMonadicValueNoCast argInfos bodyElems
+            return some (← `(command| def $nameIdent : $fullTy := $valueStx))
+        | none =>
+            return none
+  else
+    return none
+
 @[pygen "FunctionDef"]
 def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -175,9 +241,12 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
           s!"FuncDef node does not have a 'name' field or it is not a string: {json}"
         let nameIdent := mkIdent name.toName
         let argInfos ← functionArgInfos json
-        let bodyElems ← functionBodyElems json
-        let valueStx ← functionValueSyntax argInfos bodyElems
-        `(def $nameIdent := $valueStx)
+        match ← functionCommandWithEffectSignature? nameIdent argInfos json with
+        | some cmd => pure cmd
+        | none =>
+            let bodyElems ← functionBodyElems json
+            let valueStx ← functionValueSyntax argInfos bodyElems
+            `(def $nameIdent := $valueStx)
     | `term, json => do
         let argInfos ← functionArgInfos json
         let bodyElems ← functionBodyElems json

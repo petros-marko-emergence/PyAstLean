@@ -4,21 +4,22 @@
 # CHECK: let mut raw := (← PyAstLean.pyInputIO "")
 # CHECK: return raw
 # CHECK: def read_prompted : IO String := do
-# CHECK: let __py_ret ← PyAstLean.pyInputIO "n = "
-# CHECK: return __py_ret
-# CHECK: def read_nested_int : IO _ := do
-# CHECK: let mut a :=
-# CHECK: let __py_arg0 ← PyAstLean.pyInputIO ""
-# CHECK: return PyAstLean.pyInt __py_arg0
-# CHECK: let mut b :=
-# CHECK: let __py_arg0 ← PyAstLean.pyInputIO ""
-# CHECK: return PyAstLean.pyInt __py_arg0
+# CHECK: return ((← PyAstLean.pyInputIO "n = "))
+# CHECK: def read_nested_int :=
+# CHECK: let mut a := PyAstLean.pyInt (← PyAstLean.pyInputIO "")
+# CHECK: let mut b := PyAstLean.pyInt (← PyAstLean.pyInputIO "")
 # CHECK: let mut c := (← PyAstLean.pyInputIO "")
+# CHECK: a := a +ₚ b
 # CHECK: return ((a, c))
 # CHECK: def echo_input : IO Int := do
-# CHECK: let __py_arg0 ← PyAstLean.pyInputIO ""
-# CHECK: let __py_result ← PyAstLean.pyPrintIO [__py_arg0]
+# CHECK: let __py_input0 ← PyAstLean.pyInputIO ""
+# CHECK: let __py_result ← PyAstLean.pyPrintIO [__py_input0]
 # CHECK: return (0 : Int)
+# CHECK: def input_inside_print :=
+# CHECK: let __py_input0 ← PyAstLean.pyInputIO ""
+# CHECK: PyAstLean.pyPrintIO
+# CHECK: Enter a number:
+# CHECK: PyAstLean.pyInt __py_input0
 # PYASTLEANCHECK END
 
 def read_line():

@@ -143,12 +143,12 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
         let mainIdent := mkIdent `main
         if bodyNeedsExceptionMonad bodyElems then
           let exceptIdent := mkIdent ``PyAstLean.PyExcept
-          `(command| def $mainIdent := (((do
-              $[$bodyStxArray:doElem]*) : $exceptIdent _)))
+          `(command| def $mainIdent := ((do
+              $[$bodyStxArray:doElem]*) : $exceptIdent _))
         else if bodyNeedsIOMonad bodyElems then
           let ioIdent := mkIdent ``IO
-          `(command| def $mainIdent := (((do
-              $[$bodyStxArray:doElem]*) : $ioIdent _)))
+          `(command| def $mainIdent := ((do
+              $[$bodyStxArray:doElem]*) : $ioIdent _))
         else
           let idRunIdent := mkIdent ``Id.run
           `(command| def $mainIdent := $idRunIdent do
