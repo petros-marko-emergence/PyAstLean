@@ -76,9 +76,6 @@ def pyReverse : List α → List α :=
 def pyListClear (_ : List α) : List α :=
   []
 
-def pyClear (xs : List α) : List α :=
-  pyListClear xs
-
 /-- API runtime surface for Python `insert()`. -/
 def pyListInsert (xs : List α) (idx : Int) (elem : α) : List α :=
   if 0 <= idx then

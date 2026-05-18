@@ -1,7 +1,10 @@
 import PyAstLean.PyAPI.CommonProtocols.Length
 import PyAstLean.PyAPI.CommonProtocols.Membership
 import PyAstLean.PyAPI.CommonProtocols.Iterable
+import PyAstLean.PyAPI.CommonProtocols.Clear
 import PyAstLean.PyAPI.CommonProtocols.Pop
+import PyAstLean.PyAPI.CommonProtocols.Sorting
+import PyAstLean.PyAPI.CommonProtocols.Clear
 
 /-!
 Intentionally extensible runtime protocols shared by several Lean datatypes.
@@ -13,8 +16,8 @@ typeclass resolution.
 Examples:
 - `pyLen`
 - `pyContains`
-- `pyIter`
 - `pyPop`
+etc.
 
 Do not put every reusable helper here. String-only, list-only, or dict-only runtime
 functions should stay in their type-specific files until there is a deliberate need

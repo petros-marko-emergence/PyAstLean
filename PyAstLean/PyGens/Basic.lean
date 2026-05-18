@@ -6,7 +6,7 @@ open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
-#map_names [print → pyPrint, len → pyLen]
+#map_names [print → pyPrint, len → pyLen, sorted → pySort]
 
 def intToStx (n : Int) : MetaM <| TSyntax `term := do
   if n < 0 then
@@ -382,6 +382,11 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
       | .arr arr => arr.mapM (fun argJson => getCode argJson `term)
       | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
 
+    let .ok keyWordsJson := json.getObjVal? "keywords" | throwError
+      s!"Call node does not have a 'keywords' field or it is not json pairs: {json}"
+    let .ok keyWordsMap := keyWordsJson.getObj? | throwError
+      s!"Call node 'keywords' field is not a JSON object: {keyWordsJson}"
+
     -- NEW: Array to hold ALL arguments for a flat application
     let mut allArgs : Array (TSyntax `term) := #[]
     let mut funcIdent : TSyntax `term ← `("")
@@ -392,6 +397,26 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
         s!"Attribute node missing 'value' field: {funcJson}"
       let .ok attr := funcJson.getObjValAs? String "attr" | throwError
         s!"Attribute node missing 'attr' field: {funcJson}"
+
+      if attr == "get" then
+        unless keyWordsMap.isEmpty do
+          throwError "get() calls with keyword arguments are not supported yet."
+        let valCode ← getCode valueJson `term
+        let argsArray ← match argsJson with
+          | .arr arr => pure arr
+          | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
+        match argsArray.size with
+        | 1 =>
+            let keyCode ← getCode argsArray[0]! `term
+            let pyGetOptIdent := mkIdent ``pyGetOpt
+            return ← `($pyGetOptIdent $valCode $keyCode)
+        | 2 =>
+            let keyCode ← getCode argsArray[0]! `term
+            let defaultCode ← getCode argsArray[1]! `term
+            let pyGetDIdent := mkIdent ``pyGetD
+            return ← `($pyGetDIdent $valCode $keyCode $defaultCode)
+        | _ =>
+            throwError "get() expects one or two positional arguments."
 
       let valCode ← getCode valueJson `term
 
@@ -416,12 +441,6 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     -- 3. APPLY POSITIONAL ARGUMENTS
     for argCode in argsCodes do
       allArgs := allArgs.push argCode
-
-    -- 4. APPLY KEYWORD ARGUMENTS
-    let .ok keyWordsJson := json.getObjVal? "keywords" | throwError
-      s!"Call node does not have a 'keywords' field or it is not json pairs: {json}"
-    let .ok keyWordsMap := keyWordsJson.getObj? | throwError
-      s!"Call node 'keywords' field is not a JSON object: {keyWordsJson}"
 
     -- 5. FLATTEN POSITIONAL CALL FIRST (Fixes the bracketing issue)
     -- This generates `funcIdent arg1 arg2` cleanly
@@ -471,6 +490,27 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
         let argCode ← getCode argJson `term
         let pyAppendIdent := mkIdent ``pyAppend
         return ← `(doElem| $targetIdent:ident := $pyAppendIdent $targetIdent $argCode)
+
+      if attr == "get" then
+        unless keyWordsMap.isEmpty do
+          throwError "get() calls with keyword arguments are not supported yet."
+        let argsArray ← match argsJson with
+          | .arr arr => pure arr
+          | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
+        let valCode ← getCode valueJson `term
+        let t ← match argsArray.size with
+          | 1 =>
+              let keyCode ← getCode argsArray[0]! `term
+              let pyGetOptIdent := mkIdent ``pyGetOpt
+              `($pyGetOptIdent $valCode $keyCode)
+          | 2 =>
+              let keyCode ← getCode argsArray[0]! `term
+              let defaultCode ← getCode argsArray[1]! `term
+              let pyGetDIdent := mkIdent ``pyGetD
+              `($pyGetDIdent $valCode $keyCode $defaultCode)
+          | _ =>
+              throwError "get() expects one or two positional arguments."
+        return ← `(doElem| let _ := $t)
 
       let valCode ← getCode valueJson `term
 
