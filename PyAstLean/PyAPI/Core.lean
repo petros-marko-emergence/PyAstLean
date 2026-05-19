@@ -39,4 +39,44 @@ def pyRange (stop : Int) (start : Int := 0) (step : Int := 1) : List Int := do
   else
     []
 
+/-- Safe list indexing. -/
+def List.get! [Inhabited α] (xs : List α) (i : Nat) : α :=
+  match xs with
+  | [] => panic! "index out of bounds"
+  | x :: xs => if i == 0 then x else List.get! xs (i - 1)
+
+/-- Python-style indexing/slicing for lists. -/
+def pyListGetItem (xs : List α) [Inhabited α] (idx : Int) : Option α :=
+  if idx < 0 then
+    if (idx.natAbs) <= xs.length then
+      some (List.get! xs (xs.length - idx.natAbs))
+    else none
+  else if idx < xs.length then
+    some (List.get! xs idx.toNat)
+  else none
+
+/-- Python-style slicing for lists. -/
+def pyListSlice (xs : List α) (start : Option Int) (stop : Option Int) : List α :=
+  let len := xs.length
+  let start : Nat := match start with
+    | some i => if i < 0 then (max 0 (len + i)).toNat else (min len i.toNat)
+    | none => 0
+  let stop : Nat := match stop with
+    | some i => if i < 0 then (max 0 (len + i)).toNat else (min len i.toNat)
+    | none => len
+  xs.take stop |> List.drop start
+
+/-- Python-style indexing/slicing for strings. -/
+def pyStringGetItem (s : String) (idx : Int) : Option Char :=
+  let lst := s.toList
+  match pyListGetItem lst idx with
+  | some c => some c
+  | none => none
+
+/-- Python-style slicing for strings. -/
+def pyStringSlice (s : String) (start : Option Int) (stop : Option Int) : String :=
+  let lst := s.toList
+  let sliced := pyListSlice lst start stop
+  String.ofList sliced
+
 end PyAstLean

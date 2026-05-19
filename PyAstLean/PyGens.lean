@@ -3,3 +3,4 @@ import PyAstLean.PyGens.CallExpr
 import PyAstLean.PyGens.FuncDef
 import PyAstLean.PyGens.LambdaExpr
 import PyAstLean.PyGens.ListComp
+import PyAstLean.PyGens.Subscript
