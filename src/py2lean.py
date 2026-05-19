@@ -5,6 +5,7 @@ import json
 import ast
 import atexit
 import select
+import re
 from pathlib import Path
 import subprocess
 import logging
@@ -18,13 +19,14 @@ SRC_DIR = HOMEDIR / "src"
 PY_EXEC = HOMEDIR / ".venv" / "bin" / "python"
 logger = logging.getLogger(__name__)
 
+COMMENT_PLACEHOLDER_RE = re.compile(
+    r"^(?P<indent>\s*)(?:let|def)\s+__pyastlean_comment_(?P<id>\d+)\b.*$"
+)
+
 class ASTToJsonLeanVisitor(ASTToJsonLeanVisitorBase):
     """Concrete visitor that implements the translation logic for a specific subset of Python syntax."""
     pass  # For now, we only have BinOp, Constant, and Expr. We can add more visit methods as needed.
         
-translator = ASTToJsonLeanVisitor()
-
-
 def configure_logging(verbose: bool) -> None:
     """Configure CLI logging, keeping normal runs quiet unless verbose is enabled."""
     level = logging.DEBUG if verbose else logging.WARNING
@@ -46,6 +48,49 @@ def _walk_json_nodes(node, *, skip_nested_function_bodies=False):
     elif isinstance(node, list):
         for item in node:
             yield from _walk_json_nodes(item, skip_nested_function_bodies=skip_nested_function_bodies)
+
+
+def _comment_node_map(node):
+    comments = {}
+    for subnode in _walk_json_nodes(node):
+        node_type = _node_type(subnode)
+        if node_type not in {"Comment", "DocString"}:
+            continue
+        comment_id = subnode.get("comment_id")
+        if comment_id is not None:
+            comments[str(comment_id)] = subnode
+    return comments
+
+
+def _lean_comment_lines(comment_node, indent):
+    text = str(comment_node.get("text", ""))
+    if _node_type(comment_node) == "DocString":
+        safe_lines = [line.replace("-/", "- /") for line in text.splitlines()] or [""]
+        return [f"{indent}/-", *[f"{indent}{line}" for line in safe_lines], f"{indent}-/"]
+    body = text.replace("\n", " ").replace("\r", " ").strip()
+    return [f"{indent}-- {body}" if body else f"{indent}--"]
+
+
+def _inject_comments_into_lean(ast_json, lean_code):
+    comment_map = _comment_node_map(ast_json)
+    if not comment_map:
+        return lean_code
+    output_lines = []
+    for line in lean_code.splitlines():
+        match = COMMENT_PLACEHOLDER_RE.match(line)
+        if match is None:
+            output_lines.append(line)
+            continue
+        comment_node = comment_map.get(match.group("id"))
+        if comment_node is None:
+            output_lines.append(line)
+            continue
+        output_lines.extend(_lean_comment_lines(comment_node, match.group("indent")))
+    return "\n".join(output_lines)
+
+
+def _direct_comment_code(ast_json):
+    return "\n".join(_lean_comment_lines(ast_json, ""))
 
 
 def _body_has_direct_exception_syntax(body):
@@ -241,6 +286,7 @@ def translate_to_json(source_code, filepath=None):
     logger.debug("Source passed to Python AST parser:\n%s", source_code)
     ast_tree = ast.parse(source_code)
     logger.debug("Parsed Python AST:\n%s", ast.dump(ast_tree, indent=4))
+    translator = ASTToJsonLeanVisitor(source_code)
     data = translator.visit(ast_tree)
     annotate_exception_effects(data)
     annotate_io_effects(data)
@@ -466,23 +512,41 @@ def translate_to_lean(source_code, target="term", filepath = None):
                 # A top-level Python `pass` is a true no-op, so there is no Lean command to emit.
                 if stmt.get("node_type") == "Pass":
                     continue
+                if stmt.get("node_type") in {"Comment", "DocString"}:
+                    code_parts.append(_direct_comment_code(stmt))
+                    continue
                 result = invoke_lean_backend(stmt, target, check=False, client=client)
                 if result.get("result") is False:
                     return result
                 code_key = f"lean_{target}"
                 if code_key not in result:
                     return {"result": False, "error": f"Missing '{code_key}' in backend response."}
-                code_parts.append(result[code_key])
+                code_parts.append(_inject_comments_into_lean(stmt, result[code_key]))
             return {"result": True, f"lean_{target}": "\n\n".join(code_parts)}
 
         if len(body) == 1:
-            return invoke_lean_backend(body[0], target, client=client)
+            result = invoke_lean_backend(body[0], target, client=client)
+            if result.get("result") is False:
+                return result
+            code_key = f"lean_{target}"
+            if code_key in result:
+                result[code_key] = _inject_comments_into_lean(body[0], result[code_key])
+            return result
         return {
             "result": False,
             "error": f"Target '{target}' only supports a single top-level statement; use --target command for full modules.",
         }
 
-    return invoke_lean_backend(ast_json, target, client=client)
+    if target == "command" and ast_json.get("node_type") in {"Comment", "DocString"}:
+        return {"result": True, f"lean_{target}": _direct_comment_code(ast_json)}
+
+    result = invoke_lean_backend(ast_json, target, client=client)
+    if result.get("result") is False:
+        return result
+    code_key = f"lean_{target}"
+    if code_key in result:
+        result[code_key] = _inject_comments_into_lean(ast_json, result[code_key])
+    return result
 
 def egProgram():
     return """def f(n):
