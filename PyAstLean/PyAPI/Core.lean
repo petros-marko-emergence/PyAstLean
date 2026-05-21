@@ -39,24 +39,17 @@ def pyRange (stop : Int) (start : Int := 0) (step : Int := 1) : List Int := do
   else
     []
 
-/-- Safe list indexing. -/
-def List.get! [Inhabited α] (xs : List α) (i : Nat) : α :=
-  match xs with
-  | [] => panic! "index out of bounds"
-  | x :: xs => if i == 0 then x else List.get! xs (i - 1)
-
 /-- Python-style indexing/slicing for lists. -/
-def pyListGetItem (xs : List α) [Inhabited α] (idx : Int) : Option α :=
-  if idx < 0 then
-    if (idx.natAbs) <= xs.length then
-      some (List.get! xs (xs.length - idx.natAbs))
-    else none
-  else if idx < xs.length then
-    some (List.get! xs idx.toNat)
-  else none
+def pyListGetItem {α : Type} [BEq α] (xs : List α) (idx : Int) : Option α :=
+  let len := xs.length
+  let trueIdx := idx % len |>.toNat
+  let atIdx x := x.snd == trueIdx
+  xs.zipIdx
+  |>.find? (p := atIdx)
+  |>.map (·.fst)
 
 /-- Python-style slicing for lists. -/
-def pyListSlice (xs : List α) (start : Option Int) (stop : Option Int) : List α :=
+def pyListSlice {α : Type} (xs : List α) (start : Option Int) (stop : Option Int) : List α :=
   let len := xs.length
   let start : Nat := match start with
     | some i => if i < 0 then (max 0 (len + i)).toNat else (min len i.toNat)

@@ -3,6 +3,14 @@ import PyAstLean.PyGens.Basic
 
 namespace PyAstLean
 
+/-- Check if a JSON node represents a string constant. -/
+def isStringConstant (json : Lean.Json) : Bool :=
+    let nodeType := json.getObjValAs? (α := Lean.Json) (k := "node_type")
+    let value := json.getObjValAs? (α := Lean.Json) (k := "value")
+    match nodeType, value with
+    | Except.ok "Constant", Except.ok (.str _) => true
+    | _, _ => false
+
 open Lean Elab Term Meta
 open PyAstLean
 
@@ -15,11 +23,12 @@ def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
     let .ok sliceJson := json.getObjValAs? Json "slice" | throwError
       s!"Subscript node does not have a 'slice' field or it is not a JSON value: {json}"
     let valueCode ← getCode valueJson `term
-    
+
     let isTuple := match valueJson.getObjValAs? String "node_type" with
     | .ok "Tuple" => true
     | _ => false
-    
+    let isString := isStringConstant valueJson
+
     if isTuple then
         match sliceJson.getObjValAs? String "node_type", sliceJson.getObjValAs? Json "value" with
         | .ok "Constant", .ok (.num (JsonNumber.mk 0 0)) =>
@@ -29,6 +38,24 @@ def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
             let sndIdent := mkIdent ``Prod.snd
             `($sndIdent $valueCode)
         | _, _ =>
+            let sliceCode ← getCode sliceJson `term
+            let getIdent := mkIdent `getElem!
+            `($getIdent $valueCode $sliceCode)
+    else if isString then
+        let sliceType := sliceJson.getObjValAs? String "node_type"
+        match sliceType with
+        | .ok "Constant" =>
+            let idx := sliceJson.getObjValAs? Int "value"
+            match idx with
+            | .ok i =>
+                let getIdent := mkIdent `PyAstLean.pyStringGetItem
+                let iStx ← intToStx i
+                `($getIdent $valueCode $iStx)
+            | _ =>
+                let sliceCode ← getCode sliceJson `term
+                let getIdent := mkIdent `getElem!
+                `($getIdent $valueCode $sliceCode)
+        | _ =>
             let sliceCode ← getCode sliceJson `term
             let getIdent := mkIdent `getElem!
             `($getIdent $valueCode $sliceCode)
