@@ -1,11 +1,11 @@
 # PYASTLEANCHECK START
 # TARGET: command
-# CHECK: def read_int_list :=
+# CHECK: def read_int_list : IO (List Int) := do
 # CHECK: let mut xs :=
-# CHECK: PyAstLean.pyInputIO ""
+# CHECK: pyList
+# CHECK: pyMap pyInt
 # CHECK: PyAstLean.pyStringSplit
-# CHECK: PyAstLean.pyMap pyInt
-# CHECK: PyAstLean.pyList
+# CHECK: PyAstLean.pyInputIO ""
 # CHECK: return xs
 # PYASTLEANCHECK END
 

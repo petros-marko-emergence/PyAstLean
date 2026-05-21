@@ -62,6 +62,7 @@ Use auto-serialize for nodes whose JSON form is basically:
 AUTO_SERIALIZED_NODE_NAMES = {
     "ExceptHandler",
     "match_case",
+    "alias",
 }
 
 FUNCTION_DEF_SCHEMA = {
@@ -429,6 +430,22 @@ class ASTToJsonLeanVisitorBase:
                 body_end_line=len(self.source_lines),
                 allow_docstring=True,
             )
+        }
+
+    def visit_Import(self, node):
+        """Translate `import ...` statements into a lightweight IR node."""
+        return {
+            "node_type": "Import",
+            "names": [self.visit(alias) for alias in node.names],
+        }
+
+    def visit_ImportFrom(self, node):
+        """Translate `from ... import ...` statements into a lightweight IR node."""
+        return {
+            "node_type": "ImportFrom",
+            "module": node.module,
+            "names": [self.visit(alias) for alias in node.names],
+            "level": node.level,
         }
 
     def visit_FunctionDef(self, node):

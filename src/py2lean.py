@@ -510,7 +510,7 @@ def translate_to_lean(source_code, target="term", filepath = None):
             code_parts = []
             for stmt in body:
                 # A top-level Python `pass` is a true no-op, so there is no Lean command to emit.
-                if stmt.get("node_type") == "Pass":
+                if stmt.get("node_type") in {"Pass", "Import", "ImportFrom"}:
                     continue
                 if stmt.get("node_type") in {"Comment", "DocString"}:
                     code_parts.append(_direct_comment_code(stmt))

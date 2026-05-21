@@ -188,7 +188,52 @@ partial def inlineIOTerm (json : Json) : PygenM (TSyntax `term) := do
           let arg0 ← inlineIOTerm argsArray[0]!
           `($pyIntIdent $arg0)
       | _, _ =>
-          return ← getCode json `term
+          let mut inlineArgs : Array (TSyntax `term) := #[]
+          for argJson in argsArray do
+            if basicJsonUsesIOEffect argJson then
+              inlineArgs := inlineArgs.push (← inlineIOTerm argJson)
+            else
+              match argJson.getObjValAs? String "node_type", argJson.getObjValAs? String "id" with
+              | .ok "Name", .ok funcName =>
+                  let mappedName ← leanName funcName.toName
+                  inlineArgs := inlineArgs.push ((mkIdent mappedName : TSyntax `term))
+              | _, _ =>
+                  inlineArgs := inlineArgs.push (← getCode argJson `term)
+          let mut funcTerm : TSyntax `term ← `("")
+          if funcJson.getObjValAs? String "node_type" == .ok "Attribute" then
+            let .ok valueJson := funcJson.getObjValAs? Json "value" | throwError
+              s!"Attribute node missing 'value' field: {funcJson}"
+            let .ok attr := funcJson.getObjValAs? String "attr" | throwError
+              s!"Attribute node missing 'attr' field: {funcJson}"
+            let receiverTerm ←
+              if basicJsonUsesIOEffect valueJson then
+                inlineIOTerm valueJson
+              else
+                getCode valueJson `term
+            match pythonMethodMap attr with
+            | some funcName =>
+                let mapped := mkIdent funcName
+                funcTerm ← `($mapped $receiverTerm)
+            | none =>
+                let attrId := mkIdent attr.toName
+                funcTerm ← `($receiverTerm.$attrId)
+          else
+            match funcJson.getObjValAs? String "node_type", funcJson.getObjValAs? String "id" with
+            | .ok "Name", .ok funcName =>
+                let mappedName ← leanName funcName.toName
+                funcTerm := (mkIdent mappedName : TSyntax `term)
+            | _, _ =>
+                funcTerm ← getCode funcJson `term
+          let mut t ← `($funcTerm $inlineArgs*)
+          for (kwName, kwValueJson) in keyWordsMap.toList do
+            let kwValueCode ←
+              if basicJsonUsesIOEffect kwValueJson then
+                inlineIOTerm kwValueJson
+              else
+                getCode kwValueJson `term
+            let kwId := mkIdent kwName.toName
+            t ← `($t ($kwId:ident := $kwValueCode))
+          return t
   | "FormattedValue" => do
       let .ok valueJson := json.getObjValAs? Json "value" | throwError
         s!"FormattedValue node does not have a 'value' field or it is not a JSON value: {json}"
