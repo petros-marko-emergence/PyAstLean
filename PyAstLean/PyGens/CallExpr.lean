@@ -344,8 +344,13 @@ def buildIOPureApplicationFromArgs (argJsons : Array Json) (argCodes : Array (TS
     let argCode := argCodes[idx]!
     if basicJsonUsesIOEffect argJson then
       let (argBindings, argTerm) ← hoistIOTerm argJson
-      bindings := bindings ++ argBindings
-      resolvedArgs := resolvedArgs.push argTerm
+      if argBindings.isEmpty then
+        let binder := mkIdent (s!"__py_arg{idx}").toName
+        bindings := bindings.push (← `(doElem| let $binder:ident ← $argTerm:term))
+        resolvedArgs := resolvedArgs.push (binder : TSyntax `term)
+      else
+        bindings := bindings ++ argBindings
+        resolvedArgs := resolvedArgs.push argTerm
     else if basicJsonUsesMonadicEffect argJson then
       let binder := mkIdent (s!"__py_arg{idx}").toName
       bindings := bindings.push (← `(doElem| let $binder:ident ← $argCode:term))
@@ -375,8 +380,13 @@ def buildIOActionApplicationFromArgs (argJsons : Array Json) (argCodes : Array (
     let argCode := argCodes[idx]!
     if basicJsonUsesIOEffect argJson then
       let (argBindings, argTerm) ← hoistIOTerm argJson
-      bindings := bindings ++ argBindings
-      resolvedArgs := resolvedArgs.push argTerm
+      if argBindings.isEmpty then
+        let binder := mkIdent (s!"__py_arg{idx}").toName
+        bindings := bindings.push (← `(doElem| let $binder:ident ← $argTerm:term))
+        resolvedArgs := resolvedArgs.push (binder : TSyntax `term)
+      else
+        bindings := bindings ++ argBindings
+        resolvedArgs := resolvedArgs.push argTerm
     else if basicJsonUsesMonadicEffect argJson then
       let binder := mkIdent (s!"__py_arg{idx}").toName
       bindings := bindings.push (← `(doElem| let $binder:ident ← $argCode:term))
@@ -391,6 +401,94 @@ def buildIOActionApplicationFromArgs (argJsons : Array Json) (argCodes : Array (
         $[$bindings:doElem]*
         let __py_result ← $actionTerm:term
         return __py_result) : $ioIdent _))
+
+/-- Infer a simple runtime type from a value expression when the shape is obvious. -/
+def inferSimpleValueTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
+  match json.getObjValAs? String "node_type" with
+  | .ok "Constant" =>
+      let .ok value := json.getObjValAs? Json "value" | throwError
+        s!"Constant node does not have a 'value' field or it is not a JSON value: {json}"
+      match value with
+      | .num (JsonNumber.mk _ exponent) =>
+          if exponent == 0 then
+            return some (mkIdent ``Int)
+          else
+            return some (mkIdent ``Rat)
+      | .str _ => return some (mkIdent ``String)
+      | .bool _ => return some (mkIdent ``Bool)
+      | _ => return none
+  | _ => return none
+
+/-- Infer a simple iterable element type from obvious literal iterables. -/
+def inferIterableElemTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
+  match json.getObjValAs? String "node_type" with
+  | .ok "List" => do
+      let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
+        s!"List node does not have an 'elts' field or it is not a JSON value: {json}"
+      match eltsJson with
+      | .arr arr =>
+          match arr[0]? with
+          | some first => inferSimpleValueTypeSyntax? first
+          | none => return none
+      | _ => return none
+  | .ok "Tuple" => do
+      let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
+        s!"Tuple node does not have an 'elts' field or it is not a JSON value: {json}"
+      match eltsJson with
+      | .arr arr =>
+          match arr[0]? with
+          | some first => inferSimpleValueTypeSyntax? first
+          | none => return none
+      | _ => return none
+  | .ok "Constant" => do
+      let .ok value := json.getObjValAs? Json "value" | throwError
+        s!"Constant node does not have a 'value' field or it is not a JSON value: {json}"
+      match value with
+      | .str _ => return some (mkIdent ``Char)
+      | _ => return none
+  | _ => return none
+
+/-- Read the positional parameter names from a lambda node without depending on `FuncDef.lean`. -/
+def lambdaArgIdents (json : Json) : PygenM (Array (TSyntax `ident)) := do
+  let .ok argsJson := json.getObjValAs? Json "args" | throwError
+    s!"Lambda node does not have an 'args' field or it is not a JSON value: {json}"
+  let .ok argsArray := argsJson.getObjValAs? (Array Json) "args" | throwError
+    s!"Lambda args does not have an 'args' field or it is not a JSON array: {argsJson}"
+  argsArray.mapM fun argJson => do
+    let .ok argName := argJson.getObjValAs? String "arg" | throwError
+      s!"Lambda argument does not have an 'arg' field or it is not a string: {argJson}"
+    pure (mkIdent argName.toName)
+
+/--
+If a `reduce` combiner is a two-argument lambda, stamp both lambda parameters with either
+a concrete runtime type or `_` placeholders so overloaded arithmetic does not drift too
+early during elaboration.
+-/
+def typedReduceLambdaCode (funcJson : Json) (fallback : TSyntax `term)
+    (paramTy? : Option (TSyntax `term)) : PygenM (TSyntax `term) := do
+  unless funcJson.getObjValAs? String "node_type" == .ok "Lambda" do
+    return fallback
+  let argIdents ← lambdaArgIdents funcJson
+  unless argIdents.size == 2 do
+    return fallback
+  let .ok bodyJson := funcJson.getObjValAs? Json "body" | throwError
+    s!"Lambda node does not have a 'body' field or it is not a JSON value: {funcJson}"
+  let bodyStx ← getCode bodyJson `term
+  let arg0 := argIdents[0]!
+  let arg1 := argIdents[1]!
+  let paramTy ← match paramTy? with
+    | some stx => pure stx
+    | none => `(_)
+  `(fun ($arg0 : $paramTy) ↦ fun ($arg1 : $paramTy) ↦ $bodyStx)
+
+/-- Map a bare Python builtin function name to the Lean runtime symbol when it is used as a value. -/
+def mappedCallableValueCode (json : Json) : PygenM (TSyntax `term) := do
+  match json.getObjValAs? String "node_type", json.getObjValAs? String "id" with
+  | .ok "Name", .ok funcName =>
+      let mappedName ← leanName funcName.toName
+      pure (mkIdent mappedName : TSyntax `term)
+  | _, _ =>
+      getCode json `term
 
 @[pygen "Call"]
 def callSyntax : (kind : SyntaxNodeKind) → Json →
@@ -411,6 +509,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
       s!"Call node 'keywords' field is not a JSON object: {keyWordsJson}"
 
     let mut allArgs : Array (TSyntax `term) := #[]
+    let mut allArgJsons : Array Json := #[]
     let mut funcIdent : TSyntax `term ← `("")
 
     if funcJson.getObjValAs? String "node_type" == .ok "Attribute" then
@@ -418,6 +517,33 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
         s!"Attribute node missing 'value' field: {funcJson}"
       let .ok attr := funcJson.getObjValAs? String "attr" | throwError
         s!"Attribute node missing 'attr' field: {funcJson}"
+
+      if attr == "reduce" && valueJson.getObjValAs? String "node_type" == .ok "Name" &&
+          valueJson.getObjValAs? String "id" == .ok "functools" then
+        unless keyWordsMap.isEmpty do
+          throwError "functools.reduce() keyword arguments are not supported yet."
+        match argsArray.size with
+        | 2 =>
+            let pyReduceNoInitIdent := mkIdent ``pyReduceNoInit
+            let elemTy? ← inferIterableElemTypeSyntax? argsArray[1]!
+            let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! elemTy?
+            let adjustedCodes := #[funcCode, argsCodes[1]!]
+            return ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+              let f := resolvedArgs[0]!
+              let xs := resolvedArgs[1]!
+              `($pyReduceNoInitIdent $xs $f)
+        | 3 =>
+            let pyReduceIdent := mkIdent ``pyReduce
+            let initTy? ← inferSimpleValueTypeSyntax? argsArray[2]!
+            let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! initTy?
+            let adjustedCodes := #[funcCode, argsCodes[1]!, argsCodes[2]!]
+            return ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+              let f := resolvedArgs[0]!
+              let xs := resolvedArgs[1]!
+              let init := resolvedArgs[2]!
+              `($pyReduceIdent $xs $f $init)
+        | _ =>
+            throwError "functools.reduce() expects two or three positional arguments."
 
       if attr == "get" then
         unless keyWordsMap.isEmpty do
@@ -441,6 +567,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
 
       let valCode ← getCode valueJson `term
       allArgs := allArgs.push valCode
+      allArgJsons := allArgJsons.push valueJson
 
       match pythonMethodMap attr with
       | some funcName =>
@@ -489,6 +616,76 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
             return ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               let arg0 := resolvedArgs[0]!
               `($pyIntIdent $arg0)
+        | .ok "Name", .ok "str" => do
+            unless keyWordsMap.isEmpty do
+              throwError "str() keyword arguments are not supported yet."
+            return ← match argsArray.size with
+            | 0 => `("")
+            | 1 =>
+                let pyStrIdent := mkIdent ``pyStr
+                buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+                  let arg0 := resolvedArgs[0]!
+                  `($pyStrIdent $arg0)
+            | _ =>
+                throwError "str() expects zero or one positional argument."
+        | .ok "Name", .ok "list" => do
+            unless keyWordsMap.isEmpty do
+              throwError "list() keyword arguments are not supported yet."
+            unless argsArray.size == 1 do
+              throwError "list() currently expects exactly one positional argument."
+            let pyListIdent := mkIdent ``pyList
+            return ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+              let arg0 := resolvedArgs[0]!
+              `($pyListIdent $arg0)
+        | .ok "Name", .ok "map" => do
+            unless keyWordsMap.isEmpty do
+              throwError "map() keyword arguments are not supported yet."
+            unless argsArray.size == 2 do
+              throwError "map() currently expects exactly two positional arguments."
+            let pyMapIdent := mkIdent ``pyMap
+            let funcCode ← mappedCallableValueCode argsArray[0]!
+            let adjustedCodes := #[funcCode, argsCodes[1]!]
+            return ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+              let f := resolvedArgs[0]!
+              let xs := resolvedArgs[1]!
+              `($pyMapIdent $f $xs)
+        | .ok "Name", .ok "filter" => do
+            unless keyWordsMap.isEmpty do
+              throwError "filter() keyword arguments are not supported yet."
+            unless argsArray.size == 2 do
+              throwError "filter() currently expects exactly two positional arguments."
+            let pyFilterIdent := mkIdent ``pyFilter
+            let funcCode ← mappedCallableValueCode argsArray[0]!
+            let adjustedCodes := #[funcCode, argsCodes[1]!]
+            return ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+              let f := resolvedArgs[0]!
+              let xs := resolvedArgs[1]!
+              `($pyFilterIdent $f $xs)
+        | .ok "Name", .ok "reduce" => do
+            unless keyWordsMap.isEmpty do
+              throwError "reduce() keyword arguments are not supported yet."
+            match argsArray.size with
+            | 2 => do
+                let pyReduceNoInitIdent := mkIdent ``pyReduceNoInit
+                let elemTy? ← inferIterableElemTypeSyntax? argsArray[1]!
+                let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! elemTy?
+                let adjustedCodes := #[funcCode, argsCodes[1]!]
+                return ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+                  let f := resolvedArgs[0]!
+                  let xs := resolvedArgs[1]!
+                  `($pyReduceNoInitIdent $xs $f)
+            | 3 => do
+                let pyReduceIdent := mkIdent ``pyReduce
+                let initTy? ← inferSimpleValueTypeSyntax? argsArray[2]!
+                let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! initTy?
+                let adjustedCodes := #[funcCode, argsCodes[1]!, argsCodes[2]!]
+                return ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+                  let f := resolvedArgs[0]!
+                  let xs := resolvedArgs[1]!
+                  let init := resolvedArgs[2]!
+                  `($pyReduceIdent $xs $f $init)
+            | _ =>
+                throwError "reduce() expects two or three positional arguments."
         | .ok "Name", .ok funcName =>
             let mappedName ← leanName funcName.toName
             funcIdent := (mkIdent mappedName : TSyntax `term)
@@ -497,14 +694,21 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
 
     for argCode in argsCodes do
       allArgs := allArgs.push argCode
+    for argJson in argsArray do
+      allArgJsons := allArgJsons.push argJson
 
-    let mut t ← `($funcIdent $allArgs*)
+    let buildApplied : Array (TSyntax `term) → PygenM (TSyntax `term) := fun resolvedArgs => do
+      let mut t ← `($funcIdent $resolvedArgs*)
+      for (kwName, kwValueJson) in keyWordsMap.toList do
+        let kwValueCode ← getCode kwValueJson `term
+        let kwId := mkIdent kwName.toName
+        t ← `($t ($kwId:ident := $kwValueCode))
+      return t
 
-    for (kwName, kwValueJson) in keyWordsMap.toList do
-      let kwValueCode ← getCode kwValueJson `term
-      let kwId := mkIdent kwName.toName
-      t ← `($t ($kwId:ident := $kwValueCode))
-    return t
+    if allArgJsons.toList.any basicJsonUsesIOEffect then
+      return ← buildIOPureApplicationFromArgs allArgJsons allArgs buildApplied
+    else
+      return ← buildApplied allArgs
   | `doElem, json => do
     let .ok funcJson := json.getObjValAs? Json "func" | throwError
       s!"Call node does not have a 'func' field or it is not a JSON value: {json}"
@@ -521,6 +725,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     let argsCodes ← argsArray.mapM (fun argJson => getCode argJson `term)
 
     let mut allArgs : Array (TSyntax `term) := #[]
+    let mut allArgJsons : Array Json := #[]
     let mut funcIdent : TSyntax `term ← `("")
 
     if funcJson.getObjValAs? String "node_type" == .ok "Attribute" then
@@ -528,6 +733,37 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
         s!"Attribute node missing 'value' field: {funcJson}"
       let .ok attr := funcJson.getObjValAs? String "attr" | throwError
         s!"Attribute node missing 'attr' field: {funcJson}"
+
+      if attr == "reduce" && valueJson.getObjValAs? String "node_type" == .ok "Name" &&
+          valueJson.getObjValAs? String "id" == .ok "functools" then
+        unless keyWordsMap.isEmpty do
+          throwError "functools.reduce() keyword arguments are not supported yet."
+        let t ← match argsArray.size with
+          | 2 => do
+              let pyReduceNoInitIdent := mkIdent ``pyReduceNoInit
+              let elemTy? ← inferIterableElemTypeSyntax? argsArray[1]!
+              let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! elemTy?
+              let adjustedCodes := #[funcCode, argsCodes[1]!]
+              buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+                let f := resolvedArgs[0]!
+                let xs := resolvedArgs[1]!
+                `($pyReduceNoInitIdent $xs $f)
+          | 3 => do
+              let pyReduceIdent := mkIdent ``pyReduce
+              let initTy? ← inferSimpleValueTypeSyntax? argsArray[2]!
+              let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! initTy?
+              let adjustedCodes := #[funcCode, argsCodes[1]!, argsCodes[2]!]
+              buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+                let f := resolvedArgs[0]!
+                let xs := resolvedArgs[1]!
+                let init := resolvedArgs[2]!
+                `($pyReduceIdent $xs $f $init)
+          | _ =>
+              throwError "functools.reduce() expects two or three positional arguments."
+        if argsArray.toList.any basicJsonUsesMonadicEffect then
+          return ← `(doElem| let _ ← $t:term)
+        else
+          return ← `(doElem| let _ := $t)
 
       if attr == "append" then
         unless keyWordsMap.isEmpty do
@@ -569,6 +805,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
 
       let valCode ← getCode valueJson `term
       allArgs := allArgs.push valCode
+      allArgJsons := allArgJsons.push valueJson
 
       match pythonMethodMap attr with
       | some funcName =>
@@ -623,6 +860,96 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
               return ← `(doElem| let _ ← $t:term)
             else
               return ← `(doElem| let _ := $t)
+        | .ok "Name", .ok "str" => do
+            unless keyWordsMap.isEmpty do
+              throwError "str() keyword arguments are not supported yet."
+            let t ← match argsArray.size with
+              | 0 => `("")
+              | 1 =>
+                  let pyStrIdent := mkIdent ``pyStr
+                  buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+                    let arg0 := resolvedArgs[0]!
+                    `($pyStrIdent $arg0)
+              | _ =>
+                  throwError "str() expects zero or one positional argument."
+            if argsArray.toList.any basicJsonUsesMonadicEffect then
+              return ← `(doElem| let _ ← $t:term)
+            else
+              return ← `(doElem| let _ := $t)
+        | .ok "Name", .ok "list" => do
+            unless keyWordsMap.isEmpty do
+              throwError "list() keyword arguments are not supported yet."
+            unless argsArray.size == 1 do
+              throwError "list() currently expects exactly one positional argument."
+            let pyListIdent := mkIdent ``pyList
+            let t ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+              let arg0 := resolvedArgs[0]!
+              `($pyListIdent $arg0)
+            if argsArray.toList.any basicJsonUsesMonadicEffect then
+              return ← `(doElem| let _ ← $t:term)
+            else
+              return ← `(doElem| let _ := $t)
+        | .ok "Name", .ok "map" => do
+            unless keyWordsMap.isEmpty do
+              throwError "map() keyword arguments are not supported yet."
+            unless argsArray.size == 2 do
+              throwError "map() currently expects exactly two positional arguments."
+            let pyMapIdent := mkIdent ``pyMap
+            let funcCode ← mappedCallableValueCode argsArray[0]!
+            let adjustedCodes := #[funcCode, argsCodes[1]!]
+            let t ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+              let f := resolvedArgs[0]!
+              let xs := resolvedArgs[1]!
+              `($pyMapIdent $f $xs)
+            if argsArray.toList.any basicJsonUsesMonadicEffect then
+              return ← `(doElem| let _ ← $t:term)
+            else
+              return ← `(doElem| let _ := $t)
+        | .ok "Name", .ok "filter" => do
+            unless keyWordsMap.isEmpty do
+              throwError "filter() keyword arguments are not supported yet."
+            unless argsArray.size == 2 do
+              throwError "filter() currently expects exactly two positional arguments."
+            let pyFilterIdent := mkIdent ``pyFilter
+            let funcCode ← mappedCallableValueCode argsArray[0]!
+            let adjustedCodes := #[funcCode, argsCodes[1]!]
+            let t ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+              let f := resolvedArgs[0]!
+              let xs := resolvedArgs[1]!
+              `($pyFilterIdent $f $xs)
+            if argsArray.toList.any basicJsonUsesMonadicEffect then
+              return ← `(doElem| let _ ← $t:term)
+            else
+              return ← `(doElem| let _ := $t)
+        | .ok "Name", .ok "reduce" => do
+            unless keyWordsMap.isEmpty do
+              throwError "reduce() keyword arguments are not supported yet."
+            let t ← match argsArray.size with
+              | 2 => do
+                  let pyReduceNoInitIdent := mkIdent ``pyReduceNoInit
+                  let elemTy? ← inferIterableElemTypeSyntax? argsArray[1]!
+                  let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! elemTy?
+                  let adjustedCodes := #[funcCode, argsCodes[1]!]
+                  buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+                    let f := resolvedArgs[0]!
+                    let xs := resolvedArgs[1]!
+                    `($pyReduceNoInitIdent $xs $f)
+              | 3 => do
+                  let pyReduceIdent := mkIdent ``pyReduce
+                  let initTy? ← inferSimpleValueTypeSyntax? argsArray[2]!
+                  let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! initTy?
+                  let adjustedCodes := #[funcCode, argsCodes[1]!, argsCodes[2]!]
+                  buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
+                    let f := resolvedArgs[0]!
+                    let xs := resolvedArgs[1]!
+                    let init := resolvedArgs[2]!
+                    `($pyReduceIdent $xs $f $init)
+              | _ =>
+                  throwError "reduce() expects two or three positional arguments."
+            if argsArray.toList.any basicJsonUsesMonadicEffect then
+              return ← `(doElem| let _ ← $t:term)
+            else
+              return ← `(doElem| let _ := $t)
         | .ok "Name", .ok funcName =>
             let mappedName ← leanName funcName.toName
             funcIdent := (mkIdent mappedName : TSyntax `term)
@@ -631,15 +958,23 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
 
     for argCode in argsCodes do
       allArgs := allArgs.push argCode
+    for argJson in argsArray do
+      allArgJsons := allArgJsons.push argJson
 
-    let mut t ← `($funcIdent $allArgs*)
+    let buildApplied : Array (TSyntax `term) → PygenM (TSyntax `term) := fun resolvedArgs => do
+      let mut t ← `($funcIdent $resolvedArgs*)
+      for (kwName, kwValueJson) in keyWordsMap.toList do
+        let kwValueCode ← getCode kwValueJson `term
+        let kwId := mkIdent kwName.toName
+        t ← `($t ($kwId:ident := $kwValueCode))
+      return t
 
-    for (kwName, kwValueJson) in keyWordsMap.toList do
-      let kwValueCode ← getCode kwValueJson `term
-      let kwId := mkIdent kwName.toName
-      t ← `($t ($kwId:ident := $kwValueCode))
-
-    `(doElem| let _ := $t)
+    if allArgJsons.toList.any basicJsonUsesIOEffect then
+      let t ← buildIOPureApplicationFromArgs allArgJsons allArgs buildApplied
+      `(doElem| let _ ← $t:term)
+    else
+      let t ← buildApplied allArgs
+      `(doElem| let _ := $t)
   | _, _ => throwError s!"Unsupported syntax category for Call node"
 
 @[pygen "Attribute"]

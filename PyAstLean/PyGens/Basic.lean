@@ -6,7 +6,10 @@ open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
-#map_names [print → pyPrint, len → pyLen, sorted → pySort, int → pyInt]
+#map_names [print → pyPrint, len → pyLen, sorted → pySort, int → pyInt,
+  str → pyStr, list → pyList,
+  map → pyMap, filter → pyFilter, zip → pyZip, enumerate → pyEnumerate,
+  sum → pySum, min → pyMin, max → pyMax]
 
 def intToStx (n : Int) : MetaM <| TSyntax `term := do
   if n < 0 then
