@@ -58,7 +58,7 @@ Optional form of `dict.get(key)`.
 When the key is missing and no default is supplied, Python returns `None`, so the
 natural Lean model is `Option β`.
 -/
-def pyDictGetOpt [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) : Option β :=
+def pyDictGetOpt? [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) : Option β :=
   match m.get? key with
   | some value => some value
   | none => none
@@ -74,12 +74,29 @@ def pyDictGetD [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) (defaul
   | none => default
 
 /-- Public runtime surface for Python `get(key)`. -/
-def pyGetOpt [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) : Option β :=
-  pyDictGetOpt m key
+def pyGetOpt? [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) : Option β :=
+  pyDictGetOpt? m key
 
 /-- Public runtime surface for Python `get(key, default)`. -/
 def pyGetD [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) (default : β) : β :=
   pyDictGetD m key default
+
+
+theorem pyDict_length_eq_items_length [BEq α] [EquivBEq α] [Hashable α] [LawfulHashable α](m : Std.HashMap α β) :
+  m.size = (pyItems m).length := by
+    simp [pyItems,pyDictItems, Std.HashMap.length_toList]
+
+theorem pyDict_keys_length_eq_items_length [BEq α] [EquivBEq α] [Hashable α] [LawfulHashable α](m : Std.HashMap α β) :
+  (pyKeys m).length = (pyItems m).length := by
+    simp [pyKeys,pyItems, pyDictItems, Std.HashMap.length_toList, pyDictKeys]
+
+theorem pyDict_values_length_eq_items_length [BEq α] [EquivBEq α] [Hashable α] [LawfulHashable α](m : Std.HashMap α β) :
+  (pyValues m).length = (pyItems m).length := by
+    simp [pyValues, pyItems, pyDictItems, Std.HashMap.length_toList, pyDictValues]
+
+theorem pyDict_keys_length_eq_values_length [BEq α] [EquivBEq α] [Hashable α] [LawfulHashable α](m : Std.HashMap α β) :
+  (pyKeys m).length = (pyValues m).length := by
+    simp [pyDict_keys_length_eq_items_length, pyDict_values_length_eq_items_length]
 
 #eval do
   let myMap : Std.HashMap String Nat := {}
@@ -87,8 +104,10 @@ def pyGetD [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) (default : 
   -- Inserting values
   let updatedMap := myMap.insert "apple" 1
   let updatedMap2 := updatedMap.insert "banana" 2
-  pyDictGetOpt updatedMap2 "apple" -- some 1
+  pyDictGetOpt? updatedMap2 "apple" -- some 1
 
 --   pyItems updatedMap2 -- [("apple", 1), ("banana", 2)]
+
+-- #check List.length_foldr_permutationsAux2
 
 end PyAstLean

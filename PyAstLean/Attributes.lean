@@ -20,22 +20,33 @@ def pythonMethodMap? (attr : String) : Option Lean.Name :=
   | "join"       => some ``pyStringJoin
   | "replace"    => some ``pyStringReplace
   | "strip"      => some ``pyStringStrip
-  | "find"        => some ``pyStringFind
-  | "index"      => some ``pyStringIndex
   | "startswith" => some ``pyStringStartswith
   | "endswith"   => some ``pyStringEndswith
   | "lower"      => some ``pyStringLower
   | "upper"      => some ``pyStringUpper
+  | "islower"    => some ``pyIsLower
+  | "isupper"    => some ``pyIsUpper
+  | "isalpha"    => some ``pyIsAlpha
+  | "isdecimal"  => some ``pyIsDecimal
+  | "isalphanum" => some ``pyIsAlphanum
+  | "isspace"    => some ``pyIsWhitespace
+  | "partition"  => some ``pyPartition
+  | "capitalize" => some ``pyStringCapitalize
   -- List Only
   | "append"     => some ``pyAppend
+  | "extend"     => some ``pyExtend
+  | "reverse"    => some ``pyReverse
   -- Dict Only
   | "items"      => some ``pyItems
   | "keys"       => some ``pyKeys
   | "values"     => some ``pyValues
   -- Common
   | "clear"      => some ``pyClear
-  | "pop"        => some ``pyPop
   | "update"     => some ``pyUpdate
+  | "pop"        => some ``pyPop
+  | "count"      => some ``pyCount
+  | "find"        => some ``pyStringFind
+  | "index"      => some ``pyStringIndex
   | _            => none
 
 /--

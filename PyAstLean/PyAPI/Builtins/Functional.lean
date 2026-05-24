@@ -36,6 +36,17 @@ def pySum {α β : Type} [inst : PyIterable α β] [OfNat β 0]
     [PyHAdd β β β] (xs : α) (start : β := 0) : β :=
   (pyIter xs).foldl (fun acc x => acc +ₚ x) start
 
+
+theorem pySum_nil {α β : Type} [inst : PyIterable α β] [OfNat β 0] [PyHAdd β β β] (start : β := 0) (x : α) (h : pyIter x = []) :
+  pySum x start = start := by
+    grind [pySum]
+
+theorem pySum_Singleton {α β : Type} [inst : PyIterable α β] [OfNat β 0] [PyHAdd β β β] (start : β := 0) (x : α)
+    : ∀ y , pyIter x = [y] → pySum x start = start +ₚ y := by
+  intro y h
+  grind [pySum]
+
+
 /-- Pick the minimum element of a non-empty list using `Ord`. -/
 private def pyMinList [Ord α] [Inhabited α] : List α → α
   | [] => panic! "ValueError: min() arg is an empty sequence"
@@ -47,6 +58,22 @@ private def pyMinList [Ord α] [Inhabited α] : List α → α
 /-- Python-style `min` over one iterable argument. -/
 def pyMin {α β : Type} [inst : PyIterable α β] [Ord β] [Inhabited β] (xs : α) : β :=
   pyMinList (pyIter xs)
+-- #check List
+
+theorem pyMinList_singleton [Ord α] [Inhabited α] : ∀ x : α, pyMinList [x] = x := by
+  intro x
+  grind [pyMinList]
+
+theorem pyMin_singleton [inst : PyIterable α β] [Ord β] [Inhabited β] : ∀ (xs : α) (_ : (pyIter xs).length = 1), pyMin xs = (pyIter xs).head! := by
+  intro xs h
+  unfold pyMin
+  match h' : pyIter xs with
+  | [x] => simp [pyMinList_singleton x]
+  | [] => aesop
+  | x :: y :: s =>
+    have c : (x :: y :: s).length ≥ 2 := by grind
+    grind
+
 
 /-- Pick the maximum element of a non-empty list using `Ord`. -/
 private def pyMaxList [Ord α] [Inhabited α] : List α → α
@@ -59,6 +86,21 @@ private def pyMaxList [Ord α] [Inhabited α] : List α → α
 /-- Python-style `max` over one iterable argument. -/
 def pyMax {α β : Type} [inst : PyIterable α β] [Ord β] [Inhabited β] (xs : α) : β :=
   pyMaxList (pyIter xs)
+
+
+theorem pyMaxList_singleton [Ord α] [Inhabited α] : ∀ x : α, pyMaxList [x] = x := by
+  intro x
+  grind [pyMaxList]
+
+theorem pyMax_singleton [inst : PyIterable α β] [Ord β] [Inhabited β] : ∀ (xs : α) (_ : (pyIter xs).length = 1), pyMax xs = (pyIter xs).head! := by
+  intro xs h
+  unfold pyMax
+  match h' : pyIter xs with
+  | [x] => simp [pyMaxList_singleton x]
+  | [] => aesop
+  | x :: y :: s =>
+    have c : (x :: y :: s).length ≥ 2 := by grind
+    grind
 
 /--
 Python-style `reduce(function, iterable, initializer)`.
