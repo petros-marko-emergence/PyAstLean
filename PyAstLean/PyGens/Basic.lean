@@ -136,6 +136,35 @@ def js₀ := json% {
   "value": 1
 }
 
+/- map to noop-/
+@[pygen "Delete"]
+def deleteSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok targetsJson := json.getObjValAs? Json "targets" | throwError
+      s!"Delete node does not have a 'targets' field or it is not a JSON value: {json}"
+    let _ ← match targetsJson with
+      | .arr arr => arr.mapM (fun targetJson => getCode targetJson `term)
+      | _ => throwError s!"Delete node 'targets' field is not an array: {targetsJson}"
+    -- We currently do not support deletion semantics, so we simply return `()`.
+    `(())
+  | `doElem, json => do
+    let .ok targetsJson := json.getObjValAs? Json "targets" | throwError
+      s!"Delete node does not have a 'targets' field or it is not a JSON value: {json}"
+    let _ ← match targetsJson with
+      | .arr arr => arr.mapM (fun targetJson => getCode targetJson `term)
+      | _ => throwError s!"Delete node 'targets' field is not an array: {targetsJson}"
+    -- We currently do not support deletion semantics, so we simply return `()`.
+    `(doElem| let _ := ())
+  | `command, json => do
+    let .ok targetsJson := json.getObjValAs? Json "targets" | throwError
+      s!"Delete node does not have a 'targets' field or it is not a JSON value: {json}"
+    let _ ← match targetsJson with
+      | .arr arr => arr.mapM (fun targetJson => getCode targetJson `term)
+      | _ => throwError s!"Delete node 'targets' field is not an array: {targetsJson}"
+    -- We currently do not support deletion semantics, so we simply return `()`.
+    `(command| def del := ())
+  | _, _ => throwError s!"Unsupported syntax category for Delete node"
 /-- Detect the JSON encoding of Python's `None`. -/
 def isNoneConstantJson (json : Json) : Bool :=
   match json.getObjValAs? String "node_type", json.getObjValAs? Json "value" with

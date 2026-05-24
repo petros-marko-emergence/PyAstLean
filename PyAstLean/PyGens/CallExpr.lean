@@ -605,7 +605,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           match argsArray.size with
           | 1 =>
               let keyCode ← getCode argsArray[0]! `term
-              let pyGetOptIdent := mkIdent ``pyGetOpt
+              let pyGetOptIdent := mkIdent ``pyGetOpt?
               return ← `($pyGetOptIdent $valCode $keyCode)
           | 2 =>
               let keyCode ← getCode argsArray[0]! `term
@@ -840,7 +840,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           let t ← match argsArray.size with
             | 1 =>
                 let keyCode ← getCode argsArray[0]! `term
-                let pyGetOptIdent := mkIdent ``pyGetOpt
+                let pyGetOptIdent := mkIdent ``pyGetOpt?
                 `($pyGetOptIdent $valCode $keyCode)
             | 2 =>
                 let keyCode ← getCode argsArray[0]! `term

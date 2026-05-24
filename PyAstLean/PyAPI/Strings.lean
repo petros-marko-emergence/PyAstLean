@@ -107,11 +107,14 @@ def pyStringEndswith : String → (sfx : String) → Bool
 
 /-- Concrete string implementation for Python `lower`. -/
 def pyStringLower : String → String
-  | s => s.toLower
+  | s => s.toList.map Char.toLower |> String.ofList
 
 /-- Concrete string implementation for Python `upper`. -/
 def pyStringUpper : String → String
-  | s => s.toUpper
+  | s => s.toList.map Char.toUpper |> String.ofList
+
+def pyStringCapitalize : String → String
+  | s => s.capitalize
 
 /--
 Concrete string implementation for Python `split`.
@@ -124,7 +127,10 @@ def pyStringSplit : String → (sep : String := " ") → List String
       if sep = " " then
         splitOnPyWhitespace s
       else
-        s.splitOn sep
+        if sep = "" then
+          panic! "ValueError: empty separator"
+        else
+          s.splitOn sep
 
 /-- Concrete string implementation for Python `splitlines()`. -/
 def pyStringSplitLines : String → List String
@@ -146,8 +152,131 @@ def pyReplace : String → (old : String) → (new : String) → String :=
 def pyStrip : String → (chars : String := " ") → String
   | s, chars => pyStringStrip s chars
 
-/-- Public runtime surface for Python `find`. -/
-def pyFind : String → (sub : String) → Int :=
-  pyStringFind
+def pyStringCount : String → (sub : String) → Int
+   | s, "" => s.length + 1
+   | s, sub => (s.splitOn sub |>.length) - 1
 
+-- #check String.count
+def pyIsLower : String → Bool
+  | s => s.toList.filter Char.isAlpha |>.all Char.isLower
+
+def pyIsUpper : String → Bool
+  | s => s.toList.filter Char.isAlpha |>.all Char.isUpper
+
+def pyIsAlpha : String → Bool
+  | s => s.toList.all Char.isAlpha
+
+def pyIsDecimal : String → Bool
+  | s => s.toList.all Char.isDigit
+
+def pyIsAlphanum : String → Bool
+  | s => s.toList.all Char.isAlphanum
+
+def pyIsWhitespace : String → Bool
+  | s => s.toList.all isPyWhitespace
+
+
+def pyPartition : String → (sep : String) → (String × String × String)
+  | s, sep =>
+    match sep with
+    | "" => panic! "ValueError: empty separator"
+    | _ =>
+      match s.find? sep with
+      | some idx =>
+          -- let idx := idx.offset.byteIdx
+          let chars := s.toList
+          let pfx := String.ofList (chars.take idx.offset.byteIdx)
+          let suffix := String.ofList (chars.drop (idx.offset.byteIdx + sep.length))
+          (pfx, sep, suffix)
+      | none => (s, "", "")
+
+theorem pyLower_is_lower (s : String) : pyIsLower s = true → pyStringLower s = s := by
+  intro h
+  unfold pyIsLower at h
+  unfold pyStringLower
+  simp
+  simp_all only [List.all_filter, List.all_eq_true, Bool.or_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true]
+  have eq : List.map Char.toLower s.toList = s.toList := by
+    have h'' : (List.map Char.toLower s.toList).length = s.toList.length := by grind
+    apply List.ext_getElem!
+    · exact h''
+    · intro n
+      by_cases h' : n < s.toList.length
+      · simp_all only [List.length_map, String.length_toList, getElem!_pos, List.getElem_map]
+        have g : s.toList[n] ∈ s.toList := by simp
+        have g' : s.toList[n].isAlpha = false ∨ s.toList[n].isLower = true := by simp[h,g]
+        by_cases sc : s.toList[n].isLower
+        · simp [sc] at g'
+          apply Char.toLower_eq_of_not_isUpper
+          apply Char.not_isUpper_of_isLower
+          exact sc
+        · simp [sc] at g'
+          apply Char.toLower_eq_of_not_isUpper
+          simp_all only [List.getElem_mem, Bool.not_eq_true]
+          unfold Char.isAlpha at g'
+          simp [sc] at g'
+          exact g'
+      · grind
+  simp [eq]
+
+
+theorem pyUpper_is_upper (s : String) : pyIsUpper s = true → pyStringUpper s = s := by
+  intro h
+  unfold pyIsUpper at h
+  unfold pyStringUpper
+  simp
+  simp_all only [List.all_filter, List.all_eq_true, Bool.or_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true]
+  have eq : List.map Char.toUpper s.toList = s.toList := by
+    have h'' : (List.map Char.toUpper s.toList).length = s.toList.length := by grind
+    apply List.ext_getElem!
+    · exact h''
+    · intro n
+      by_cases h' : n < s.toList.length
+      · simp_all only [List.length_map, String.length_toList, getElem!_pos, List.getElem_map]
+        have g : s.toList[n] ∈ s.toList := by simp
+        have g' : s.toList[n].isAlpha = false ∨ s.toList[n].isUpper = true := by simp[h,g]
+        by_cases sc : s.toList[n].isUpper
+        · simp [sc] at g'
+          apply Char.toUpper_eq_of_not_isLower
+          apply Char.not_isLower_of_isUpper
+          exact sc
+        · simp [sc] at g'
+          apply Char.toUpper_eq_of_not_isLower
+          simp_all only [List.getElem_mem, Bool.not_eq_true]
+          unfold Char.isAlpha at g'
+          simp [sc] at g'
+          exact g'
+      · grind
+  simp [eq]
+
+theorem pyLower_is_true_lower (s : String) : pyIsLower (pyStringLower s) = true := by
+  unfold pyIsLower pyStringLower
+  simp
+
+theorem pyUpper_is_true_upper (s : String) : pyIsUpper (pyStringUpper s) = true := by
+  unfold pyIsUpper pyStringUpper
+  simp
+
+theorem pyLower_idempotent (s : String) : pyStringLower (pyStringLower s) = pyStringLower s := by
+  simp [pyLower_is_lower, pyLower_is_true_lower]
+
+theorem pyUpper_idempotent (s : String) : pyStringUpper (pyStringUpper s) = pyStringUpper s := by
+  simp [pyUpper_is_upper, pyUpper_is_true_upper]
+
+theorem pyLower_length_invariant (s : String) : (pyStringLower s).length = s.length := by
+  unfold pyStringLower
+  simp
+
+theorem pyUpper_length_invariant (s : String) : (pyStringUpper s).length = s.length := by
+  unfold pyStringUpper
+  simp
+
+theorem pyFind_eq_pyIndex (s sub : String) : pyStringFind s sub ≠ -1 → pyStringFind s sub = pyStringIndex s sub := by
+  intro h
+  match eq : s.find? sub with
+  | some idx =>
+      simp [pyStringFind, pyStringIndex,eq]
+  | none => simp [pyStringFind, eq] at h
+
+-- #check String.split
 end PyAstLean

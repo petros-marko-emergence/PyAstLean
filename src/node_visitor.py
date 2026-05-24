@@ -441,6 +441,14 @@ class ASTToJsonLeanVisitorBase:
             )
         }
 
+    def visit_Delete(self, node):
+        """Translates ast.Delete (e.g., del x) to a JSON IR node."""
+        return {
+            "node_type": "Delete",
+            "targets": [self.visit(target) for target in node.targets]
+        }
+
+
     def visit_Import(self, node):
         """Translate `import ...` statements into a lightweight IR node."""
         return {

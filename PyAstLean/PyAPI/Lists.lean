@@ -51,9 +51,10 @@ def pyListIndex [DecidableEq α] (xs : List α) (elem : α) : Int :=
   | some idx => idx
   | none => panic! s!"ValueError: Element is not in list"
 
-/-- Public runtime surface for Python `index()`. -/
-def pyIndex [DecidableEq α] : List α → α → Int :=
-  pyListIndex
+def pyListFind [DecidableEq α] (xs : List α) (elem : α) : Int :=
+  match xs.findIdx? (fun x => x = elem) with
+  | some idx => idx
+  | none => -1
 
 /--
 API for `list.count(elem)` which returns the number of occurrences of the given element in the list.
@@ -62,8 +63,8 @@ def PyListCount [DecidableEq α] (xs : List α) (elem : α) : Nat :=
   xs.count elem
 
 /-- Public runtime surface for Python `count()`. -/
-def pyCount [DecidableEq α] : List α → α → Nat :=
-  PyListCount
+def pyListCount [DecidableEq α] : List α → α → Int :=
+  fun xs elem => ((PyListCount xs elem) : Int)
 
 def pyListReverse (xs : List α) : List α :=
   xs.reverse
@@ -91,5 +92,55 @@ def pyListInsert (xs : List α) (idx : Int) (elem : α) : List α :=
 /-- Public runtime surface for Python `insert()`. -/
 def pyInsert : List α → Int → α → List α :=
   pyListInsert
+
+
+theorem pyListReverse_involution (xs : List α) : pyReverse (pyReverse xs) = xs := by
+  unfold pyReverse pyListReverse
+  apply List.reverse_reverse
+
+theorem pyAppend_length_increase_one : ∀ (xs : List α) (elem : α), (pyAppend xs elem).length = xs.length + 1
+  | [], elem => by simp [pyAppend, pyListAppend]
+  | x :: xs, elem => by simp [pyAppend, pyListAppend]
+
+theorem pyListExtend_length (xs ys : List α) : (pyListExtend xs ys).length = xs.length + ys.length := by
+  unfold pyListExtend
+  simp
+
+theorem pyListPop_length_decrease_one (xs : List α) (idx : Int) (h : 0 <= idx) (h' : (idx.toNat) < xs.length) :
+  pyListPop xs idx none|>.2.length = xs.length - 1 := by
+  unfold pyListPop
+  simp [h, h']
+  grind
+
+theorem pyListCount_increase_one [DecidableEq α] (xs : List α) (elem : α) :
+  pyListCount (pyListAppend xs elem) elem = pyListCount xs elem + 1 := by
+    unfold pyListCount
+    simp [PyListCount, pyListAppend]
+
+theorem pyListCount_extend [DecidableEq α] (xs ys : List α) (elem : α) :
+  pyListCount (pyListExtend xs ys) elem = pyListCount xs elem + pyListCount ys elem := by
+    unfold pyListExtend pyListCount
+    simp [PyListCount]
+
+theorem pyInsert_length_increase_one (xs : List α) (idx : Int) (elem : α) :
+  (pyInsert xs idx elem).length = xs.length + 1 := by
+    unfold pyInsert pyListInsert
+    grind
+
+theorem pyInsert_eq_append (xs : List α) (idx : Int) (elem : α) (h : idx >= xs.length) :
+  pyInsert xs idx elem = pyAppend xs elem := by
+    unfold pyInsert pyListInsert
+    simp
+    by_cases eq1 : idx < 0
+    · grind
+    · simp_all only [ge_iff_le, not_lt, ↓reduceIte]
+      split
+      next h_1 => by_cases eq2 : idx = xs.length
+                  · simp [eq2, pyAppend, pyListAppend]
+                  · grind
+      next h_1 =>
+        simp_all only [not_le]
+        rfl
+
 
 end PyAstLean

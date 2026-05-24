@@ -4,7 +4,9 @@ import PyAstLean.PyAPI.CommonProtocols.Iterable
 import PyAstLean.PyAPI.CommonProtocols.Clear
 import PyAstLean.PyAPI.CommonProtocols.Pop
 import PyAstLean.PyAPI.CommonProtocols.Sorting
-import PyAstLean.PyAPI.CommonProtocols.Clear
+import PyAstLean.PyAPI.CommonProtocols.Count
+import PyAstLean.PyAPI.CommonProtocols.Find
+import PyAstLean.PyAPI.CommonProtocols.Index
 
 /-!
 Intentionally extensible runtime protocols shared by several Lean datatypes.
