@@ -15,6 +15,16 @@ def withFreshVariables {α : Type} (x : PygenM α) : PygenM α :=
     (HashSet.emptyWithCapacity 100)
     x
 
+/-- Pick a fresh local name for generated bindings. -/
+partial def freshName (base : Name) (idx : Nat := 0) : PygenM Name := do
+  let candidate :=
+    if idx == 0 then base else base.appendIndexAfter idx
+  if ← hasVar candidate then
+    freshName base (idx + 1)
+  else
+    addVar candidate
+    pure candidate
+
 def isMainGuardTest (json : Json) : Bool :=
   match json.getObjValAs? String "node_type" with
   | .ok "Compare" =>

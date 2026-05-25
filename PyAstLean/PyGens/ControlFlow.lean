@@ -74,6 +74,28 @@ def augAssignSyntax : (kind : SyntaxNodeKind) → Json →
         `(doElem| $targetIdent:ident := $updated)
     | _, _ => throwError s!"Unsupported syntax category for AugAssign node"
 
+/-- Lower a for-loop target into a binder and optional destructuring prelude. -/
+def forTargetBinder (targetJson : Json) :
+    PygenM (TSyntax `ident × Array (TSyntax `doElem)) := do
+  match jsonNodeType? targetJson with
+  | some "Name" =>
+      let targetIdent ← getCode targetJson `ident
+      pure (targetIdent, #[])
+  | some "Tuple" =>
+      let .ok elts := targetJson.getObjValAs? (Array Json) "elts" | throwError
+        s!"For-loop tuple target does not have an 'elts' field: {targetJson}"
+      match elts[0]?, elts[1]? with
+      | some leftJson, some rightJson =>
+          let leftIdent ← getCode leftJson `ident
+          let rightIdent ← getCode rightJson `ident
+          let pairIdent := mkIdent (← freshName `_pair)
+          let destructure ← `(doElem| let ($leftIdent, $rightIdent) := $pairIdent)
+          pure (pairIdent, #[destructure])
+      | _, _ =>
+          throwError "Only two-element tuple unpacking targets are supported in for-loops."
+  | _ =>
+      throwError s!"Unsupported for-loop target: {targetJson}"
+
 @[pygen "For"]
 def forSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -88,9 +110,9 @@ def forSyntax : (kind : SyntaxNodeKind) → Json →
           s!"For node does not have an 'orelse' field or it is not a JSON array: {json}"
         unless orelseElems.isEmpty do
           throwError "Python for-else blocks are not supported."
-        let targetIdent ← getCode targetJson `ident
+        let (targetIdent, preludeElems) ← forTargetBinder targetJson
         let iterCode ← rangeIterSyntax iterJson
-        let mut bodyStxArray := #[]
+        let mut bodyStxArray := preludeElems
         for elem in bodyElems do
           let elemStx ← getCode elem `doElem
           bodyStxArray := bodyStxArray.push elemStx

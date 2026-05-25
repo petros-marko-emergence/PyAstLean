@@ -7,16 +7,6 @@ open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
-/-- Pick a fresh local name for generated comprehension destructuring. -/
-partial def freshListCompName (base : Name) (idx : Nat := 0) : PygenM Name := do
-  let candidate :=
-    if idx == 0 then base else base.appendIndexAfter idx
-  if ← hasVar candidate then
-    freshListCompName base (idx + 1)
-  else
-    addVar candidate
-    pure candidate
-
 /-- Build a lambda binder for a comprehension target. Simple tuple unpacking is lowered with an
 intermediate pair binding so later clauses can use the unpacked names. -/
 def listCompTargetLambda (targetJson : Json) (body : TSyntax `term) :
@@ -32,7 +22,7 @@ def listCompTargetLambda (targetJson : Json) (body : TSyntax `term) :
       | some leftJson, some rightJson =>
           let leftIdent ← getCode leftJson `ident
           let rightIdent ← getCode rightJson `ident
-          let pairIdent := mkIdent (← freshListCompName `_pair)
+          let pairIdent := mkIdent (← freshName `_pair)
           `(fun $pairIdent =>
               let ($leftIdent, $rightIdent) := $pairIdent
               $body)

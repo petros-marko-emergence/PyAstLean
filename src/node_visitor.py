@@ -650,6 +650,26 @@ class ASTToJsonLeanVisitorBase:
 
     def visit_Try(self, node):
         """Translates ast.Try (Exception handling) to a JSON IR node."""
+        last_body_end = None
+        if node.body:
+            last_body_end = getattr(
+                node.body[-1],
+                "end_lineno",
+                getattr(node.body[-1], "lineno", getattr(node, "lineno", 1)),
+            )
+        last_orelse_end = None
+        if node.orelse:
+            last_orelse_end = getattr(
+                node.orelse[-1],
+                "end_lineno",
+                getattr(node.orelse[-1], "lineno", getattr(node, "lineno", 1)),
+            )
+        if last_orelse_end is not None:
+            finalbody_start = last_orelse_end + 1
+        elif last_body_end is not None:
+            finalbody_start = last_body_end + 1
+        else:
+            finalbody_start = getattr(node, "lineno", 1) + 1
         return {
             "node_type": "Try",
             "body": self.visit_body_statements(
@@ -665,7 +685,7 @@ class ASTToJsonLeanVisitorBase:
             ),
             "finalbody": self.visit_body_statements(
                 node.finalbody,
-                body_start_line=(getattr(node.orelse[-1], "end_lineno", getattr(node.body[-1], "end_lineno", getattr(node, "lineno", 1))) + 1) if (node.orelse or node.body) else getattr(node, "lineno", 1) + 1,
+                body_start_line=finalbody_start,
                 body_end_line=getattr(node, "end_lineno", len(self.source_lines)),
             )
         }
