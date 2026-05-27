@@ -7,16 +7,6 @@ open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
-/-- Pick a fresh local name for generated comprehension destructuring. -/
-partial def freshListCompName (base : Name) (idx : Nat := 0) : PygenM Name := do
-  let candidate :=
-    if idx == 0 then base else base.appendIndexAfter idx
-  if ← hasVar candidate then
-    freshListCompName base (idx + 1)
-  else
-    addVar candidate
-    pure candidate
-
 /-- Build a lambda binder for a comprehension target. Simple tuple unpacking is lowered with an
 intermediate pair binding so later clauses can use the unpacked names. -/
 def listCompTargetLambda (targetJson : Json) (body : TSyntax `term) :
@@ -32,10 +22,8 @@ def listCompTargetLambda (targetJson : Json) (body : TSyntax `term) :
       | some leftJson, some rightJson =>
           let leftIdent ← getCode leftJson `ident
           let rightIdent ← getCode rightJson `ident
-          let pairIdent := mkIdent (← freshListCompName `_pair)
-          `(fun $pairIdent =>
-              let ($leftIdent, $rightIdent) := $pairIdent
-              $body)
+          let pairIdent := mkIdent (← freshName `_pair)
+          `(fun $pairIdent => let ($leftIdent, $rightIdent) := $pairIdent; $body)
       | _, _ =>
           throwError "Only two-element tuple unpacking targets are supported in comprehensions."
   | _ =>
@@ -85,7 +73,11 @@ def lowerComprehensionClauses (eltJson : Json) (generators : List Json) :
       if rest.isEmpty then
         let eltCode ← getCode eltJson `term
         let mapper ← listCompTargetLambda targetJson eltCode
-        `(List.map $mapper $iterCode)
+        if jsonUsesMonadicEffect eltJson then
+          let mapMIdent := mkIdent ``List.mapM
+          `($mapMIdent $mapper $iterCode)
+        else
+          `(List.map $mapper $iterCode)
       else
         let nested ← lowerComprehensionClauses eltJson rest
         let binder ← listCompTargetLambda targetJson nested
