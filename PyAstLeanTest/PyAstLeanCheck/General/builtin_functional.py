@@ -8,22 +8,22 @@
 # CHECK: x +ₚ (1 : Int)
 # CHECK: let filtered := PyAstLean.pyFilter
 # CHECK: x %ₚ (2 : Int)
-# CHECK: let zipped := pyZip xs ys
-# CHECK: let enumerated := pyEnumerate letters
-# CHECK: let total := pySum xs
-# CHECK: let smallest := pyMin xs
-# CHECK: let largest := pyMax xs
-# CHECK: let reduced := Libraries.functools.pyReduce
-# CHECK: acc +ₚ x
+# CHECK: let zipped := PyAstLean.pyZip xs ys
+# CHECK: let enumerated := PyAstLean.pyEnumerate letters
+# CHECK: let total := PyAstLean.pySum xs
+# CHECK: let smallest := PyAstLean.pyMin xs
+# CHECK: let largest := PyAstLean.pyMax xs
+# CHECK: let reduced := Libraries.functools.pyReduce xs
+# CHECK: fun (acc : Int) ↦ fun (x : Int) ↦ acc +ₚ x
 # CHECK: some (0 : Int)
 # CHECK: def functools_reduced :=
 # CHECK: let xs := [(1 : Int), (2 : Int), (3 : Int)]
 # CHECK: Libraries.functools.pyReduce xs
-# CHECK: acc +ₚ x
+# CHECK: fun (acc : Int) ↦ fun (x : Int) ↦ acc +ₚ x
 # CHECK: some (0 : Int)
 # CHECK: def reduce_no_init_literal :=
 # CHECK: Libraries.functools.pyReduce [(1 : Int), (2 : Int), (3 : Int)]
-# CHECK: acc +ₚ x
+# CHECK: fun (acc : Int) ↦ fun (x : Int) ↦ acc +ₚ x
 # PYASTLEANCHECK END
 
 from functools import reduce

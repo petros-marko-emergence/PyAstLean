@@ -3,6 +3,8 @@ import PyAstLean.Codegen
 import PyAstLean.PyGens.Basic
 import PyAstLean.PyGens.Attributes
 import PyAstLean.PyGens.CallEffects
+import PyAstLean.PyGens.CallShared
+import PyAstLean.PyGens.SpecialCalls
 
 open Lean Meta Elab Term Qq Std
 
@@ -107,98 +109,6 @@ def joinedStrSyntax : (kind : SyntaxNodeKind) → Json →
         $effectTy))
   | _, _ => throwError s!"Unsupported syntax category for JoinedStr node"
 
-/-- Infer a simple runtime type from a value expression when the shape is obvious. -/
-def inferSimpleValueTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
-  match json.getObjValAs? String "node_type" with
-  | .ok "Constant" =>
-      let .ok value := json.getObjValAs? Json "value" | throwError
-        s!"Constant node does not have a 'value' field or it is not a JSON value: {json}"
-      match value with
-      | .num (JsonNumber.mk _ exponent) =>
-          if json.getObjValAs? String "python_literal_kind" == .ok "float" then
-            return some (mkIdent ``Float)
-          else if exponent == 0 then
-            return some (mkIdent ``Int)
-          else
-            return some (mkIdent ``Rat)
-      | .str _ => return some (mkIdent ``String)
-      | .bool _ => return some (mkIdent ``Bool)
-      | _ => return none
-  | _ => return none
-
-/-- Infer a simple iterable element type from obvious literal iterables. -/
-def inferIterableElemTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
-  match json.getObjValAs? String "node_type" with
-  | .ok "List" => do
-      let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
-        s!"List node does not have an 'elts' field or it is not a JSON value: {json}"
-      match eltsJson with
-      | .arr arr =>
-          match arr[0]? with
-          | some first => inferSimpleValueTypeSyntax? first
-          | none => return none
-      | _ => return none
-  | .ok "Tuple" => do
-      let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
-        s!"Tuple node does not have an 'elts' field or it is not a JSON value: {json}"
-      match eltsJson with
-      | .arr arr =>
-          match arr[0]? with
-          | some first => inferSimpleValueTypeSyntax? first
-          | none => return none
-      | _ => return none
-  | .ok "Constant" => do
-      let .ok value := json.getObjValAs? Json "value" | throwError
-        s!"Constant node does not have a 'value' field or it is not a JSON value: {json}"
-      match value with
-      | .str _ => return some (mkIdent ``Char)
-      | _ => return none
-  | _ => return none
-
-/-- Read the positional parameter names from a lambda node without depending on `FuncDef.lean`. -/
-def lambdaArgIdents (json : Json) : PygenM (Array (TSyntax `ident)) := do
-  let .ok argsJson := json.getObjValAs? Json "args" | throwError
-    s!"Lambda node does not have an 'args' field or it is not a JSON value: {json}"
-  let .ok argsArray := argsJson.getObjValAs? (Array Json) "args" | throwError
-    s!"Lambda args does not have an 'args' field or it is not a JSON array: {argsJson}"
-  argsArray.mapM fun argJson => do
-    let .ok argName := argJson.getObjValAs? String "arg" | throwError
-      s!"Lambda argument does not have an 'arg' field or it is not a string: {argJson}"
-    pure (mkIdent argName.toName)
-
-/--
-If a `reduce` combiner is a two-argument lambda, stamp both lambda parameters with either
-a concrete runtime type or `_` placeholders so overloaded arithmetic does not drift too
-early during elaboration.
--/
-def typedReduceLambdaCode (funcJson : Json) (fallback : TSyntax `term)
-    (paramTy? : Option (TSyntax `term)) : PygenM (TSyntax `term) := do
-  unless funcJson.getObjValAs? String "node_type" == .ok "Lambda" do
-    return fallback
-  let argIdents ← lambdaArgIdents funcJson
-  unless argIdents.size == 2 do
-    return fallback
-  let .ok bodyJson := funcJson.getObjValAs? Json "body" | throwError
-    s!"Lambda node does not have a 'body' field or it is not a JSON value: {funcJson}"
-  let bodyStx ← getCode bodyJson `term
-  let arg0 := argIdents[0]!
-  let arg1 := argIdents[1]!
-  let paramTy ← match paramTy? with
-    | some stx => pure stx
-    | none => `(_)
-  `(fun ($arg0 : $paramTy) ↦ fun ($arg1 : $paramTy) ↦ $bodyStx)
-
-/-- Recognize both `functools.reduce(...)` and imported `reduce(...)` from `functools`. -/
-def isFunctoolsReduceTarget (json : Json) : Bool :=
-  match json.getObjValAs? String "library_module", json.getObjValAs? String "library_member" with
-  | .ok "functools", .ok "reduce" => true
-  | _, _ =>
-      json.getObjValAs? String "node_type" == .ok "Attribute" &&
-      json.getObjValAs? String "attr" == .ok "reduce" &&
-      (json.getObjValAs? Json "value").toOption.any (fun valueJson =>
-        valueJson.getObjValAs? String "node_type" == .ok "Name" &&
-        valueJson.getObjValAs? String "id" == .ok "functools")
-
 /-- Map a bare Python builtin function name to the Lean runtime symbol when it is used as a value. -/
 def mappedCallableValueCode (json : Json) : PygenM (TSyntax `term) := do
   match ← jsonLibraryMappedName? json with
@@ -237,31 +147,9 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     let mut allArgJsons : Array Json := #[]
     let mut funcIdent : TSyntax `term ← `("")
 
-    if isFunctoolsReduceTarget funcJson then
-      unless keyWordsMap.isEmpty do
-        throwError "functools.reduce() keyword arguments are not supported yet."
-      match argsArray.size with
-      | 2 =>
-          let pyReduceIdent := mkIdent ``Libraries.functools.pyReduce
-          let elemTy? ← inferIterableElemTypeSyntax? argsArray[1]!
-          let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! elemTy?
-          let adjustedCodes := #[funcCode, argsCodes[1]!]
-          return ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
-            let f := resolvedArgs[0]!
-            let xs := resolvedArgs[1]!
-            `($pyReduceIdent $xs $f)
-      | 3 =>
-          let pyReduceIdent := mkIdent ``Libraries.functools.pyReduce
-          let initTy? ← inferSimpleValueTypeSyntax? argsArray[2]!
-          let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! initTy?
-          let adjustedCodes := #[funcCode, argsCodes[1]!, argsCodes[2]!]
-          return ← buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
-            let f := resolvedArgs[0]!
-            let xs := resolvedArgs[1]!
-            let init := resolvedArgs[2]!
-            `( $pyReduceIdent $xs $f (some $init))
-      | _ =>
-          throwError "functools.reduce() expects two or three positional arguments."
+    match ← lowerSpecialCallTerm? funcJson argsArray argsCodes keyWordsMap with
+    | some lowered => return lowered
+    | none => pure ()
 
     match ← jsonLibraryMappedName? funcJson with
     | some leanName =>
@@ -434,35 +322,9 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     let mut allArgJsons : Array Json := #[]
     let mut funcIdent : TSyntax `term ← `("")
 
-    if isFunctoolsReduceTarget funcJson then
-      unless keyWordsMap.isEmpty do
-        throwError "functools.reduce() keyword arguments are not supported yet."
-      let t ← match argsArray.size with
-        | 2 => do
-            let pyReduceIdent := mkIdent ``Libraries.functools.pyReduce
-            let elemTy? ← inferIterableElemTypeSyntax? argsArray[1]!
-            let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! elemTy?
-            let adjustedCodes := #[funcCode, argsCodes[1]!]
-            buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
-              let f := resolvedArgs[0]!
-              let xs := resolvedArgs[1]!
-              `($pyReduceIdent $xs $f)
-        | 3 => do
-            let pyReduceIdent := mkIdent ``Libraries.functools.pyReduce
-            let initTy? ← inferSimpleValueTypeSyntax? argsArray[2]!
-            let funcCode ← typedReduceLambdaCode argsArray[0]! argsCodes[0]! initTy?
-            let adjustedCodes := #[funcCode, argsCodes[1]!, argsCodes[2]!]
-            buildIOPureApplicationFromArgs argsArray adjustedCodes fun resolvedArgs => do
-              let f := resolvedArgs[0]!
-              let xs := resolvedArgs[1]!
-              let init := resolvedArgs[2]!
-              `( $pyReduceIdent $xs $f (some $init))
-        | _ =>
-            throwError "functools.reduce() expects two or three positional arguments."
-      if argsArray.toList.any basicJsonUsesMonadicEffect then
-        return ← `(doElem| let _ ← $t:term)
-      else
-        return ← `(doElem| let _ := $t)
+    match ← lowerSpecialCallDoElem? funcJson argsArray argsCodes keyWordsMap with
+    | some lowered => return lowered
+    | none => pure ()
 
     match ← jsonLibraryMappedName? funcJson with
     | some leanName =>

@@ -1,6 +1,7 @@
 import PyAstLean.PyAPI.Builtins
 import PyAstLean.PyAPI.CommonProtocols.Iterable
 import PyAstLean.PyAPI.Operators
+import Libraries.functools.FunctoolsDef
 
 open PyAstLean
 
