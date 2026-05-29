@@ -21,6 +21,9 @@ def pythonBuiltinMap? (name : String) : Option Lean.Name :=
   | "max" => some ``pyMax
   | "bool" => some ``pyBool
   | "any" => some ``pyAny
+  | "reversed" => some ``pyReversed
+  | "chr" => some ``pyChr
+  | "ord" => some ``pyOrd
   | _ => none
 
 end PyAstLean

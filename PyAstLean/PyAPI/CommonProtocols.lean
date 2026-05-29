@@ -9,6 +9,7 @@ import PyAstLean.PyAPI.CommonProtocols.Find
 import PyAstLean.PyAPI.CommonProtocols.Index
 import PyAstLean.PyAPI.CommonProtocols.Bool
 import PyAstLean.PyAPI.CommonProtocols.AnyFunc
+import PyAstLean.PyAPI.CommonProtocols.Reversed
 
 /-!
 Intentionally extensible runtime protocols shared by several Lean datatypes.

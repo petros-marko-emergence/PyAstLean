@@ -4,6 +4,7 @@ import PyAstLean.PyAPI.CommonProtocols.Iterable
 import PyAstLean.PyAPI.CommonProtocols.Clear
 import PyAstLean.PyAPI.CommonProtocols.Pop
 import PyAstLean.PyAPI.CommonProtocols.Sorting
+import PyAstLean.PyAPI.CommonProtocols.Reversed
 
 open PyAstLean
 
@@ -87,6 +88,14 @@ private def sortStrings (xs : List String) : List String :=
 /-- info: [2, 9] -/
 #guard_msgs in
 #eval pySort ((9, 2) : Int × Int)
+
+/-- info: [3, 2, 1] -/
+#guard_msgs in
+#eval pyIter (pyReversed ([1, 2, 3] : List Int))
+
+/-- info: "cba" -/
+#guard_msgs in
+#eval String.ofList <| pyIter (pyReversed "abc")
 
 /-- info: 13 -/
 #guard_msgs in
