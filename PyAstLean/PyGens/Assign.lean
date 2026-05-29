@@ -1,5 +1,5 @@
 import PyAstLean.PyGens.Utils
-import PyAstLean.PyGens.CallExpr
+import PyAstLean.PyGens.CallEffects
 
 open Lean Meta Elab Term Qq Std
 
