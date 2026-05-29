@@ -111,27 +111,3 @@ theorem pyMax_singleton [inst : PyIterable α β] [Ord β] [Inhabited β] : ∀ 
   | x :: y :: s =>
     have c : (x :: y :: s).length ≥ 2 := by grind
     grind
-
-/--
-Python-style `reduce(function, iterable, initializer)`.
-
-The iterable comes first in the Lean helper so instance resolution can learn the
-element type before elaborating the reducer lambda. That keeps overloaded arithmetic
-inside generated lambdas much more predictable.
--/
-def pyReduce {α β : Type} [inst : PyIterable α β] (xs : α)
-    (f : β → β → β) (init : β) : β :=
-  (pyIter xs).foldl f init
-
-/--
-Python-style `reduce(function, iterable)` without an initializer.
-
-This follows Python's runtime behavior and errors on an empty sequence.
--/
-def pyReduceNoInit {α β : Type} [inst : PyIterable α β] [Inhabited β] (xs : α)
-    (f : β → β → β) : β :=
-  match pyIter xs with
-  | [] => panic! "TypeError: reduce() of empty iterable with no initial value"
-  | x :: rest => rest.foldl f x
-
-end PyAstLean
