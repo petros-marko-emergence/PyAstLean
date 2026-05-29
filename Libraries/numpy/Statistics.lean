@@ -153,11 +153,6 @@ def pyNumpyLog2 {α} [PyNumpyScalar α] (xs : List α) : List Float :=
 def pyNumpySqrt {α} [PyNumpyScalar α] (xs : List α) : List Float :=
   (pyNumpyToFloats xs).map Float.sqrt
 
-/-- Euclidean norm of a vector. -/
-def pyNumpyNorm {α} [PyNumpyScalar α] (xs : List α) : Float :=
-  let ys := pyNumpyToFloats xs
-  Float.sqrt (ys.foldl (fun acc x => acc + x * x) 0.0)
-
 /-- Logical `any` over a list. -/
 def pyNumpyAny {α} [PyNumpyScalar α] (xs : List α) : Bool :=
   xs.any (fun x => toFloat x != 0.0)
@@ -290,67 +285,16 @@ def pyNumpyPut {α} [PyNumpyScalar α] (xs : List α) (indices : List Nat) (valu
   else
     panic! "ValueError: put() expects equal numbers of indices and values"
 
-/-- Alias for Euclidean norm. -/
-def pyNumpyLinalgNorm {α} [PyNumpyScalar α] (xs : List α) : Float :=
-  pyNumpyNorm xs
+/-- Sum all entries in a matrix. -/
+def pyNumpySum {α} [PyNumpyScalar α] (matrix : List (List α)) : Float :=
+  (pyNumpyArray matrix).flatten.foldl (· + ·) 0.0
 
-/-- Remove a column from a row. -/
-def pyNumpyRemoveIndex (xs : List Float) (idx : Nat) : List Float :=
-  match xs, idx with
-  | [], _ => []
-  | _ :: xs, 0 => xs
-  | x :: xs, n + 1 => x :: pyNumpyRemoveIndex xs n
-
-/-- Remove a row and column from a matrix. -/
-def pyNumpyMinor (matrix : List (List Float)) (row col : Nat) : List (List Float) :=
-  let rec goRows : List (List Float) -> Nat -> List (List Float)
-    | [], _ => []
-    | x :: xs, i =>
-        if i = row then
-          goRows xs (i + 1)
-        else
-          pyNumpyRemoveIndex x col :: goRows xs (i + 1)
-  goRows matrix 0
-
-/-- Determinant for square matrices, computed recursively. -/
-partial def pyNumpyDet (matrix : List (List Float)) : Float :=
-  if pyNumpyIsSquare matrix then
-    match matrix with
-    | [] => 1.0
-    | [ [a] ] => a
-    | [ [a, b], [c, d] ] => a * d - b * c
-    | row :: _ =>
-        let rec expand (cols : List Float) (j : Nat) : Float :=
-          match cols with
-          | [] => 0.0
-          | a :: as =>
-              let sign := if j % 2 = 0 then 1.0 else -1.0
-              sign * a * pyNumpyDet (pyNumpyMinor matrix 0 j) + expand as (j + 1)
-        expand row 0
+/-- Mean of all entries in a matrix. -/
+def pyNumpyMean {α} [PyNumpyScalar α] (matrix : List (List α)) : Float :=
+  let entries := (pyNumpyArray matrix).flatten
+  if entries.isEmpty then
+    panic! "ValueError: mean() of an empty matrix is undefined"
   else
-    panic! "ValueError: det() expects a square matrix"
-
-/-- Inverse for 1x1 and 2x2 square matrices. -/
-def pyNumpyInv (matrix : List (List Float)) : List (List Float) :=
-  if pyNumpyIsSquare matrix then
-    match matrix with
-    | [ [a] ] =>
-        if a == 0.0 then
-          panic! "ValueError: singular matrix"
-        else
-          [[1.0 / a]]
-    | [ [a, b], [c, d] ] =>
-        let det := a * d - b * c
-        if det == 0.0 then
-          panic! "ValueError: singular matrix"
-        else
-          [[d / det, -b / det], [-c / det, a / det]]
-    | _ => panic! "ValueError: inv() currently supports only 1x1 and 2x2 matrices"
-  else
-    panic! "ValueError: inv() expects a square matrix"
-
-/-- Solve a linear system via a closed-form inverse. -/
-def pyNumpySolve (matrix rhs : List (List Float)) : List (List Float) :=
-  pyNumpyMatmul (pyNumpyInv matrix) rhs
+    entries.foldl (· + ·) 0.0 / Rat.toFloat (entries.length : Rat)
 
 end Libraries.numpy

@@ -1,4 +1,5 @@
 import Lean
+import Libraries.functools.Mapping
 import Libraries.math.Mapping
 import Libraries.numpy.Mapping
 
@@ -13,6 +14,7 @@ coming from a specific imported module.
 -/
 def pythonLibraryMap? (moduleName member : String) : Option Lean.Name :=
   match moduleName with
+  | "functools" => functools.pythonFunctoolsMemberMap? member
   | "math" => math.pythonMathMemberMap? member
   | "numpy" => numpy.pythonNumpyMemberMap? member
   | _ => none

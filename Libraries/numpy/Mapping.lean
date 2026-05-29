@@ -1,5 +1,6 @@
 import Mathlib
-import Libraries.numpy.Analysis
+import Libraries.numpy.Statistics
+import Libraries.numpy.LinearAlgebra
 import Libraries.numpy.Creation
 import Libraries.numpy.NumpyDef
 

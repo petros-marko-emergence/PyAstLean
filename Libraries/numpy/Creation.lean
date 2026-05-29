@@ -18,6 +18,24 @@ def pyNumpyFull {α} [PyNumpyScalar α] (shape : Int × Int) (fillValue : α) : 
   let cols := pyNumpyNatFromInt shape.2
   List.replicate rows (List.replicate cols (toFloat fillValue))
 
+/-- Build a zero-filled matrix. -/
+def pyNumpyZeros (shape : Int × Int) : List (List Float) :=
+  let rows' := pyNumpyNatFromInt shape.1
+  let cols' := pyNumpyNatFromInt shape.2
+  List.replicate rows' (List.replicate cols' 0.0)
+
+/-- Build a one-filled matrix. -/
+def pyNumpyOnes (shape : Int × Int) : List (List Float) :=
+  let rows' := pyNumpyNatFromInt shape.1
+  let cols' := pyNumpyNatFromInt shape.2
+  List.replicate rows' (List.replicate cols' 1.0)
+
+/-- Build an identity matrix. -/
+def pyNumpyEye (n : Int) : List (List Float) :=
+  let n' := pyNumpyNatFromInt n
+  (List.range n').map (fun i =>
+    (List.range n').map (fun j => if i = j then 1.0 else 0.0))
+
 /-- NumPy-style `arange` with 1-, 2-, or 3-argument behavior encoded by defaults. -/
 def pyNumpyArange (a : Float) (b : Float := pyNumpyNaN) (c : Float := pyNumpyNaN) : List Float :=
   let oneArg := b != b && c != c
