@@ -5,7 +5,7 @@ namespace PyAstLean
 /-!
 Registry for Python builtins that lower to ordinary Lean runtime names.
 
-Special builtins such as `print`, `input`, and `reduce` still need custom call lowering
+Special builtins such as `print` and `input` still need custom call lowering
 because they affect evaluation order, effects, or argument interpretation.
 -/
 

@@ -62,11 +62,11 @@ open PyAstLean
 
 /-- info: 16 -/
 #guard_msgs in
-#eval pyReduce ([1, 2, 3] : List Int) (fun acc x : Int => acc +ₚ x) (10 : Int)
+#eval Libraries.functools.pyReduce ([1, 2, 3] : List Int) (fun acc x : Int => acc +ₚ x) (some (10 : Int))
 
 /-- info: 6 -/
 #guard_msgs in
-#eval pyReduceNoInit ([1, 2, 3] : List Int) (fun a b : Int => a +ₚ b)
+#eval Libraries.functools.pyReduce ([1, 2, 3] : List Int) (fun a b : Int => a +ₚ b)
 
 /-- info: ["a", "b"] -/
 #guard_msgs in

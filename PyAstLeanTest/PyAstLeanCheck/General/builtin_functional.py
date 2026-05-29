@@ -13,16 +13,16 @@
 # CHECK: let total := pySum xs
 # CHECK: let smallest := pyMin xs
 # CHECK: let largest := pyMax xs
-# CHECK: let reduced := PyAstLean.pyReduce
+# CHECK: let reduced := Libraries.functools.pyReduce
 # CHECK: acc +ₚ x
-# CHECK: (0 : Int)
+# CHECK: some (0 : Int)
 # CHECK: def functools_reduced :=
 # CHECK: let xs := [(1 : Int), (2 : Int), (3 : Int)]
-# CHECK: PyAstLean.pyReduce xs
+# CHECK: Libraries.functools.pyReduce xs
 # CHECK: acc +ₚ x
-# CHECK: (0 : Int)
+# CHECK: some (0 : Int)
 # CHECK: def reduce_no_init_literal :=
-# CHECK: PyAstLean.pyReduceNoInit [(1 : Int), (2 : Int), (3 : Int)]
+# CHECK: Libraries.functools.pyReduce [(1 : Int), (2 : Int), (3 : Int)]
 # CHECK: acc +ₚ x
 # PYASTLEANCHECK END
 
