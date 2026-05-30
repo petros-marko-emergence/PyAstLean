@@ -37,7 +37,7 @@ def moduleSyntax : (kind : SyntaxNodeKind) → Json →
         for elem in bodyElems do
           let elemStx ← withFreshVariables do
             getCode elem `command
-          cmds := cmds.push elemStx
+          cmds := appendCommandSyntax cmds elemStx
         return ⟨mkNullNode (cmds.map TSyntax.raw)⟩
     | _, _ => throwError s!"Unsupported syntax category for Module node"
 
@@ -267,17 +267,27 @@ def assignHeadSyntax : (kind : SyntaxNodeKind) → Json →
     | `term, json => do
         let .ok target := json.getObjVal? "target" | throwError
           s!"Assign node does not have a 'target' field or it is not a JSON value: {json}"
-        let nameIdent ← getCode target `ident
         let .ok value := json.getObjVal? "value" | throwError
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
-        let valueStx ← getCode value `term
         let .ok rest := json.getObjValAs? (List Json) "rest" | throwError
           s!"Assign node does not have a 'rest' field or it is not a JSON value: {json}"
         let splitRest ← splitList rest
         let tailCode ← withoutCheck do
           getCode splitRest `term
-        `(let $nameIdent := $valueStx
-          $tailCode)
+        match ← tupleAssignTargetNames? target with
+        | some (leftIdent, rightIdent) => do
+            let valueStx ← getCode value `term
+            let unpackTmpIdent := mkIdent (← freshName `__unpack_pair)
+            let unpackedValue ← unpack2Term valueStx
+            `(let $unpackTmpIdent := $unpackedValue
+              let $leftIdent := Prod.fst $unpackTmpIdent
+              let $rightIdent := Prod.snd $unpackTmpIdent
+              $tailCode)
+        | none => do
+            let nameIdent ← getCode target `ident
+            let valueStx ← getCode value `term
+            `(let $nameIdent := $valueStx
+              $tailCode)
     | _, _ => throwError s!"Unsupported syntax category for Head_Assign node"
 
 @[pygen "Head_AnnAssign"]

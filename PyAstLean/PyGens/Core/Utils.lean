@@ -15,6 +15,17 @@ def withFreshVariables {α : Type} (x : PygenM α) : PygenM α :=
     (HashSet.emptyWithCapacity 100)
     x
 
+/--
+Append one generated command into an accumulator, flattening null-node wrappers that
+represent "many commands" or "no commands" from an earlier lowering pass.
+-/
+def appendCommandSyntax (cmds : Array (TSyntax `command)) (cmd : TSyntax `command) :
+    Array (TSyntax `command) :=
+  if cmd.raw.isOfKind nullKind then
+    cmds ++ cmd.raw.getArgs.map (fun arg => ⟨arg⟩)
+  else
+    cmds.push cmd
+
 /-- Pick a fresh local name for generated bindings. -/
 partial def freshName (base : Name) (idx : Nat := 0) : PygenM Name := do
   let candidate :=

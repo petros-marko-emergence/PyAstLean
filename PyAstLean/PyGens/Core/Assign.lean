@@ -31,6 +31,11 @@ def bindOrAssignLocal (nameIdent : TSyntax `ident) (rhs : TSyntax `term) : Pygen
     addVar nameIdent.getId
     pure stx
 
+/-- Normalize Python-style two-target unpacking through the iterable protocol. -/
+def unpack2Term (value : TSyntax `term) : PygenM (TSyntax `term) := do
+  let pyUnpack2Ident := mkIdent ``PyAstLean.pyUnpack2
+  `($pyUnpack2Ident $value)
+
 /-- Simple returned expressions can stay unparenthesized; more complex or effectful ones
 keep parentheses so Lean parses multiline `return` expressions reliably. -/
 def shouldParenthesizeReturnValue (value : Json) : Bool :=
@@ -49,11 +54,24 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
     | `command, json => do
         let .ok target := json.getObjVal? "target" | throwError
           s!"Assign node does not have a 'target' field or it is not a JSON value: {json}"
-        let nameIdent ← getCode target `ident
         let .ok value := json.getObjVal? "value" | throwError
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
-        let valueStx ← getCode value `term
-        `(def $nameIdent := $valueStx)
+        match ← tupleAssignTargetNames? target with
+        | some (leftIdent, rightIdent) => do
+            let valueStx ← getCode value `term
+            let unpackTmpName := Name.mkSimple s!"__py_unpack_{leftIdent.getId.toString}_{rightIdent.getId.toString}"
+            let unpackTmpIdent := mkIdent unpackTmpName
+            let unpackedValue ← unpack2Term valueStx
+            let fstIdent := mkIdent ``Prod.fst
+            let sndIdent := mkIdent ``Prod.snd
+            let cmd1 ← `(command| def $unpackTmpIdent := $unpackedValue)
+            let cmd2 ← `(command| def $leftIdent := $fstIdent $unpackTmpIdent)
+            let cmd3 ← `(command| def $rightIdent := $sndIdent $unpackTmpIdent)
+            pure ⟨mkNullNode #[cmd1.raw, cmd2.raw, cmd3.raw]⟩
+        | none => do
+            let nameIdent ← getCode target `ident
+            let valueStx ← getCode value `term
+            `(def $nameIdent := $valueStx)
     | `doElem, json => do
         let .ok target := json.getObjVal? "target" | throwError
           s!"Assign node does not have a 'target' field or it is not a JSON value: {json}"
@@ -62,28 +80,22 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
         match ← tupleAssignTargetNames? target with
         | some (leftIdent, rightIdent) => do
             let valueStx ← getCode value `term
-            let leftFresh := !(← hasVar leftIdent.getId)
-            let rightFresh := !(← hasVar rightIdent.getId)
-            if leftFresh && rightFresh then
-              addVar leftIdent.getId
-              addVar rightIdent.getId
+            let valueTmpIdent := mkIdent (← freshName `__unpack_value)
+            let unpackTmpIdent := mkIdent (← freshName `__unpack_pair)
+            let bindValueTmp ←
               if jsonUsesIOEffect value || jsonUsesMonadicEffect value then
-                `(doElem| let ($leftIdent, $rightIdent) ← $valueStx:term)
+                `(doElem| let $valueTmpIdent:ident ← $valueStx:term)
               else
-                `(doElem| let ($leftIdent, $rightIdent) := $valueStx)
-            else
-              let tmpIdent := mkIdent (← freshName `__unpack_tmp)
-              let bindTmp ←
-                if jsonUsesIOEffect value || jsonUsesMonadicEffect value then
-                  `(doElem| let $tmpIdent:ident ← $valueStx:term)
-                else
-                  `(doElem| let $tmpIdent:ident := $valueStx)
-              let leftBind ← bindOrAssignLocal leftIdent (← `(Prod.fst $tmpIdent))
-              let rightBind ← bindOrAssignLocal rightIdent (← `(Prod.snd $tmpIdent))
-              `(doElem| do
-                $bindTmp:doElem
-                $leftBind:doElem
-                $rightBind:doElem)
+                `(doElem| let $valueTmpIdent:ident := $valueStx)
+            let unpackedValue ← unpack2Term valueTmpIdent
+            let bindUnpackTmp ← `(doElem| let $unpackTmpIdent:ident := $unpackedValue)
+            let leftBind ← bindOrAssignLocal leftIdent (← `(Prod.fst $unpackTmpIdent))
+            let rightBind ← bindOrAssignLocal rightIdent (← `(Prod.snd $unpackTmpIdent))
+            `(doElem| do
+              $bindValueTmp:doElem
+              $bindUnpackTmp:doElem
+              $leftBind:doElem
+              $rightBind:doElem)
         | none => do
             let nameIdent ← getCode target `ident
             let rhs ←

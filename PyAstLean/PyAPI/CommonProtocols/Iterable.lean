@@ -16,6 +16,19 @@ class PyIterable (α : Type) (β : outParam Type) where
 def pyIter {α β : Type} [inst : PyIterable α β] (value : α) : List β :=
   inst.toPyList value
 
+/--
+Unpack exactly two elements from a Python-style iterable.
+
+This matches the common tuple-assignment shape `a, b = value` and raises a runtime-style
+error when the iterable length is not exactly two.
+-/
+def pyUnpack2 {α β : Type} [inst : PyIterable α β] [Inhabited β] (value : α) : β × β :=
+  match pyIter value with
+  | [first, second] => (first, second)
+  | [] => panic! "ValueError: not enough values to unpack (expected 2, got 0)"
+  | [_] => panic! "ValueError: not enough values to unpack (expected 2, got 1)"
+  | _ => panic! "ValueError: too many values to unpack (expected 2)"
+
 
 /-- Lists are already Python-style iterables. -/
 instance : PyIterable (List α) α where

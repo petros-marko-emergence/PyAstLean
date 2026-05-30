@@ -1,4 +1,5 @@
 import Mathlib
+import PyAstLean.PyAPI.CommonProtocols.Iterable
 
 namespace PyAstLean
 
@@ -50,12 +51,37 @@ private def splitOnPyWhitespace (s : String) : List String :=
   go s.toList [] []
 
 /--
+Elements accepted by Python-style `str.join`.
+
+Python requires the iterable items to behave like strings. We support the two common
+runtime cases here:
+- `List String`-style inputs join directly
+- a `String` input iterates by `Char`, and each character becomes a one-character string
+-/
+class PyStringJoin (α : Type) where
+  toJoinString : α → String
+
+/-- Strings already have the right representation for `str.join`. -/
+instance : PyStringJoin String where
+  toJoinString := id
+
+/-- Joining over a string should treat each character as a one-character string. -/
+instance : PyStringJoin Char where
+  toJoinString c := String.singleton c
+
+/--
 Concrete string implementation for Python `join`.
 
-The receiver string is the separator, so `"sep".join(xs)` becomes `pyStringJoin "sep" xs`.
+Python `str.join` takes any iterable whose items behave like strings. In Lean, that means
+the argument is any `α` with a `PyIterable α β` instance, together with a way to convert
+each iterated item into the joined string fragment.
 -/
-def pyStringJoin : String → List String → String
-  | sep, lst => String.intercalate sep lst
+def pyStringJoin {α β : Type} [PyIterable α β] [PyStringJoin β] (sep : String) (xs : α) : String :=
+  String.intercalate sep <| (pyIter xs).map PyStringJoin.toJoinString
+
+/-- Public runtime surface for Python `join`. -/
+def pyJoin {α β : Type} [PyIterable α β] [PyStringJoin β] (sep : String) (xs : α) : String :=
+  pyStringJoin sep xs
 
 /-- Concrete string implementation for Python `replace`. -/
 def pyStringReplace : String → (old : String) → (new : String) → String
@@ -139,10 +165,6 @@ def pyStringSplitLines : String → List String
 /-- Public runtime surface for Python `split`. -/
 def pySplit : String → (sep : String := " ") → List String
   | s, sep => pyStringSplit s sep
-
-/-- Public runtime surface for Python `join`. -/
-def pyJoin : String → List String → String :=
-  pyStringJoin
 
 /-- Public runtime surface for Python `replace`. -/
 def pyReplace : String → (old : String) → (new : String) → String :=
