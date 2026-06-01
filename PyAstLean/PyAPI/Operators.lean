@@ -119,4 +119,12 @@ instance (priority := high) : PyHDiv Nat Nat Rat where
 instance (priority := high) : PyHDiv Rat Rat Rat where
   hDiv := fun a b => (a : Rat) / (b : Rat)
 
+
+/-- Python-style floor division: `a // b` truncates toward negative infinity. -/
+def pyFloorDiv (a b : Int) : Int :=
+  if b == 0 then
+    panic! "ZeroDivisionError: integer division or modulo by zero"
+  else
+    Int.fdiv a b
+
 end PyAstLean

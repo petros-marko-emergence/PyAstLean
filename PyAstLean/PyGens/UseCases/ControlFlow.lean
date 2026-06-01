@@ -4,6 +4,46 @@ open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
+/-- Lower a standalone Python expression statement inside `do` notation. -/
+def exprStmtDoElemSyntax (valueJson : Json) : PygenM (TSyntax `doElem) := do
+  try
+    getCode valueJson `doElem
+  catch _ =>
+    let valueStx ← getCode valueJson `term
+    `(doElem| let _ := $valueStx)
+
+/-- Stable helper name for top-level expression statements lowered as commands. -/
+def topLevelExprCommandIdent (json : Json) : TSyntax `ident :=
+  mkIdent <| Name.mkSimple s!"__py_expr_{hash json |>.toNat}"
+
+@[pygen "Expr"]
+def exprSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+    | `doElem, json => do
+        let .ok valueJson := json.getObjValAs? Json "value" | throwError
+          s!"Expr node does not have a 'value' field or it is not a JSON value: {json}"
+        exprStmtDoElemSyntax valueJson
+    | `command, json => do
+        let .ok valueJson := json.getObjValAs? Json "value" | throwError
+          s!"Expr node does not have a 'value' field or it is not a JSON value: {json}"
+        if jsonUsesExceptionEffect valueJson then
+          let bodyElem ← exprStmtDoElemSyntax valueJson
+          let exprIdent := topLevelExprCommandIdent json
+          let exceptIdent := mkIdent ``PyAstLean.PyExcept
+          `(command| def $exprIdent : $exceptIdent Unit := do
+              $bodyElem:doElem
+              pure ())
+        else if jsonUsesIOEffect valueJson then
+          let bodyElem ← exprStmtDoElemSyntax valueJson
+          let exprIdent := topLevelExprCommandIdent json
+          let ioIdent := mkIdent ``IO
+          `(command| def $exprIdent : $ioIdent Unit := do
+              $bodyElem:doElem
+              pure ())
+        else
+          pure ⟨mkNullNode #[]⟩
+    | _, _ => throwError s!"Unsupported syntax category for Expr node"
+
 /-- `Pass` is a statement-level no-op in Python, so we lower it to an empty command
 or a trivial `do` element. -/
 @[pygen "Pass"]
@@ -70,6 +110,12 @@ def augAssignSyntax : (kind : SyntaxNodeKind) → Json →
           | "add" => `($targetIdent +ₚ $valueCode)
           | "sub" => `($targetIdent -ₚ $valueCode)
           | "mul" => `($targetIdent *ₚ $valueCode)
+          | "div" => `($targetIdent /ₚ $valueCode)
+          | "mod" => `($targetIdent %ₚ $valueCode)
+          | "pow" => `($targetIdent ^ₚ $valueCode)
+          | "floordiv" =>
+              let floorDivIdent := mkIdent ``PyAstLean.pyFloorDiv
+              `($floorDivIdent $targetIdent $valueCode)
           | _ => throwError s!"Unsupported augmented assignment operator: {op}"
         `(doElem| $targetIdent:ident := $updated)
     | _, _ => throwError s!"Unsupported syntax category for AugAssign node"
@@ -84,15 +130,20 @@ def forTargetBinder (targetJson : Json) :
   | some "Tuple" =>
       let .ok elts := targetJson.getObjValAs? (Array Json) "elts" | throwError
         s!"For-loop tuple target does not have an 'elts' field: {targetJson}"
-      match elts[0]?, elts[1]? with
-      | some leftJson, some rightJson =>
-          let leftIdent ← getCode leftJson `ident
-          let rightIdent ← getCode rightJson `ident
-          let pairIdent := mkIdent (← freshName `_pair)
-          let destructure ← `(doElem| let ($leftIdent, $rightIdent) := $pairIdent)
-          pure (pairIdent, #[destructure])
-      | _, _ =>
-          throwError "Only two-element tuple unpacking targets are supported in for-loops."
+      if elts.size < 2 then
+        throwError "For-loop tuple target must have at least two elements."
+      let mut idents := #[]
+      for elt in elts do
+        unless jsonNodeType? elt == some "Name" do
+          throwError "Only Name targets are supported in for-loop tuple unpacking."
+        idents := idents.push (← getCode elt `ident)
+      let n := idents.size
+      let pairIdent := mkIdent (← freshName `_pair)
+      let mut prelude : Array (TSyntax `doElem) := #[]
+      for i in List.range n do
+        let acc ← tupleAccessTerm pairIdent i n
+        prelude := prelude.push (← `(doElem| let $(idents[i]!) := $acc))
+      pure (pairIdent, prelude)
   | _ =>
       throwError s!"Unsupported for-loop target: {targetJson}"
 
@@ -152,10 +203,11 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
             else
               $[$orelseStxArray:doElem]*)
     | `command, json => do
-        let .ok testJson := json.getObjValAs? Json "test" | throwError
+        let .ok _testJson := json.getObjValAs? Json "test" | throwError
           s!"If node does not have a 'test' field or it is not a JSON value: {json}"
-        unless isMainGuardTest testJson do
-          throwError "Only top-level `if __name__ == \"__main__\":` blocks are supported."
+        -- unless isMainGuardTest testJson do
+        --   throwError "Only top-level `if __name__ == \"__main__\":` blocks are supported."
+
         let .ok bodyElems := json.getObjValAs? (Array Json) "body" | throwError
           s!"If node does not have a 'body' field or it is not a JSON array: {json}"
         let mut bodyStxArray := #[]

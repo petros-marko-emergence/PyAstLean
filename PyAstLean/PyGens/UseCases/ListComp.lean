@@ -2,13 +2,14 @@ import Mathlib
 import PyAstLean.Codegen
 import PyAstLean.PyGens.Basic
 import PyAstLean.PyGens.Core.Utils
+import PyAstLean.PyGens.Core.Assign
 
 open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
-/-- Build a lambda binder for a comprehension target. Simple tuple unpacking is lowered with an
-intermediate pair binding so later clauses can use the unpacked names. -/
+/-- Build a lambda binder for a comprehension target. Tuple unpacking is lowered with
+intermediate pair bindings so later clauses can use the unpacked names. -/
 def listCompTargetLambda (targetJson : Json) (body : TSyntax `term) :
     PygenM (TSyntax `term) := do
   match jsonNodeType? targetJson with
@@ -18,14 +19,20 @@ def listCompTargetLambda (targetJson : Json) (body : TSyntax `term) :
   | some "Tuple" =>
       let .ok elts := targetJson.getObjValAs? (Array Json) "elts" | throwError
         s!"Tuple comprehension target does not have an 'elts' field: {targetJson}"
-      match elts[0]?, elts[1]? with
-      | some leftJson, some rightJson =>
-          let leftIdent ← getCode leftJson `ident
-          let rightIdent ← getCode rightJson `ident
-          let pairIdent := mkIdent (← freshName `_pair)
-          `(fun $pairIdent => let ($leftIdent, $rightIdent) := $pairIdent; $body)
-      | _, _ =>
-          throwError "Only two-element tuple unpacking targets are supported in comprehensions."
+      if elts.size < 2 then
+        throwError "Tuple comprehension target must have at least two elements."
+      let mut idents := #[]
+      for elt in elts do
+        unless jsonNodeType? elt == some "Name" do
+          throwError "Only Name targets are supported in tuple comprehension unpacking."
+        idents := idents.push (← getCode elt `ident)
+      let n := idents.size
+      let pairIdent := mkIdent (← freshName `_pair)
+      let mut result := body
+      for i in (List.range n).reverse do
+        let acc ← tupleAccessTerm pairIdent i n
+        result ← `(let $(idents[i]!) := $acc; $result)
+      `(fun $pairIdent => $result)
   | _ =>
       throwError s!"Unsupported comprehension target: {targetJson}"
 

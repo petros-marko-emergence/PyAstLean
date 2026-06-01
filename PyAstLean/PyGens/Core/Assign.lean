@@ -5,22 +5,37 @@ open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
-/-- Read a simple two-name tuple assignment target when present. -/
-def tupleAssignTargetNames? (target : Json) : PygenM (Option (TSyntax `ident × TSyntax `ident)) := do
+/-- Read all Name idents from a tuple assignment target (any arity ≥ 2). -/
+def tupleAssignTargetNames? (target : Json) : PygenM (Option (Array (TSyntax `ident))) := do
   unless jsonNodeType? target == some "Tuple" do
     return none
   let .ok elts := target.getObjValAs? (Array Json) "elts" | throwError
     s!"Tuple assignment target does not have an 'elts' field or it is not a JSON value: {target}"
-  match elts[0]?, elts[1]? with
-  | some leftJson, some rightJson =>
-      if jsonNodeType? leftJson == some "Name" && jsonNodeType? rightJson == some "Name" then
-        let leftIdent ← getCode leftJson `ident
-        let rightIdent ← getCode rightJson `ident
-        return some (leftIdent, rightIdent)
-      else
-        throwError "Only two-name tuple assignment targets are supported right now."
-  | _, _ =>
-      throwError "Only two-element tuple assignment targets are supported right now."
+  if elts.size < 2 then
+    throwError "Tuple assignment target must have at least two elements."
+  let mut idents := #[]
+  for elt in elts do
+    unless jsonNodeType? elt == some "Name" do
+      throwError "Only Name targets are supported in tuple assignment."
+    idents := idents.push (← getCode elt `ident)
+  return some idents
+
+/-- Build the accessor term to reach element `idx` of an N-element right-nested pair `pairIdent`.
+`buildTuple` produces `(e0, (e1, (e2, e3)))`, so:
+  - element 0 → `Prod.fst p`
+  - element 1 → `Prod.fst (Prod.snd p)`
+  - element N-2 → `Prod.fst (Prod.snd^(N-2) p)`
+  - element N-1 → `Prod.snd^(N-1) p` -/
+def tupleAccessTerm (pairIdent : TSyntax `ident) (idx n : Nat) : PygenM (TSyntax `term) := do
+  let fstIdent := mkIdent ``Prod.fst
+  let sndIdent := mkIdent ``Prod.snd
+  let mut base : TSyntax `term := mkIdent pairIdent.getId
+  for _ in List.range idx do
+    base ← `($sndIdent $base)
+  if idx == n - 1 then
+    pure base
+  else
+    `($fstIdent $base)
 
 /-- Emit either a fresh `let mut` or a reassignment for one local binding. -/
 def bindOrAssignLocal (nameIdent : TSyntax `ident) (rhs : TSyntax `term) : PygenM (TSyntax `doElem) := do
@@ -57,17 +72,17 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
         let .ok value := json.getObjVal? "value" | throwError
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
         match ← tupleAssignTargetNames? target with
-        | some (leftIdent, rightIdent) => do
+        | some idents => do
+            let n := idents.size
             let valueStx ← getCode value `term
-            let unpackTmpName := Name.mkSimple s!"__py_unpack_{leftIdent.getId.toString}_{rightIdent.getId.toString}"
-            let unpackTmpIdent := mkIdent unpackTmpName
-            let unpackedValue ← unpack2Term valueStx
-            let fstIdent := mkIdent ``Prod.fst
-            let sndIdent := mkIdent ``Prod.snd
-            let cmd1 ← `(command| def $unpackTmpIdent := $unpackedValue)
-            let cmd2 ← `(command| def $leftIdent := $fstIdent $unpackTmpIdent)
-            let cmd3 ← `(command| def $rightIdent := $sndIdent $unpackTmpIdent)
-            pure ⟨mkNullNode #[cmd1.raw, cmd2.raw, cmd3.raw]⟩
+            let unpackTmpIdent := mkIdent (Name.mkSimple s!"__py_unpack_{idents.toList.map (·.getId.toString) |> String.intercalate "_"}")
+            let cmd0 ← `(command| def $unpackTmpIdent := $valueStx)
+            let mut cmds : Array (TSyntax `command) := #[cmd0]
+            for i in List.range n do
+              let acc ← tupleAccessTerm unpackTmpIdent i n
+              let cmd ← `(command| def $(idents[i]!) := $acc)
+              cmds := cmds.push cmd
+            pure ⟨mkNullNode (cmds.map TSyntax.raw)⟩
         | none => do
             let nameIdent ← getCode target `ident
             let valueStx ← getCode value `term
@@ -78,7 +93,8 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
         let .ok value := json.getObjVal? "value" | throwError
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
         match ← tupleAssignTargetNames? target with
-        | some (leftIdent, rightIdent) => do
+        | some idents => do
+            let n := idents.size
             let valueStx ← getCode value `term
             let valueTmpIdent := mkIdent (← freshName `__unpack_value)
             let unpackTmpIdent := mkIdent (← freshName `__unpack_pair)
@@ -87,15 +103,13 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
                 `(doElem| let $valueTmpIdent:ident ← $valueStx:term)
               else
                 `(doElem| let $valueTmpIdent:ident := $valueStx)
-            let unpackedValue ← unpack2Term valueTmpIdent
-            let bindUnpackTmp ← `(doElem| let $unpackTmpIdent:ident := $unpackedValue)
-            let leftBind ← bindOrAssignLocal leftIdent (← `(Prod.fst $unpackTmpIdent))
-            let rightBind ← bindOrAssignLocal rightIdent (← `(Prod.snd $unpackTmpIdent))
+            let bindUnpackTmp ← `(doElem| let $unpackTmpIdent:ident := $valueTmpIdent)
+            let mut binds : Array (TSyntax `doElem) := #[bindValueTmp, bindUnpackTmp]
+            for i in List.range n do
+              let acc ← tupleAccessTerm unpackTmpIdent i n
+              binds := binds.push (← bindOrAssignLocal idents[i]! acc)
             `(doElem| do
-              $bindValueTmp:doElem
-              $bindUnpackTmp:doElem
-              $leftBind:doElem
-              $rightBind:doElem)
+              $[$binds:doElem]*)
         | none => do
             let nameIdent ← getCode target `ident
             let rhs ←

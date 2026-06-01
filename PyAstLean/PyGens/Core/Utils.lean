@@ -60,17 +60,19 @@ def rangeIterSyntax (iterJson : Json) : PygenM (TSyntax `term) := do
       let .ok funcName := funcJson.getObjValAs? String "id" | throwError
         s!"Call iterator function is missing an id field: {funcJson}"
       if funcName == "range" then
-        let .ok argsJson := iterJson.getObjValAs? Json "args" | throwError
-          s!"Call iterator is missing an args field: {iterJson}"
-        match argsJson with
-        | .arr arr =>
-            match arr.size with
-            | 1 =>
-                let stopCode ← getCode arr[0]! `term
-                let pyRangeIdent := mkIdent ``pyRange
-                `($pyRangeIdent $stopCode)
-            | _ => throwError "Only range(stop) is supported for for-loops right now."
-        | _ => throwError s!"Call iterator args field is not an array: {argsJson}"
+        let argsJson := match iterJson.getObjVal? "args" with
+          | .ok v => v
+          | .error _ => Json.arr #[]
+        let keywordsJson := match iterJson.getObjVal? "keywords" with
+          | .ok v => v
+          | .error _ => Json.mkObj []
+        let rangeJson := Json.mkObj [
+          ("node_type", Json.str "Range"),
+          ("func", funcJson),
+          ("args", argsJson),
+          ("keywords", keywordsJson)
+        ]
+        getCode rangeJson `term
       else
         getCode iterJson `term
     else
@@ -147,6 +149,30 @@ partial def statementDefinitelyReturns (stmt : Json) : Bool :=
               | .error _ => false
           bodyReturns && handlersReturn
       | _, _, _ => false
+  | some "Match" =>
+      match stmt.getObjValAs? (Array Json) "cases" with
+      | .ok cases =>
+          -- All cases must return AND the last case must be irrefutable (covers all inputs)
+          let allCasesReturn := cases.toList.all fun caseJson =>
+            match caseJson.getObjValAs? (Array Json) "body" with
+            | .ok bodyElems => statementListDefinitelyReturns bodyElems.toList
+            | .error _ => false
+          let lastCaseExhaustive := match cases.toList.getLast? with
+            | none => false
+            | some lastCase =>
+                let guardAbsent := match lastCase.getObjValAs? Json "guard" with
+                  | .ok .null => true
+                  | .error _ => true
+                  | _ => false
+                match guardAbsent, lastCase.getObjVal? "pattern" with
+                | true, .ok patternJson =>
+                    match patternJson.getObjValAs? String "node_type" with
+                    | .ok "MatchAs" => true
+                    | .ok "MatchStar" => true
+                    | _ => false
+                | _, _ => false
+          allCasesReturn && lastCaseExhaustive
+      | _ => false
   | _ => false
 
 end

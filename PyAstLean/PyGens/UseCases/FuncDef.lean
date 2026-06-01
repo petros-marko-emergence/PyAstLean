@@ -275,14 +275,17 @@ def assignHeadSyntax : (kind : SyntaxNodeKind) → Json →
         let tailCode ← withoutCheck do
           getCode splitRest `term
         match ← tupleAssignTargetNames? target with
-        | some (leftIdent, rightIdent) => do
+        | some idents => do
+            let n := idents.size
             let valueStx ← getCode value `term
             let unpackTmpIdent := mkIdent (← freshName `__unpack_pair)
-            let unpackedValue ← unpack2Term valueStx
-            `(let $unpackTmpIdent := $unpackedValue
-              let $leftIdent := Prod.fst $unpackTmpIdent
-              let $rightIdent := Prod.snd $unpackTmpIdent
-              $tailCode)
+            let mut result := tailCode
+            for i in (List.range n).reverse do
+              let acc ← tupleAccessTerm unpackTmpIdent i n
+              result ← `(let $(idents[i]!) := $acc
+                $result)
+            `(let $unpackTmpIdent := $valueStx
+              $result)
         | none => do
             let nameIdent ← getCode target `ident
             let valueStx ← getCode value `term
