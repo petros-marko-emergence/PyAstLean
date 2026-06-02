@@ -152,6 +152,14 @@ def blockStateInit (json : Json) (name : String) : PygenM (TSyntax `ident) := do
     s!"state_init has no entry for mutated name '{name}': {initObj}"
   pure (mkIdent initName.toName)
 
+/-- Name the generated result `def` after the block's `block_id` (a short, position-based,
+name-independent hash) so distinct top-level blocks never collide — even two identical ones.
+`kindPrefix` distinguishes the construct (`__py_for`, `__py_if`, ...). -/
+def blockResultIdent (json : Json) (kindPrefix : String) : PygenM (TSyntax `ident) := do
+  let .ok blockId := json.getObjValAs? String "block_id" | throwError
+    s!"Top-level block is missing a 'block_id' field: {json}"
+  pure (mkIdent (Name.mkSimple s!"{kindPrefix}_{blockId}"))
+
 /-- Build the right-nested tuple term `(n0, (n1, n2))` from a list of idents. -/
 partial def buildNameTuple (idents : Array (TSyntax `ident)) : PygenM (TSyntax `term) := do
   match idents.toList with
@@ -161,18 +169,30 @@ partial def buildNameTuple (idents : Array (TSyntax `ident)) : PygenM (TSyntax `
       let restTuple ← buildNameTuple rest.toArray
       `(($first, $restTuple))
 
+/-- Read the re-export identifier for a mutated `name`: the clean `name` when this block
+holds its final value, or a versioned (dead) name when a later assignment shadows it. -/
+def blockReexportName (json : Json) (name : String) : String :=
+  match json.getObjVal? "reexport_names" with
+  | .ok obj =>
+      match obj.getObjValAs? String name with
+      | .ok reexport => reexport
+      | .error _ => name
+  | .error _ => name
+
 /-- Re-export each mutated name as a fresh top-level `def` reading from the block's
-result. A single name needs no projection; multiple names project the result tuple. -/
-def reexportCommands (resultIdent : TSyntax `ident) (names : Array String) :
+result. A single name needs no projection; multiple names project the result tuple.
+The re-export identifier comes from the block's `reexport_names` annotation so a shadowed
+result (re-initialized later) gets a versioned name instead of colliding on the clean one. -/
+def reexportCommands (json : Json) (resultIdent : TSyntax `ident) (names : Array String) :
     PygenM (Array (TSyntax `command)) := do
   let n := names.size
   if n == 1 then
-    let nameIdent := mkIdent names[0]!.toName
+    let nameIdent := mkIdent (blockReexportName json names[0]!).toName
     pure #[← `(command| def $nameIdent := $resultIdent)]
   else
     let mut cmds := #[]
     for i in List.range n do
-      let nameIdent := mkIdent names[i]!.toName
+      let nameIdent := mkIdent (blockReexportName json names[i]!).toName
       let acc ← tupleAccessTerm resultIdent i n
       cmds := cmds.push (← `(command| def $nameIdent := $acc))
     pure cmds
@@ -248,13 +268,11 @@ def topLevelForCommands (json : Json) (names : Array String) : PygenM (Array (TS
   let prelude ← stateMutPrelude stateIdent names
   let foldBody ← stateRunBlock prelude bodyElems names
   let iterCode ← rangeIterSyntax iterJson
-  -- Name the result def after the mutated globals so distinct top-level blocks don't
-  -- collide (each statement is translated with a fresh var counter).
-  let resultIdent := mkIdent (Name.mkSimple s!"__py_for_{String.intercalate "_" names.toList}")
+  let resultIdent ← blockResultIdent json "__py_for"
   let foldlIdent := mkIdent ``List.foldl
   let foldDef ← `(command|
     def $resultIdent := $foldlIdent (fun $stateIdent $loopVarIdent => $foldBody) $initTuple $iterCode)
-  let reexports ← reexportCommands resultIdent names
+  let reexports ← reexportCommands json resultIdent names
   pure (#[foldDef] ++ reexports)
 
 /-- Lower a top-level single-statement block (`if`/`match`/`while`) with state threading.
@@ -264,7 +282,7 @@ Unlike `for`, there is no iterable to fold over: the block runs once. We emit
 The block's own statement (the `if`/`match`/`while`) lowers through its existing `doElem`
 generator, so branches, `orelse`, and nested mutation all work, and names absent from a
 branch keep their initial value. -/
-def topLevelStmtCommands (json : Json) (names : Array String) (resultBase : Name)
+def topLevelStmtCommands (json : Json) (names : Array String) (kindPrefix : String)
     (label : String) : PygenM (Array (TSyntax `command)) := do
   ensureTopLevelBlockIsPure #[json] label
   -- Bind each mutated name as `mut` from its versioned initializer, then run the
@@ -284,11 +302,9 @@ def topLevelStmtCommands (json : Json) (names : Array String) (resultBase : Name
       prelude := prelude.push (← `(doElem| let mut $nameIdent := $initIdent))
   -- The single block statement (this `json`) lowers through its `doElem` generator.
   let blockBody ← stateRunBlock prelude #[json] names
-  -- Name the result def after the mutated globals so distinct top-level blocks don't
-  -- collide (each statement is translated with a fresh var counter).
-  let resultIdent := mkIdent (Name.mkSimple s!"{resultBase}_{String.intercalate "_" names.toList}")
+  let resultIdent ← blockResultIdent json kindPrefix
   let blockDef ← `(command| def $resultIdent := $blockBody)
-  let reexports ← reexportCommands resultIdent names
+  let reexports ← reexportCommands json resultIdent names
   pure (#[blockDef] ++ reexports)
 
 @[pygen "While"]
@@ -315,7 +331,7 @@ def whileSyntax : (kind : SyntaxNodeKind) → Json →
         -- It lowers like `if`/`match`: `Id.run do let mut n := n₀; while ...; return (n...)`.
         match blockMutatedNames? json with
         | some names =>
-            let cmds ← topLevelStmtCommands json names `__py_while "while-loop"
+            let cmds ← topLevelStmtCommands json names "__py_while" "while-loop"
             return ⟨mkNullNode (cmds.map TSyntax.raw)⟩
         | none =>
             throwError "Top-level `while` is only supported when it mutates a module global \
@@ -389,7 +405,7 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
         -- A top-level `if` that mutates module globals is a state transformer.
         match blockMutatedNames? json with
         | some names =>
-            let cmds ← topLevelStmtCommands json names `__py_if "if-block"
+            let cmds ← topLevelStmtCommands json names "__py_if" "if-block"
             return ⟨mkNullNode (cmds.map TSyntax.raw)⟩
         | none => pure ()
         -- Otherwise, the only supported top-level `if` is the `__main__` guard, which

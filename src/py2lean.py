@@ -4,6 +4,7 @@ import os
 import json
 import ast
 import atexit
+import hashlib
 import select
 import re
 from pathlib import Path
@@ -512,70 +513,103 @@ def _plain_assign_name(stmt):
     return None
 
 
-class ToplevelStateError(Exception):
-    """Raised when top-level state threading hits a case the block-local model rejects."""
+def _block_id(index):
+    """A short, stable, name-independent id for a top-level block, unique by position.
+
+    Used to name the generated result `def` (`__py_block_<id>`) so distinct top-level
+    blocks never collide, even two textually identical ones.
+    """
+    # 6 hex chars of a hash over the statement's position is plenty to avoid collisions
+    # while staying readable; position guarantees uniqueness within a module.
+    return hashlib.sha1(f"toplevel_block_{index}".encode()).hexdigest()[:6]
 
 
 def annotate_toplevel_state(module_json):
-    """Annotate top-level executable blocks for state threading (block-local model).
+    """Annotate top-level executable blocks for state threading (streaming model).
 
-    For each top-level `if`/`for`/`while`/`match`/`try` that mutates module names,
-    we record `mutated_names` and a `state_init` map: the identifier the Lean
-    backend should read for each name's pre-block value. When a mutated name was
-    bound by an earlier top-level `x = ...`, that assignment is versioned (its
-    target becomes `x<U+2080>`) so the clean name `x` can be re-exported with the
-    block's result, avoiding Lean's immutable-`def` redefinition error.
+    Walk the module body in source order, tracking the *current* initializer for each
+    name. When a top-level `if`/`for`/`while`/`match`/`try` mutates names that have a
+    current initializer, record `mutated_names`, a `state_init` map (the identifier to
+    read for each name's pre-block value), and a `block_id` (for the result def name).
 
-    Scope (block-local): a name may be mutated by at most one top-level block, and
-    a pre-block initializer may be assigned at most once. Anything outside this is
-    rejected with a clear error rather than miscompiled.
+    Because the analysis is sequential, re-initializing a name between blocks is fine:
+    each block consumes whichever initializer is current at that point. Each consumed
+    initializer is versioned (its target id gets a unique `<U+2080>` suffix) so the clean
+    name stays free to be re-exported with the block's result, avoiding Lean's immutable
+    `def` redefinition error. After a block, its re-exported names become current again.
     """
     if not (isinstance(module_json, dict) and module_json.get("node_type") == "Module"):
         return
     body = module_json.get("body", [])
 
-    # Map each plain top-level assignment name -> the (single) Assign node, and
-    # track how many times it has been (re)assigned at top level.
-    init_assign = {}
-    assign_count = {}
-    for stmt in body:
+    # Index of the last top-level plain `name = ...` assignment per name. A block that
+    # mutates `name` may keep the clean re-export name `name` only if it is the final
+    # definition; if a later plain assignment re-initializes `name`, this block's
+    # re-export is dead (shadowed) and must be versioned to avoid a Lean `def` collision.
+    last_plain_assign_index = {}
+    for idx, stmt in enumerate(body):
         name = _plain_assign_name(stmt)
         if name is not None:
-            init_assign[name] = stmt
-            assign_count[name] = assign_count.get(name, 0) + 1
+            last_plain_assign_index[name] = idx
 
-    already_mutated = set()
-    for stmt in body:
-        if not (isinstance(stmt, dict) and stmt.get("node_type") in EXECUTABLE_BLOCK_NODE_TYPES):
+    # current_init[name] -> the Assign node currently providing `name`'s value, or
+    # None once `name` has been (re-)exported by a block (so it is a clean global def).
+    current_init = {}
+    # Count how many times each name has been versioned, so repeated re-initialization
+    # across blocks produces distinct versioned ids (both for inits and dead re-exports).
+    version_count = {}
+
+    def next_version(name):
+        n = version_count.get(name, 0) + 1
+        version_count[name] = n
+        return f"{name}₀" if n == 1 else f"{name}₀{n}"
+
+    for index, stmt in enumerate(body):
+        if not isinstance(stmt, dict):
             continue
+
+        # Track plain `name = ...` initializers as we pass them.
+        plain_name = _plain_assign_name(stmt)
+        if plain_name is not None:
+            current_init[plain_name] = stmt
+            continue
+
+        if stmt.get("node_type") not in EXECUTABLE_BLOCK_NODE_TYPES:
+            continue
+
         all_mutated = _block_mutated_names([stmt])
-        # Only names with a module-scope initializer are threaded globals. Names
-        # assigned solely inside the block (e.g. tuple-unpack temporaries the
+        # Only names with a current module-scope initializer are threaded globals.
+        # Names assigned solely inside the block (e.g. tuple-unpack temporaries the
         # annotator introduced) are block-local and stay inside the lowering.
-        mutated = sorted(name for name in all_mutated if name in init_assign)
+        mutated = sorted(name for name in all_mutated if current_init.get(name) is not None)
         if not mutated:
             continue
         stmt["mutated_names"] = mutated
+        stmt["block_id"] = _block_id(index)
 
         state_init = {}
+        reexport_names = {}
         for name in mutated:
-            if name in already_mutated:
-                raise ToplevelStateError(
-                    f"top-level name '{name}' is mutated by more than one block; "
-                    f"this is not supported yet (block-local state threading only)."
-                )
-            if assign_count.get(name, 0) > 1:
-                raise ToplevelStateError(
-                    f"top-level name '{name}' is assigned more than once before a "
-                    f"mutating block; this is not supported yet."
-                )
+            init_stmt = current_init[name]
             # Version the initializer so the clean name is free for re-export.
-            init_stmt = init_assign[name]
-            versioned = f"{name}₀"  # name + subscript zero
-            init_stmt["target"]["id"] = versioned
-            state_init[name] = versioned
+            versioned_init = next_version(name)
+            init_stmt["target"]["id"] = versioned_init
+            state_init[name] = versioned_init
+
+            # Decide the re-export name. If a later plain assignment re-initializes
+            # `name`, this block's result is shadowed: give it a versioned (dead) name so
+            # the eventual final definition can own the clean `name`. Otherwise this is
+            # the final definition and re-exports the clean `name`.
+            if index < last_plain_assign_index.get(name, -1):
+                reexport_names[name] = next_version(name)
+                # `name` is re-initialized later, so it is not yet a clean global.
+                current_init[name] = None
+            else:
+                reexport_names[name] = name
+                # After this block re-exports `name`, it is a clean global def again.
+                current_init[name] = None
         stmt["state_init"] = state_init
-        already_mutated.update(mutated)
+        stmt["reexport_names"] = reexport_names
 
 
 def _is_main_guard_test(test):

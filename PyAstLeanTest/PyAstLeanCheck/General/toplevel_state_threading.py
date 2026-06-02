@@ -4,7 +4,7 @@
 # CHECK: "hi"
 # CHECK: def x₀ :=
 # CHECK: (0 : Int)
-# CHECK: def __py_for_x :=
+# CHECK: def __py_for_. :=
 # CHECK: List.foldl
 # CHECK: fun _state i =>
 # CHECK: Id.run
@@ -13,23 +13,27 @@
 # CHECK: return x
 # CHECK: x₀ (PyAstLean.pyRange (5 : Int))
 # CHECK: def x :=
-# CHECK: __py_for_x
+# CHECK: __py_for_.
 # CHECK: def AX₀ :=
 # CHECK: def BX₀ :=
-# CHECK: def __py_if_AX_BX :=
+# CHECK: def __py_if_. :=
 # CHECK: let mut AX := AX₀
 # CHECK: let mut BX := BX₀
 # CHECK: if AX > BX then
 # CHECK: AX := Prod.fst __unpack_pair
 # CHECK: BX := Prod.snd __unpack_pair
 # CHECK: return (AX, BX)
+# CHECK: def AX₀2 :=
+# CHECK: Prod.fst __py_if_.
+# CHECK: def BX₀2 :=
+# CHECK: Prod.snd __py_if_.
 # CHECK: def AX :=
-# CHECK: Prod.fst __py_if_AX_BX
+# CHECK: Prod.fst __py_if_.
 # CHECK: def BX :=
-# CHECK: Prod.snd __py_if_AX_BX
+# CHECK: Prod.snd __py_if_.
 # CHECK: def total₀ :=
 # CHECK: def i₀ :=
-# CHECK: def __py_while_i_total :=
+# CHECK: def __py_while_. :=
 # CHECK: let mut i := i₀
 # CHECK: let mut total := total₀
 # CHECK: while i < (5 : Int) do
@@ -37,9 +41,9 @@
 # CHECK: i := i +ₚ (1 : Int)
 # CHECK: return (i, total)
 # CHECK: def i :=
-# CHECK: Prod.fst __py_while_i_total
+# CHECK: Prod.fst __py_while_.
 # CHECK: def total :=
-# CHECK: Prod.snd __py_while_i_total
+# CHECK: Prod.snd __py_while_.
 # PYASTLEANCHECK END
 
 # Bare top-level `for`/`if`/`while` are not executable in Lean, so we thread the names
@@ -58,6 +62,12 @@ def main():
 x = 0
 for i in range(5):
     x += i
+
+# if: swap two globals (native tuple unpacking lowers through Prod.fst/snd)
+AX = 3
+BX = 2
+if AX > BX:
+    AX, BX = BX, AX
 
 # if: swap two globals (native tuple unpacking lowers through Prod.fst/snd)
 AX = 3

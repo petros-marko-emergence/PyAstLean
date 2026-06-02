@@ -314,7 +314,7 @@ def matchSyntax : (kind : SyntaxNodeKind) → Json →
         -- A top-level `match` that mutates module globals is a state transformer.
         match blockMutatedNames? json with
         | some names =>
-            let cmds ← topLevelStmtCommands json names `__py_match "match-block"
+            let cmds ← topLevelStmtCommands json names "__py_match" "match-block"
             return ⟨mkNullNode (cmds.map TSyntax.raw)⟩
         | none =>
             throwError "Top-level `match` is only supported when it mutates a module global \
