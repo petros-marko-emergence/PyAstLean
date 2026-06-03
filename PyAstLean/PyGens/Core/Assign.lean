@@ -62,11 +62,12 @@ def subscriptTargetParts? (target : Json) : PygenM (Option (TSyntax `ident × TS
     s!"Subscript assignment target is missing a 'value' field: {target}"
   let .ok sliceJson := target.getObjValAs? Json "slice" | throwError
     s!"Subscript assignment target is missing a 'slice' field: {target}"
+  -- Slice targets (`s[a:b] = ...`) are item-list replacement, handled by `sliceTargetParts?`.
+  if jsonNodeType? sliceJson == some "Slice" then
+    return none
   unless jsonNodeType? containerJson == some "Name" do
     throwError "Only `name[index] = ...` subscript assignment (single-level, Name container) \
       is supported."
-  if jsonNodeType? sliceJson == some "Slice" then
-    throwError "Slice assignment (`s[a:b] = ...`) is not supported yet."
   let containerIdent ← getCode containerJson `ident
   let indexTerm ← getCode sliceJson `term
   return some (containerIdent, indexTerm)
@@ -76,6 +77,34 @@ def subscriptSetDoElem (containerIdent : TSyntax `ident) (indexTerm value : TSyn
     PygenM (TSyntax `doElem) := do
   let setItemIdent := mkIdent ``PyAstLean.pySetItem
   `(doElem| $containerIdent:ident := $setItemIdent $containerIdent $indexTerm $value)
+
+/-- Lower an optional slice bound expression to a `some _`/`none` `Option Int` term. -/
+def sliceBoundOptTerm (boundJson? : Option Json) : PygenM (TSyntax `term) := do
+  match boundJson? with
+  | none => `(none)
+  | some boundJson => `(some $(← getCode boundJson `term))
+
+/-- Recognize a slice assignment target `name[lower:upper]`, returning the container ident
+and the two optional bound terms. Returns `none` for non-slice subscript targets. A step
+(`name[a:b:c]`) is rejected. -/
+def sliceTargetParts? (target : Json) :
+    PygenM (Option (TSyntax `ident × TSyntax `term × TSyntax `term)) := do
+  unless jsonNodeType? target == some "Subscript" do
+    return none
+  let .ok sliceJson := target.getObjValAs? Json "slice" | throwError
+    s!"Subscript assignment target is missing a 'slice' field: {target}"
+  unless jsonNodeType? sliceJson == some "Slice" do
+    return none
+  unless (jsonFieldOption sliceJson "step").isNone do
+    throwError "Slice assignment with a step (`s[a:b:c] = ...`) is not supported yet."
+  let .ok containerJson := target.getObjValAs? Json "value" | throwError
+    s!"Slice assignment target is missing a 'value' field: {target}"
+  unless jsonNodeType? containerJson == some "Name" do
+    throwError "Only `name[a:b] = ...` slice assignment (Name container) is supported."
+  let containerIdent ← getCode containerJson `ident
+  let lowerTerm ← sliceBoundOptTerm (jsonFieldOption sliceJson "lower")
+  let upperTerm ← sliceBoundOptTerm (jsonFieldOption sliceJson "upper")
+  return some (containerIdent, lowerTerm, upperTerm)
 
 /-- Simple returned expressions can stay unparenthesized; more complex or effectful ones
 keep parentheses so Lean parses multiline `return` expressions reliably. -/
@@ -153,6 +182,12 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
                   `((← $valueStx))
                 else
                   pure valueStx
+            match ← sliceTargetParts? target with
+            | some (containerIdent, lowerTerm, upperTerm) =>
+                -- `s[a:b] = repl` replaces the slice and reassigns the variable.
+                let sliceSetIdent := mkIdent ``PyAstLean.pySliceSet
+                `(doElem| $containerIdent:ident := $sliceSetIdent $containerIdent $lowerTerm $upperTerm $rhs)
+            | none =>
             match ← subscriptTargetParts? target with
             | some (containerIdent, indexTerm) =>
                 -- `s[i] = v` rebuilds the list/dict and reassigns the variable.
