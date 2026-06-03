@@ -105,6 +105,21 @@ def listSyntax : (kind : SyntaxNodeKind) → Json →
     `([$eltCodes,*])
   | _, _ => throwError s!"Unsupported syntax category for List node"
 
+/-- `{a, b, c}` set literals lower to a deduplicated list via `pySetFromList`; sets are
+modeled as lists so list-backed protocols (`in`, `len`, iteration) apply. -/
+@[pygen "Set"]
+def setSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
+      s!"Set node does not have an 'elts' field or it is not a JSON value: {json}"
+    let eltCodes ← match eltsJson with
+      | .arr arr => arr.mapM (fun eltJson => getCode eltJson `term)
+      | _ => throwError s!"Set node 'elts' field is not an array: {eltsJson}"
+    let fromListIdent := mkIdent ``PyAstLean.pySetFromList
+    `($fromListIdent [$eltCodes,*])
+  | _, _ => throwError s!"Unsupported syntax category for Set node"
+
 @[pygen "Tuple"]
 def tupleSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -123,6 +138,18 @@ def tupleSyntax : (kind : SyntaxNodeKind) → Json →
           `(($first, $restTuple))
     buildTuple eltCodes.toList
   | _, _ => throwError s!"Unsupported syntax category for Tuple node"
+
+/-- `Starred` (`*iterable`) in a call lowers, in term position, to the iterable itself.
+The only place that interprets the spread is the `print(...)` lowering, which detects a
+`Starred` argument by node type and maps over this value. -/
+@[pygen "Starred"]
+def starredSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok valueJson := json.getObjValAs? Json "value" | throwError
+      s!"Starred node does not have a 'value' field or it is not a JSON value: {json}"
+    getCode valueJson `term
+  | _, _ => throwError s!"Unsupported syntax category for Starred node"
 
 @[pygen "Dict"]
 def dictSyntax : (kind : SyntaxNodeKind) → Json →

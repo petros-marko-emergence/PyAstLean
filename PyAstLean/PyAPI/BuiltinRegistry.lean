@@ -24,6 +24,7 @@ def pythonBuiltinMap? (name : String) : Option Lean.Name :=
   | "reversed" => some ``pyReversed
   | "chr" => some ``pyChr
   | "ord" => some ``pyOrd
+  | "set" => some ``pySet
   | _ => none
 
 end PyAstLean

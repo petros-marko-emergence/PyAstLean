@@ -6,4 +6,5 @@ import PyAstLean.PyAPI.Builtins
 import PyAstLean.PyAPI.Strings
 import PyAstLean.PyAPI.Lists
 import PyAstLean.PyAPI.Dicts
+import PyAstLean.PyAPI.Sets
 import PyAstLean.PyAPI.CommonProtocols

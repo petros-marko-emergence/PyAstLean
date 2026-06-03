@@ -360,6 +360,25 @@ class ASTToJsonLeanVisitorBase:
                 "args": args_json,
                 "keywords": keywords_json
             }
+        # `min(a, b, ...)` / `max(a, b, ...)` (two or more positional args) is the
+        # element-wise form. Normalize it to the single-iterable form `min([a, b, ...])`
+        # so the backend's iterable-based `pyMin`/`pyMax` handles both call shapes.
+        if (
+            func_json.get("node_type") == "Name"
+            and func_json.get("id") in {"min", "max"}
+            and len(args_json) >= 2
+            and not keywords_json
+        ):
+            args_json = [{"node_type": "List", "elts": args_json}]
+        # `set()` with no arguments is the empty set; lower it to an empty set literal so the
+        # backend needs no zero-argument `set` builtin (`set(xs)` stays a call to `pySet`).
+        if (
+            func_json.get("node_type") == "Name"
+            and func_json.get("id") == "set"
+            and not args_json
+            and not keywords_json
+        ):
+            return {"node_type": "Set", "elts": []}
         return {
             "node_type": "Call",
             "func": func_json,
@@ -415,6 +434,20 @@ class ASTToJsonLeanVisitorBase:
         return {
             "node_type": "Dict",
             "entries": entries
+        }
+
+    def visit_Starred(self, node):
+        """Translates ast.Starred (`*iterable`) used as a call argument."""
+        return {
+            "node_type": "Starred",
+            "value": self.visit(node.value)
+        }
+
+    def visit_Set(self, node):
+        """Translates ast.Set (`{a, b, c}` set literal) to a JSON IR node."""
+        return {
+            "node_type": "Set",
+            "elts": [self.visit(elt) for elt in node.elts]
         }
 
     def visit_Tuple(self, node):

@@ -93,6 +93,10 @@ def pyListInsert (xs : List α) (idx : Int) (elem : α) : List α :=
 def pyInsert : List α → Int → α → List α :=
   pyListInsert
 
+/-- Python `.copy()` (lists and dicts). These are immutable values in this runtime, so a
+shallow copy is the value itself. -/
+def pyCopy {α : Type} (x : α) : α := x
+
 
 theorem pyListReverse_involution (xs : List α) : pyReverse (pyReverse xs) = xs := by
   unfold pyReverse pyListReverse

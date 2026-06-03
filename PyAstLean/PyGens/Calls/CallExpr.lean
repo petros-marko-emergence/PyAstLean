@@ -199,10 +199,10 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                 throwError s!"print() keyword argument '{kwName}' is not supported yet."
             return ← buildIOActionApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               let pyPrintIOIdent := mkIdent ``pyPrintIO
-              let printArgs ← wrapPrintArgs resolvedArgs
+              let printArgs ← buildPrintArgsList argsArray resolvedArgs
               match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
               | none, none =>
-                  `($pyPrintIOIdent [$printArgs,*])
+                  `($pyPrintIOIdent $printArgs)
               | _, _ =>
                   let sepCode ← match keyWordsMap.get? "sep" with
                     | some sepJson => getCode sepJson `term
@@ -210,7 +210,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                   let endCode ← match keyWordsMap.get? "end" with
                     | some endJson => getCode endJson `term
                     | none => `("\n")
-                  `($pyPrintIOIdent [$printArgs,*] $sepCode $endCode)
+                  `($pyPrintIOIdent $printArgs $sepCode $endCode)
         | .ok "Name", .ok "input" => do
             unless keyWordsMap.isEmpty do
               throwError "input() keyword arguments are not supported yet."
@@ -348,6 +348,21 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           let pyAppendIdent := mkIdent ``pyAppend
           return ← `(doElem| $targetIdent:ident := $pyAppendIdent $targetIdent $argCode)
 
+        -- Set mutators rebuild the set and reassign the variable, like `append`.
+        if attr == "add" || attr == "discard" || attr == "remove" then
+          unless keyWordsMap.isEmpty do
+            throwError s!"{attr}() calls do not support keyword arguments."
+          let some argJson := argsArray[0]? | throwError s!"{attr}() expects exactly one positional argument."
+          unless argsArray.size == 1 do
+            throwError s!"{attr}() expects exactly one positional argument."
+          let targetIdent ← getCode valueJson `ident
+          let argCode ← getCode argJson `term
+          let mutIdent := match attr with
+            | "add" => mkIdent ``pySetAdd
+            | "discard" => mkIdent ``pySetDiscard
+            | _ => mkIdent ``pySetRemove
+          return ← `(doElem| $targetIdent:ident := $mutIdent $targetIdent $argCode)
+
         if attr == "get" then
           unless keyWordsMap.isEmpty do
             throwError "get() calls with keyword arguments are not supported yet."
@@ -393,10 +408,10 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                 throwError s!"print() keyword argument '{kwName}' is not supported yet."
             let t ← buildIOActionApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               let pyPrintIOIdent := mkIdent ``pyPrintIO
-              let printArgs ← wrapPrintArgs resolvedArgs
+              let printArgs ← buildPrintArgsList argsArray resolvedArgs
               match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
               | none, none =>
-                  `($pyPrintIOIdent [$printArgs,*])
+                  `($pyPrintIOIdent $printArgs)
               | _, _ =>
                   let sepCode ← match keyWordsMap.get? "sep" with
                     | some sepJson => getCode sepJson `term
@@ -404,7 +419,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                   let endCode ← match keyWordsMap.get? "end" with
                     | some endJson => getCode endJson `term
                     | none => `("\n")
-                  `($pyPrintIOIdent [$printArgs,*] $sepCode $endCode)
+                  `($pyPrintIOIdent $printArgs $sepCode $endCode)
             return ← `(doElem| let _ ← $t:term)
         | .ok "Name", .ok "input" => do
             unless keyWordsMap.isEmpty do

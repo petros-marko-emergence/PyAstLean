@@ -7,17 +7,44 @@ open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
 
-/-- Wrap each `print(...)` argument as `PyPrintArg.mk (pyStringify arg)`.
+/-- Build the `List PyPrintArg` term for a `print(...)` call's arguments.
 
-We do this explicitly instead of relying on the `CoeOut` into a `List PyPrintArg` literal:
-the coercion pushes the expected element type `PyPrintArg` into each argument, which breaks
-polymorphic argument terms such as `pyListGetItem a i` (the element type unifies with
-`PyPrintArg`, then demands `Inhabited PyPrintArg`). Applying `pyStringify` lets each argument
-elaborate at its natural type first; the result is identical for fixed-type arguments. -/
-def wrapPrintArgs (resolvedArgs : Array (TSyntax `term)) : PygenM (Array (TSyntax `term)) := do
+Each ordinary argument becomes `PyPrintArg.mk (pyStringify arg)`. A `*iterable` (`Starred`)
+argument is spread: its elements are each mapped to a `PyPrintArg`. The pieces are
+concatenated into one `List PyPrintArg`.
+
+We wrap arguments explicitly via `pyStringify` rather than relying on the `CoeOut` into a
+`List PyPrintArg` literal: the coercion pushes the expected element type `PyPrintArg` into
+each argument, which breaks polymorphic argument terms such as `pyListGetItem a i` (the
+element type unifies with `PyPrintArg`, then demands `Inhabited PyPrintArg`). Applying
+`pyStringify` lets each argument elaborate at its natural type first; the result is identical
+for fixed-type arguments. -/
+def buildPrintArgsList (argsArray : Array Json) (resolvedArgs : Array (TSyntax `term)) :
+    PygenM (TSyntax `term) := do
   let printArgIdent := mkIdent ``PyAstLean.PyPrintArg.mk
   let stringifyIdent := mkIdent ``PyAstLean.pyStringify
-  resolvedArgs.mapM fun a => `($printArgIdent ($stringifyIdent $a))
+  -- Each `part` is itself a `List PyPrintArg` (a singleton for ordinary args, the spread for
+  -- starred args); we concatenate them.
+  let mut parts : Array (TSyntax `term) := #[]
+  for i in [0:resolvedArgs.size] do
+    let code := resolvedArgs[i]!
+    let isStarred := match argsArray[i]? with
+      | some argJson =>
+          match argJson.getObjValAs? String "node_type" with
+          | .ok "Starred" => true
+          | _ => false
+      | none => false
+    if isStarred then
+      parts := parts.push (← `(List.map (fun __e => $printArgIdent ($stringifyIdent __e)) $code))
+    else
+      parts := parts.push (← `([$printArgIdent ($stringifyIdent $code)]))
+  match parts.toList with
+  | [] => `(([] : List PyAstLean.PyPrintArg))
+  | first :: rest =>
+      let mut acc := first
+      for p in rest do
+        acc ← `($acc ++ $p)
+      pure acc
 
 /-- Local copy of the exception-effect probe so call lowering can avoid cyclic imports. -/
 partial def basicJsonUsesExceptionEffect (json : Json) : Bool :=
@@ -252,10 +279,10 @@ partial def hoistIOTerm (json : Json) : PygenM (Array (TSyntax `doElem) × TSynt
             else
               resolvedArgs := resolvedArgs.push (← getCode argJson `term)
           let pyPrintIOIdent := mkIdent ``pyPrintIO
-          let printArgs ← wrapPrintArgs resolvedArgs
+          let printArgs ← buildPrintArgsList argsArray resolvedArgs
           let action ← match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
             | none, none =>
-                `($pyPrintIOIdent [$printArgs,*])
+                `($pyPrintIOIdent $printArgs)
             | _, _ =>
                 let sepCode ← match keyWordsMap.get? "sep" with
                   | some sepJson => getCode sepJson `term
@@ -263,7 +290,7 @@ partial def hoistIOTerm (json : Json) : PygenM (Array (TSyntax `doElem) × TSynt
                 let endCode ← match keyWordsMap.get? "end" with
                   | some endJson => getCode endJson `term
                   | none => `("\n")
-                `($pyPrintIOIdent [$printArgs,*] $sepCode $endCode)
+                `($pyPrintIOIdent $printArgs $sepCode $endCode)
           let binder := mkIdent (s!"__py_print{bindings.size}").toName
           let finalBindings := bindings.push (← `(doElem| let $binder:ident ← $action:term))
           return (finalBindings, binder)

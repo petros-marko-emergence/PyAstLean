@@ -36,6 +36,7 @@ def pythonMethodMap? (attr : String) : Option Lean.Name :=
   | "append"     => some ``pyAppend
   | "extend"     => some ``pyExtend
   | "reverse"    => some ``pyReverse
+  | "copy"       => some ``pyCopy
   -- Dict Only
   | "items"      => some ``pyItems
   | "keys"       => some ``pyKeys
