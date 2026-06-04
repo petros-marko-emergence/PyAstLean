@@ -46,10 +46,13 @@ def comprehensionFilterOver (compJson : Json) (baseIter : TSyntax `term) : Pygen
     s!"comprehension node does not have an 'iter' field: {compJson}"
   let .ok ifsJson := compJson.getObjValAs? Json "ifs" | throwError
     s!"comprehension node does not have an 'ifs' field: {compJson}"
+  -- Normalize the iterable through `pyIter` so `List.map`/`filter`/`flatMap` always receive a
+  -- `List` and the element type is governed uniformly by the `PyIterable` instances (a string
+  -- yields one-character strings, a dict yields keys). `range(...)` already lowers to a
+  -- `List Int`, so it is passed through directly.
   let iterCode ←
-    match jsonNodeType? iterJson with
-    | some "BinOp" | some "Constant" => `($(mkIdent ``pyIter) $baseIter)
-    | _ => pure baseIter
+    if isRangeIter iterJson then pure baseIter
+    else `($(mkIdent ``pyIter) $baseIter)
   let ifTerms ← match ifsJson with
     | .arr arr => arr.mapM (fun ifJson => getCode ifJson `term)
     | _ => throwError s!"comprehension node 'ifs' field is not an array: {ifsJson}"

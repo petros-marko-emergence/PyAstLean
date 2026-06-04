@@ -380,7 +380,6 @@ def forSyntax : (kind : SyntaxNodeKind) → Json →
           s!"For node does not have an 'orelse' field or it is not a JSON array: {json}"
         unless orelseElems.isEmpty do
           throwError "Python for-else blocks are not supported."
-        let iterCode ← rangeIterSyntax iterJson
         -- Scope the loop's target and body variable declarations to the loop: names first
         -- bound inside the body must not leak into the enclosing scope, so a later
         -- `x = ...` after the loop is emitted as a fresh `let mut` rather than a reassignment
@@ -396,14 +395,21 @@ def forSyntax : (kind : SyntaxNodeKind) → Json →
         -- (e.g. an iterable ending in `none` would otherwise pretty-print as `nonedo`).
         if jsonUsesIOEffect iterJson then
           -- The iterable is IO-derived (e.g. `range(int(input()))` → `IO (List Int)`, or
-          -- `input().split()` → `IO (List String)`). Await it once into a local, then iterate
-          -- over the pure value — otherwise a raw `IO X` would flow into a pure position.
+          -- `input()` → `IO String`). Await it once into a local, then iterate over the pure
+          -- value — otherwise a raw `IO X` would flow into a pure position. The awaited value is
+          -- normalized through `pyIter` (unless it is a `range`, already a `List Int`) so a
+          -- string iterable binds one-character strings, matching the pure path.
+          let rawIter ← getCode iterJson `term
           let itIdent := mkIdent (← freshName `__py_iter)
-          let bindIt ← `(doElem| let $itIdent:ident ← $iterCode:term)
-          let forLoop ← `(doElem| for $targetIdent:ident in ($itIdent) do
+          let bindIt ← `(doElem| let $itIdent:ident ← $rawIter:term)
+          let iterTerm ←
+            if isRangeIter iterJson then pure (itIdent : TSyntax `term)
+            else `($(mkIdent ``pyIter) $itIdent)
+          let forLoop ← `(doElem| for $targetIdent:ident in ($iterTerm) do
               $[$bodyStxArray:doElem]*)
           pure ⟨mkNullNode #[bindIt.raw, forLoop.raw]⟩
         else
+          let iterCode ← rangeIterSyntax iterJson
           `(doElem| for $targetIdent:ident in ($iterCode) do
               $[$bodyStxArray:doElem]*)
     | `command, json => do

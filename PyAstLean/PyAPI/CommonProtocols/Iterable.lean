@@ -38,9 +38,11 @@ instance : PyIterable (List α) α where
 instance : PyIterable (Array α) α where
   toPyList := Array.toList
 
-/-- Strings iterate over characters. -/
-instance : PyIterable String Char where
-  toPyList := String.toList
+/-- Strings iterate over their characters as one-character strings, since Python has no separate
+character type — iterating a `str` yields length-1 `str`s. This keeps loop variables, `pyList`
+casts, and comprehensions over strings interoperable with string literals and methods. -/
+instance : PyIterable String String where
+  toPyList s := s.toList.map (·.toString)
 
 /-- Dictionaries iterate over keys, matching Python's default dictionary iteration. -/
 instance [BEq α] [Hashable α] : PyIterable (Std.HashMap α β) α where

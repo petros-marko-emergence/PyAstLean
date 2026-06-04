@@ -70,22 +70,22 @@ def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
             let getIdent := mkIdent `getElem!
             `($getIdent $valueCode $sliceCode)
     else if isString then
+        -- Indexing a string literal yields a one-character string (Python has no char type),
+        -- matching `pyGetItem`/`PyGetItem String Int String` on string variables.
+        let getIdent := mkIdent `PyAstLean.pyStringGetItemStr
         let sliceType := sliceJson.getObjValAs? String "node_type"
         match sliceType with
         | .ok "Constant" =>
             let idx := sliceJson.getObjValAs? Int "value"
             match idx with
             | .ok i =>
-                let getIdent := mkIdent `PyAstLean.pyStringGetItem
                 let iStx ← intToStx i
                 `($getIdent $valueCode $iStx)
             | _ =>
                 let sliceCode ← getCode sliceJson `term
-                let getIdent := mkIdent `getElem!
                 `($getIdent $valueCode $sliceCode)
         | _ =>
             let sliceCode ← getCode sliceJson `term
-            let getIdent := mkIdent `getElem!
             `($getIdent $valueCode $sliceCode)
     else
         let sliceType := sliceJson.getObjValAs? String "node_type"

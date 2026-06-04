@@ -61,37 +61,49 @@ def isMainGuardTest (json : Json) : Bool :=
       | _, _, _ => false
   | _ => false
 
+/-- Detect a `range(...)` iterable, which is lowered directly to `pyRange` (already a `List Int`)
+rather than being normalized through `pyIter`. The annotation pre-pass rewrites `range(...)`
+calls to a dedicated `Range` node; a raw `Call` to `range` is also recognized defensively. -/
+def isRangeIter (iterJson : Json) : Bool :=
+  match iterJson.getObjValAs? String "node_type" with
+  | .ok "Range" => true
+  | .ok "Call" =>
+      match iterJson.getObjValAs? Json "func" with
+      | .ok funcJson =>
+          funcJson.getObjValAs? String "node_type" == .ok "Name" &&
+            funcJson.getObjValAs? String "id" == .ok "range"
+      | _ => false
+  | _ => false
+
+/-- Lower a `for`/comprehension iterable to a Lean term that can be iterated as a `List`.
+
+`range(...)` lowers directly to `pyRange` (already a `List Int`). Every other iterable is
+normalized through `pyIter`, so the element type is governed uniformly by the `PyIterable`
+instances: a `String` yields one-character `String`s, a `Std.HashMap` yields its keys, a `List`
+is unchanged. This is what makes iteration over a string behave like Python (`for c in s` binds
+length-1 strings, not `Char`s) and keeps loop bodies interoperable with string literals. -/
 def rangeIterSyntax (iterJson : Json) : PygenM (TSyntax `term) := do
   let .ok iterNodeType := iterJson.getObjValAs? String "node_type" | throwError
     s!"For iterator is missing a node_type field: {iterJson}"
-  if iterNodeType == "Call" then
-    let .ok funcJson := iterJson.getObjValAs? Json "func" | throwError
-      s!"Call iterator is missing a func field: {iterJson}"
-    let .ok funcNodeType := funcJson.getObjValAs? String "node_type" | throwError
-      s!"Call iterator function is missing a node_type field: {funcJson}"
-    if funcNodeType == "Name" then
-      let .ok funcName := funcJson.getObjValAs? String "id" | throwError
-        s!"Call iterator function is missing an id field: {funcJson}"
-      if funcName == "range" then
-        let argsJson := match iterJson.getObjVal? "args" with
-          | .ok v => v
-          | .error _ => Json.arr #[]
-        let keywordsJson := match iterJson.getObjVal? "keywords" with
-          | .ok v => v
-          | .error _ => Json.mkObj []
-        let rangeJson := Json.mkObj [
-          ("node_type", Json.str "Range"),
-          ("func", funcJson),
-          ("args", argsJson),
-          ("keywords", keywordsJson)
-        ]
-        getCode rangeJson `term
-      else
-        getCode iterJson `term
-    else
-      getCode iterJson `term
-  else
+  if iterNodeType == "Range" then
+    -- The pre-pass already produced a `Range` node; lower it straight to `pyRange`.
     getCode iterJson `term
+  else if iterNodeType == "Call" &&
+      (iterJson.getObjValAs? Json "func").toOption.any
+        (fun f => f.getObjValAs? String "id" == .ok "range") then
+    -- Defensive path for a raw `range(...)` call that escaped the pre-pass rewrite.
+    let funcJson := (iterJson.getObjVal? "func").toOption.getD (Json.mkObj [])
+    let argsJson := (iterJson.getObjVal? "args").toOption.getD (Json.arr #[])
+    let keywordsJson := (iterJson.getObjVal? "keywords").toOption.getD (Json.mkObj [])
+    let rangeJson := Json.mkObj [
+      ("node_type", Json.str "Range"),
+      ("func", funcJson),
+      ("args", argsJson),
+      ("keywords", keywordsJson)
+    ]
+    getCode rangeJson `term
+  else
+    `($(mkIdent ``pyIter) $(← getCode iterJson `term))
 
 /-- Reusable syntax nodes for boolean literals in generated terms. -/
 def trueTerm : TSyntax `term := mkIdent ``true

@@ -30,7 +30,7 @@ open PyAstLean
 #guard_msgs in
 #eval pyStr (none : Option Int)
 
-/-- info: ['a', 'b', 'c'] -/
+/-- info: ["a", "b", "c"] -/
 #guard_msgs in
 #eval pyList "abc"
 

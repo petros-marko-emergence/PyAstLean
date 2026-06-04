@@ -33,11 +33,11 @@ private def sortStrings (xs : List String) : List String :=
 
 /-- info: true -/
 #guard_msgs in
-#eval pyContains "analytics" 'a'
+#eval pyContains "analytics" "a"
 
 /-- info: false -/
 #guard_msgs in
-#eval pyContains "analytics" 'z'
+#eval pyContains "analytics" "z"
 
 /-- info: true -/
 #guard_msgs in
@@ -49,7 +49,7 @@ private def sortStrings (xs : List String) : List String :=
 
 /-- info: "abc" -/
 #guard_msgs in
-#eval String.ofList <| pyIter "abc"
+#eval String.join <| pyIter "abc"
 
 /-- info: [] -/
 #guard_msgs in
@@ -79,7 +79,7 @@ private def sortStrings (xs : List String) : List String :=
 
 /-- info: "abc" -/
 #guard_msgs in
-#eval String.ofList <| pySort "cba"
+#eval String.join <| pySort "cba"
 
 /-- info: ["a", "m", "z"] -/
 #guard_msgs in
@@ -95,7 +95,7 @@ private def sortStrings (xs : List String) : List String :=
 
 /-- info: "cba" -/
 #guard_msgs in
-#eval String.ofList <| pyIter (pyReversed "abc")
+#eval String.join <| pyIter (pyReversed "abc")
 
 /-- info: 13 -/
 #guard_msgs in
@@ -119,7 +119,7 @@ private def sortStrings (xs : List String) : List String :=
 #guard_msgs in
 #eval do
   let x := pySort "dbca"
-  pure (String.ofList x)
+  pure (String.join x)
 
 /-- info: ("size=3", [1, 3, 5]) -/
 #guard_msgs in

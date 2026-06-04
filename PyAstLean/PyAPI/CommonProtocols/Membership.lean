@@ -17,9 +17,9 @@ Typeclass for Python-style membership tests, `value in container`.
 The element type `β` is an `outParam` so it is *determined by the container*: writing
 `pyContains xs x` pins `x`'s type from `xs` (e.g. `List ℤ ⇒ ℤ`), which matters when `x` is
 otherwise an unconstrained lambda parameter that would default to `ℚ`. The flip side is that
-each container has a single element type, so `String` membership is `Char` here; *substring*
-membership (`"ab" in s`) is handled at codegen time via `pyStrContainsSubstr`, since a string
-literal on the left is detectable there.
+each container has a single element type. Since Python has no character type, `String`
+membership is `String` membership (a substring test) — `c in s` for a length-1 `c` and
+`"ab" in s` are the same operation.
 
 This file defines the stable public Lean surface `pyContains`; individual runtime types
 extend it by adding `PyContains` instances rather than changing codegen.
@@ -35,9 +35,10 @@ def pyContains {α β : Type} [PyContains α β] (container : α) (value : β) :
 instance [BEq α] : PyContains (List α) α where
   contains := fun xs x => xs.contains x
 
-/-- `c in s` for a character checks character-by-character membership. -/
-instance : PyContains String Char where
-  contains := fun s c => s.contains c
+/-- `needle in s` is a substring test; since a length-1 `str` is just a one-character substring,
+this also covers the `c in s` character-membership idiom. -/
+instance : PyContains String String where
+  contains := fun s needle => pyStrContainsSubstr s needle
 
 /-- Hash maps check membership by key presence. -/
 instance {β : Type} [BEq α] [Hashable α] : PyContains (Std.HashMap α β) α where

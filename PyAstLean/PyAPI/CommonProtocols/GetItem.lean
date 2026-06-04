@@ -24,11 +24,12 @@ def pyGetItem {α ι β : Type} [PyGetItem α ι β] (c : α) (i : ι) : β :=
 instance {β : Type} [Inhabited β] : PyGetItem (List β) Int β where
   getItem xs i := pyListGetItem xs i
 
-/-- A string variable indexed by `Int` yields the character at that position (negative indices
-count from the end), consistent with iterating a string as `Char`s. An out-of-range index
-falls back to the default character. -/
-instance : PyGetItem String Int Char where
-  getItem s i := (pyStringGetItem s i).getD default
+/-- A string indexed by `Int` yields the one-character string at that position (negative indices
+count from the end), since Python has no separate character type — `s[i]` is a length-1 `str`.
+This keeps `s[i]` interoperable with string literals (`s[i] == 'x'`), `ord`, and the string
+methods, all of which are `String`-oriented. An out-of-range index yields the empty string. -/
+instance : PyGetItem String Int String where
+  getItem s i := pyStringGetItemStr s i
 
 /-- Dictionaries index by key; a missing key panics with a `KeyError`, matching Python's
 strict `d[k]` (use `d.get(k, default)` for the non-raising form). -/

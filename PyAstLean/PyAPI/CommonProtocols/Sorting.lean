@@ -39,11 +39,12 @@ instance [Ord α] : PySort (Array α) α where
   pySort xs := xs.toList.mergeSort pyOrdLe
 
 /--
-Sorting a string follows Python `sorted(str)` semantics and returns the characters in
-ascending order.
+Sorting a string follows Python `sorted(str)` semantics and returns the characters in ascending
+order as one-character strings (Python has no character type, so `sorted(s)` is a list of
+length-1 `str`s).
 -/
-instance : PySort String Char where
-  pySort s := s.toList.mergeSort pyOrdLe
+instance : PySort String String where
+  pySort s := (s.toList.map (·.toString)).mergeSort pyOrdLe
 
 /--
 Sorting a dictionary follows Python `sorted(dict)` semantics and sorts the keys.

@@ -79,6 +79,15 @@ def pyStringGetItem (s : String) (idx : Int) : Option Char :=
     else
       lst[trueIdx.toNat]?
 
+/-- Python-style string indexing, returning a one-character string. Python has no separate
+character type — `s[i]` is a length-1 `str` — so string element access yields `String`, keeping
+it interoperable with string literals (`s[i] == 'x'`), `ord`, and string methods. An
+out-of-range index yields the empty string. -/
+def pyStringGetItemStr (s : String) (idx : Int) : String :=
+  match pyStringGetItem s idx with
+  | some c => c.toString
+  | none => ""
+
 /-- Python-style slicing for strings. -/
 def pyStringSlice (s : String) (start : Option Int) (stop : Option Int) : String :=
   let lst := s.toList
