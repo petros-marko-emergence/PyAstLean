@@ -18,6 +18,10 @@ structure State where
   varNames : HashSet Name := HashSet.emptyWithCapacity 100
   checkExr : Bool := true
   useArrow : Bool := false
+  /-- When the innermost enclosing loop has a Python `else` clause, this holds the name of the
+  `let mut` flag that records whether a `break` fired (so the `else` runs only on natural
+  completion). `none` means the innermost loop has no `else`, so `break` lowers plainly. -/
+  breakFlag : Option Name := none
   deriving Inhabited, Repr
 
 end PyGen
@@ -57,6 +61,14 @@ def withUseArrow {α : Type} (x : PygenM α) : PygenM α :=
 
 def withFixedVariables {α : Type} (x : PygenM α) : PygenM α := do
   withPygenStateField (·.varNames) (fun st varNames => { st with varNames := varNames }) (← get).varNames x
+
+/-- Run `x` with the current loop's break-flag set to `flag?`. A loop body always overrides the
+flag (to its own `else` flag, or `none`) so a `break` binds to the innermost loop only. -/
+def withBreakFlag {α : Type} (flag? : Option Name) (x : PygenM α) : PygenM α :=
+  withPygenStateField (·.breakFlag) (fun st breakFlag => { st with breakFlag := breakFlag }) flag? x
+
+def getBreakFlag : PygenM (Option Name) := do
+  return (← get).breakFlag
 
 def isCheckEnabled : PygenM Bool := do
   return (← get).checkExr

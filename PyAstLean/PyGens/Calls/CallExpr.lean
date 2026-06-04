@@ -181,6 +181,17 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
         if attr == "sort" then
           throwError "sort() is only supported as a statement; use sorted(x) in expressions."
 
+        if attr == "format" then
+          -- `"… {} …".format(a, b)`: stringify each argument and fill the `{}` placeholders.
+          unless keyWordsMap.isEmpty do
+            throwError "str.format() keyword arguments are not supported yet."
+          let receiverCode ← getCode valueJson `term
+          let stringifyIdent := mkIdent ``PyAstLean.pyStringify
+          let formatIdent := mkIdent ``PyAstLean.pyStrFormat
+          return ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+            let stringified ← resolvedArgs.mapM (fun a => `($stringifyIdent $a))
+            `($formatIdent $receiverCode [$stringified,*])
+
         -- `pop` both returns a value and mutates its receiver, which a pure term cannot express.
         -- Refuse it in expression position so the pure-function path falls back to the monadic
         -- lowering, where `x = container.pop(...)` is handled as a statement (value bind +

@@ -87,6 +87,22 @@ def pyJoin {α β : Type} [PyIterable α β] [PyStringJoin β] (sep : String) (x
 def pyStringReplace : String → (old : String) → (new : String) → String
   | s, old, new => s.replace old new
 
+/-- Python `str.format` for the common positional `{}` placeholders: each `{}` is replaced,
+left to right, by the next (already-stringified) argument. Splitting on `"{}"` yields the
+literal segments between placeholders, which we interleave with the arguments. Surplus
+arguments are ignored and surplus placeholders are left as the surrounding literals, which is
+close enough for the `"{} {}".format(a, b)` idiom (named/spec placeholders aren't handled). -/
+def pyStrFormat (fmt : String) (args : List String) : String :=
+  match fmt.splitOn "{}" with
+  | [] => ""
+  | first :: rest =>
+      let rec weave (segments : List String) (args : List String) (acc : String) : String :=
+        match segments, args with
+        | [], _ => acc
+        | seg :: segs, a :: as' => weave segs as' (acc ++ a ++ seg)
+        | seg :: segs, [] => weave segs [] (acc ++ seg)
+      weave rest args first
+
 /--
 Concrete string implementation for Python `strip`.
 

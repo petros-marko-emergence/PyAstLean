@@ -1,4 +1,5 @@
 import Mathlib
+import PyAstLean.PyAPI.CommonProtocols.Iterable
 
 namespace PyAstLean
 
@@ -18,9 +19,10 @@ and the codegen reassigns the variable (`s := pySetAdd s x`).
 def pySetFromList {α : Type} [BEq α] (xs : List α) : List α :=
   xs.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) []
 
-/-- Python `set(iterable)` for a list-shaped iterable (lists, `range(...)`, comprehensions). -/
-def pySet {α : Type} [BEq α] (xs : List α) : List α :=
-  pySetFromList xs
+/-- Python `set(iterable)` for any iterable (lists, `range(...)`, comprehensions, strings,
+`map`/`zip` results), normalized through `pyIter` so `set("abc")`, `set(range(n))`, etc. work. -/
+def pySet {α β : Type} [PyIterable β α] [BEq α] (xs : β) : List α :=
+  pySetFromList (pyIter xs)
 
 /-- Python `s.add(x)`: insert `x` if not already present. -/
 def pySetAdd {α : Type} [BEq α] (s : List α) (x : α) : List α :=

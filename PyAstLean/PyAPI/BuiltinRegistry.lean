@@ -28,6 +28,8 @@ def pythonBuiltinMap? (name : String) : Option Lean.Name :=
   -- argument defaults to `0` ("no modulus"), so both arities lower to the same name.
   | "pow" => some ``pyPow
   | "set" => some ``pySet
+  -- `dict(pairs)` (e.g. `dict(zip(keys, vals))`) builds a hash map from an iterable of pairs.
+  | "dict" => some ``pyDict
   -- `int`/`str` have dedicated special-case lowering for *direct* calls (`int(x)`); the
   -- registry entries make them usable as first-class callables, e.g. `map(int, xs)`.
   | "int" => some ``pyInt

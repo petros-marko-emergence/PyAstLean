@@ -27,6 +27,14 @@ behavior by adding `PySort` instances.
 def pySort {α β : Type} [PySort α β] (value : α) : List β :=
   PySort.pySort value
 
+/-- Lexicographic ordering on pairs, matching Python's tuple comparison (compare first
+components, break ties by the second). This makes `sorted`/`min`/`max`/`<` over tuples — e.g.
+`sorted(zip(a, b))` — resolve, since Lean provides no default `Ord` on `α × β`. -/
+instance instPyOrdProd [Ord α] [Ord β] : Ord (α × β) where
+  compare p q := match compare p.1 q.1 with
+    | Ordering.eq => compare p.2 q.2
+    | o => o
+
 /-- Boolean comparison derived from `Ord`, suitable for `mergeSort`. -/
 def pyOrdLe [Ord α] (a b : α) : Bool :=
   compare a b != Ordering.gt

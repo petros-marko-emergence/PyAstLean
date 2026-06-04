@@ -70,7 +70,14 @@ def breakSyntax : (kind : SyntaxNodeKind) → Json →
     | `command, _ => do
         return ⟨mkNullNode #[]⟩
     | `doElem, _ => do
-        `(doElem| break)
+        -- Inside a loop carrying a Python `else`, record that we broke so the `else` is skipped.
+        match ← getBreakFlag with
+        | some flag =>
+            let flagIdent := mkIdent flag
+            let setFlag ← `(doElem| $flagIdent:ident := true)
+            let brk ← `(doElem| break)
+            pure ⟨mkNullNode #[setFlag.raw, brk.raw]⟩
+        | none => `(doElem| break)
     | _, _ => throwError s!"Unsupported syntax category for Break node"
 
 @[pygen "AugAssign"]
@@ -330,6 +337,29 @@ def topLevelStmtCommands (json : Json) (names : Array String) (kindPrefix : Stri
   let reexports ← reexportCommands json resultIdent names
   pure (#[blockDef] ++ reexports)
 
+/-- Wrap a lowered loop (`coreElems`) with Python `else`-clause handling. With no `else`
+(`breakFlag?` is `none`) the loop's statements are emitted unchanged. Otherwise the break flag is
+declared `let mut f := false` before the loop and the `else` body runs afterward guarded by
+`if !f`, so it executes only when the loop completed without `break`. -/
+def loopWithElseDoElem (breakFlag? : Option Name) (coreElems : Array (TSyntax `doElem))
+    (orelseElems : Array Json) : PygenM (TSyntax `doElem) := do
+  match breakFlag? with
+  | none => pure ⟨mkNullNode (coreElems.map TSyntax.raw)⟩
+  | some flag =>
+      let flagIdent := mkIdent flag
+      let initFlag ← `(doElem| let mut $flagIdent:ident := false)
+      let elseStxArray ← withFixedVariables do
+        let mut arr : Array (TSyntax `doElem) := #[]
+        for elem in orelseElems do
+          arr := appendDoElems arr (← getCode elem `doElem)
+        pure arr
+      let noop ← noopDoElemSyntax
+      let elseCheck ← `(doElem| if (!$flagIdent) then
+          $[$elseStxArray:doElem]*
+        else
+          $noop:doElem)
+      pure ⟨mkNullNode (#[initFlag.raw] ++ coreElems.map TSyntax.raw ++ #[elseCheck.raw])⟩
+
 @[pygen "While"]
 def whileSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -341,19 +371,22 @@ def whileSyntax : (kind : SyntaxNodeKind) → Json →
           s!"While node does not have a 'body' field or it is not a JSON array: {json}"
         let .ok orelseElems := json.getObjValAs? (Array Json) "orelse" | throwError
           s!"While node does not have an 'orelse' field or it is not a JSON array: {json}"
-        unless orelseElems.isEmpty do
-          throwError "Python while-else blocks are not supported."
+        -- Python `while … else`: the `else` runs iff the loop exited normally (test became false),
+        -- not via `break`. Tracked with a flag set inside `break` (scoped via `withBreakFlag`).
+        let breakFlag? ← if orelseElems.isEmpty then pure none
+          else pure (some (← freshName `__py_broke))
         -- Scope the body's variable declarations to the loop (see the `for` case): names
         -- first bound in the body do not leak to the enclosing scope.
-        let bodyStxArray ← withFixedVariables do
+        let bodyStxArray ← withFixedVariables do withBreakFlag breakFlag? do
           let mut bodyStxArray := #[]
           for elem in bodyElems do
               let elemStx ← getCode elem `doElem
               bodyStxArray := appendDoElems bodyStxArray elemStx
           pure bodyStxArray
         -- Parenthesize the test so its last token never glues to the `do` keyword.
-        `(doElem| while ($testStx) do
+        let whileLoop ← `(doElem| while ($testStx) do
             $[$bodyStxArray:doElem]*)
+        loopWithElseDoElem breakFlag? #[whileLoop] orelseElems
     | `command, json => do
         -- A top-level `while` that mutates module globals is a state transformer.
         -- It lowers like `if`/`match`: `Id.run do let mut n := n₀; while ...; return (n...)`.
@@ -378,13 +411,15 @@ def forSyntax : (kind : SyntaxNodeKind) → Json →
           s!"For node does not have a 'body' field or it is not a JSON array: {json}"
         let .ok orelseElems := json.getObjValAs? (Array Json) "orelse" | throwError
           s!"For node does not have an 'orelse' field or it is not a JSON array: {json}"
-        unless orelseElems.isEmpty do
-          throwError "Python for-else blocks are not supported."
+        -- Python `for … else`: the `else` runs iff the loop completed without `break`. Track that
+        -- with a `let mut` flag set inside `break` (scoped to this loop via `withBreakFlag`).
+        let breakFlag? ← if orelseElems.isEmpty then pure none
+          else pure (some (← freshName `__py_broke))
         -- Scope the loop's target and body variable declarations to the loop: names first
         -- bound inside the body must not leak into the enclosing scope, so a later
         -- `x = ...` after the loop is emitted as a fresh `let mut` rather than a reassignment
         -- of a variable whose `let mut` was confined to the loop body (Python rebinds anyway).
-        let (targetIdent, bodyStxArray) ← withFixedVariables do
+        let (targetIdent, bodyStxArray) ← withFixedVariables do withBreakFlag breakFlag? do
           let (targetIdent, preludeElems) ← forTargetBinder targetJson
           let mut bodyStxArray := preludeElems
           for elem in bodyElems do
@@ -393,25 +428,28 @@ def forSyntax : (kind : SyntaxNodeKind) → Json →
           pure (targetIdent, bodyStxArray)
         -- Parenthesize the iterable so its last token never glues to the `do` keyword
         -- (e.g. an iterable ending in `none` would otherwise pretty-print as `nonedo`).
-        if jsonUsesIOEffect iterJson then
-          -- The iterable is IO-derived (e.g. `range(int(input()))` → `IO (List Int)`, or
-          -- `input()` → `IO String`). Await it once into a local, then iterate over the pure
-          -- value — otherwise a raw `IO X` would flow into a pure position. The awaited value is
-          -- normalized through `pyIter` (unless it is a `range`, already a `List Int`) so a
-          -- string iterable binds one-character strings, matching the pure path.
-          let rawIter ← getCode iterJson `term
-          let itIdent := mkIdent (← freshName `__py_iter)
-          let bindIt ← `(doElem| let $itIdent:ident ← $rawIter:term)
-          let iterTerm ←
-            if isRangeIter iterJson then pure (itIdent : TSyntax `term)
-            else `($(mkIdent ``pyIter) $itIdent)
-          let forLoop ← `(doElem| for $targetIdent:ident in ($iterTerm) do
-              $[$bodyStxArray:doElem]*)
-          pure ⟨mkNullNode #[bindIt.raw, forLoop.raw]⟩
-        else
-          let iterCode ← rangeIterSyntax iterJson
-          `(doElem| for $targetIdent:ident in ($iterCode) do
-              $[$bodyStxArray:doElem]*)
+        let coreElems : Array (TSyntax `doElem) ←
+          if jsonUsesIOEffect iterJson then
+            -- The iterable is IO-derived (e.g. `range(int(input()))` → `IO (List Int)`, or
+            -- `input()` → `IO String`). Await it once into a local, then iterate over the pure
+            -- value — otherwise a raw `IO X` would flow into a pure position. The awaited value is
+            -- normalized through `pyIter` (unless it is a `range`, already a `List Int`) so a
+            -- string iterable binds one-character strings, matching the pure path.
+            let rawIter ← getCode iterJson `term
+            let itIdent := mkIdent (← freshName `__py_iter)
+            let bindIt ← `(doElem| let $itIdent:ident ← $rawIter:term)
+            let iterTerm ←
+              if isRangeIter iterJson then pure (itIdent : TSyntax `term)
+              else `($(mkIdent ``pyIter) $itIdent)
+            let forLoop ← `(doElem| for $targetIdent:ident in ($iterTerm) do
+                $[$bodyStxArray:doElem]*)
+            pure #[bindIt, forLoop]
+          else
+            let iterCode ← rangeIterSyntax iterJson
+            let forLoop ← `(doElem| for $targetIdent:ident in ($iterCode) do
+                $[$bodyStxArray:doElem]*)
+            pure #[forLoop]
+        loopWithElseDoElem breakFlag? coreElems orelseElems
     | `command, json => do
         match blockMutatedNames? json with
         | some names =>
