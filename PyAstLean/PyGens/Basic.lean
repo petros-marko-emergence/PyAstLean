@@ -192,11 +192,29 @@ def deleteSyntax : (kind : SyntaxNodeKind) → Json →
   | `doElem, json => do
     let .ok targetsJson := json.getObjValAs? Json "targets" | throwError
       s!"Delete node does not have a 'targets' field or it is not a JSON value: {json}"
-    let _ ← match targetsJson with
-      | .arr arr => arr.mapM (fun targetJson => getCode targetJson `term)
-      | _ => throwError s!"Delete node 'targets' field is not an array: {targetsJson}"
-    -- We currently do not support deletion semantics, so we simply return `()`.
-    `(doElem| let _ := ())
+    let .ok targets := targetsJson.getArr? | throwError
+      s!"Delete node 'targets' field is not an array: {targetsJson}"
+    -- `del container[i]` removes an element: rebuild and reassign the (mut) container variable.
+    -- `del x` on a plain name is a binding removal with no runtime effect here. Other targets
+    -- (slices, attributes) are not supported and stay no-ops.
+    let mut elems : Array (TSyntax `doElem) := #[]
+    for target in targets do
+      if target.getObjValAs? String "node_type" == .ok "Subscript" then
+        let .ok containerJson := target.getObjValAs? Json "value" | throwError
+          s!"del target Subscript is missing a 'value' field: {target}"
+        let .ok sliceJson := target.getObjValAs? Json "slice" | throwError
+          s!"del target Subscript is missing a 'slice' field: {target}"
+        if containerJson.getObjValAs? String "node_type" == .ok "Name"
+            && sliceJson.getObjValAs? String "node_type" != .ok "Slice" then
+          let containerIdent ← getCode containerJson `ident
+          let indexCode ← getCode sliceJson `term
+          let delIdent := mkIdent ``PyAstLean.pyDelItem
+          elems := elems.push (← `(doElem| $containerIdent:ident := $delIdent $containerIdent $indexCode))
+        else
+          elems := elems.push (← `(doElem| let _ := ()))
+      else
+        elems := elems.push (← `(doElem| let _ := ()))
+    pure ⟨mkNullNode (elems.map TSyntax.raw)⟩
   | `command, json => do
     let .ok targetsJson := json.getObjValAs? Json "targets" | throwError
       s!"Delete node does not have a 'targets' field or it is not a JSON value: {json}"

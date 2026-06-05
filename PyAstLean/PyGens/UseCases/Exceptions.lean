@@ -160,10 +160,15 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
   let catchIdent := mkIdent `caught
   let catchBody ← exceptHandlersDoElemSyntax catchIdent handlersElems.toList
   let exceptIdent := mkIdent ``PyAstLean.PyExcept
+  -- Wrap the body in `captureIOErrors` so an `IO` error (e.g. `EOFError` from `input()` at end of
+  -- input) becomes a catchable `PyException`. The real `try … catch` is kept (so `break`/`continue`
+  -- in the handler still target the enclosing loop), matching Python's catch-all `except:`.
+  let captureIdent := mkIdent ``PyAstLean.PyExcept.captureIOErrors
+  let wrappedBody ← `($captureIdent (do $bodyBlock:doElem))
   if finalbodyElems.isEmpty then
     `(((do
           try
-            $bodyBlock:doElem
+            let _ ← $wrappedBody:term
           catch $catchIdent =>
             $catchBody:doElem) : $exceptIdent _))
   else
@@ -171,7 +176,7 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
     let finalBlock ← sequenceDoElems finalElems (← noopDoElemSyntax)
     `(((do
           try
-            $bodyBlock:doElem
+            let _ ← $wrappedBody:term
           catch $catchIdent =>
             $catchBody:doElem
           finally
@@ -206,16 +211,21 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
         let bodyBlock ← sequenceDoElems bodyAndElse (← noopDoElemSyntax)
         let catchIdent := mkIdent `caught
         let catchBody ← exceptHandlersDoElemSyntax catchIdent handlersElems.toList
+        -- Wrap the body in `captureIOErrors` so an `IO` error (e.g. `EOFError` from `input()`)
+        -- becomes a catchable `PyException`, while keeping the real `try … catch` so the handler's
+        -- `break`/`continue` still target the enclosing loop. Matches Python's catch-all `except:`.
+        let captureIdent := mkIdent ``PyAstLean.PyExcept.captureIOErrors
+        let wrappedBody ← `($captureIdent (do $bodyBlock:doElem))
         if finalbodyElems.isEmpty then
           `(doElem| try
-              $bodyBlock:doElem
+              let _ ← $wrappedBody:term
             catch $catchIdent =>
               $catchBody:doElem)
         else
           let finalElems ← tryBranchBodySyntax finalbodyElems
           let finalBlock ← sequenceDoElems finalElems (← noopDoElemSyntax)
           `(doElem| try
-              $bodyBlock:doElem
+              let _ ← $wrappedBody:term
             catch $catchIdent =>
               $catchBody:doElem
             finally

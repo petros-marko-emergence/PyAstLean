@@ -22,11 +22,31 @@ Usage:
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# A Lean compiler diagnostic header, e.g. `…/sol_0.lean:8:6: warning: unused variable `i``.
+# `lake env lean --run` prints these (and their `Note:`/`Hint:` follow-ups) to *stdout* before the
+# program's own output, so they must be stripped before comparing against the expected output.
+_LEAN_DIAG_HEADER = re.compile(r"\.lean:\d+:\d+:\s+(warning|error|info|note)\b")
+
+
+def strip_lean_diagnostics(text):
+    """Remove Lean compile diagnostics (`…lean:L:C: warning/…`, and `Note:`/`Hint:` follow-ups)
+    that `lean --run` emits to stdout, leaving only the program's actual output."""
+    kept = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if _LEAN_DIAG_HEADER.search(line):
+            continue
+        if stripped.startswith(("Note:", "Hint:")):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def normalize(text):
@@ -65,7 +85,8 @@ def run_lean(lean_path, input_text, timeout):
         )
         if proc.returncode != 0:
             return None, f"exit {proc.returncode}: {proc.stderr[:200]}"
-        return proc.stdout, None
+        # `lean --run` prints compile diagnostics to stdout ahead of the program output; drop them.
+        return strip_lean_diagnostics(proc.stdout), None
     except subprocess.TimeoutExpired:
         return None, "timeout"
     except Exception as e:  # noqa: BLE001
@@ -73,7 +94,11 @@ def run_lean(lean_path, input_text, timeout):
 
 
 def evaluate_runner(runner, target_path, tests, timeout):
-    """Run `runner` over the test list; return (passed, total, per_test details)."""
+    """Run `runner` over the test list; return (passed, total, per_test details).
+
+    Each detail records the normalized program output (`output`, `None` on error) so callers can
+    compare two runners (Lean vs Python) directly, not just against the expected file.
+    """
     passed = 0
     details = []
     for inp_path, out_path in tests:
@@ -81,19 +106,62 @@ def evaluate_runner(runner, target_path, tests, timeout):
         expected = normalize(out_path.read_text())
         actual, err = runner(target_path, input_text, timeout)
         if err is not None:
-            details.append({"test": inp_path.name, "result": "error", "error": err})
+            details.append({"test": inp_path.name, "result": "error", "error": err, "output": None})
             continue
-        if normalize(actual) == expected:
+        norm = normalize(actual)
+        if norm == expected:
             passed += 1
-            details.append({"test": inp_path.name, "result": "pass"})
+            details.append({"test": inp_path.name, "result": "pass", "output": norm})
         else:
             details.append({
                 "test": inp_path.name,
                 "result": "fail",
-                "got": normalize(actual)[:200],
+                "output": norm,
+                "got": norm[:200],
                 "want": expected[:200],
             })
     return passed, len(tests), details
+
+
+def collect_divergences(prob_name, sol_name, tests, lean_details, py_details):
+    """Compare Lean vs Python output per test and return the divergence records.
+
+    A divergence is any test where the two produce different output. Each is classified — the
+    `lean_wrong_python_right` class is the one that matters for runtime/API debugging: Lean ran
+    (compiled fine) but disagreed with CPython while CPython was correct, i.e. our runtime/API
+    diverges from Python's semantics here.
+    """
+    expected_by_test = {inp.name: normalize(out.read_text()) for inp, out in tests}
+    py_by_test = {d["test"]: d for d in py_details}
+    diffs = []
+    for ld in lean_details:
+        test = ld["test"]
+        pd = py_by_test.get(test)
+        if pd is None:
+            continue
+        lean_out, py_out = ld.get("output"), pd.get("output")
+        if lean_out == py_out:
+            continue  # agree (including both-errored: None == None)
+        lean_ok = ld["result"] == "pass"
+        py_ok = pd["result"] == "pass"
+        if py_ok and not lean_ok:
+            classification = "lean_wrong_python_right"  # <- our API/runtime is messing up
+        elif lean_ok and not py_ok:
+            classification = "lean_right_python_wrong"
+        else:
+            classification = "both_wrong"
+        diffs.append({
+            "problem": prob_name,
+            "solution": sol_name,
+            "test": test,
+            "classification": classification,
+            "lean_output": (lean_out[:200] if lean_out is not None else None),
+            "python_output": (py_out[:200] if py_out is not None else None),
+            "expected": expected_by_test.get(test, "")[:200],
+            "lean_error": ld.get("error"),
+            "python_error": pd.get("error"),
+        })
+    return diffs
 
 
 def main():
@@ -115,6 +183,7 @@ def main():
 
     report = {}
     agg = {"lean_pass": 0, "lean_total": 0, "py_pass": 0, "py_total": 0, "solutions": 0}
+    divergences = []  # Lean-vs-Python output mismatches on compiling solutions
 
     for prob_dir in sorted(p for p in dataset.iterdir() if p.is_dir() and not p.name.startswith(".")):
         lean_dir = prob_dir / "lean"
@@ -154,6 +223,10 @@ def main():
                 py_pass, py_total, py_details = evaluate_runner(
                     run_python, py_path, tests, args.timeout
                 )
+                # Compare Lean against Python directly to surface runtime/API divergences.
+                divergences.extend(
+                    collect_divergences(prob_dir.name, name, tests, lean_details, py_details)
+                )
 
             result = {
                 "lean": {"passed": lean_pass, "total": lean_total, "details": lean_details},
@@ -181,6 +254,32 @@ def main():
     report["_summary"] = agg
     (dataset / "eval_report.json").write_text(json.dumps(report, indent=2))
 
+    # Divergence summary: where compiling Lean disagreed with CPython. The `lean_wrong_python_right`
+    # bucket pinpoints runtime/API bugs (Lean ran but produced the wrong answer Python got right).
+    by_class = {}
+    for d in divergences:
+        by_class.setdefault(d["classification"], 0)
+        by_class[d["classification"]] += 1
+    api_bugs = [d for d in divergences if d["classification"] == "lean_wrong_python_right"]
+    # Split the API bugs: a *wrong output* (Lean ran to completion but printed the wrong answer)
+    # is a semantic runtime/API bug; a *runtime error/timeout* is a crash/hang/perf issue. The
+    # wrong-output ones are the most actionable for fixing PyAPI semantics.
+    wrong_output = [d for d in api_bugs if d["lean_output"] is not None]
+    runtime_error = [d for d in api_bugs if d["lean_output"] is None]
+    divergence_report = {
+        "summary": {
+            "total_divergences": len(divergences),
+            "by_classification": by_class,
+            "api_bugs": len(api_bugs),
+            "api_bugs_wrong_output": len(wrong_output),
+            "api_bugs_runtime_error": len(runtime_error),
+        },
+        # Most actionable first: wrong-output API bugs, then runtime errors, then the rest.
+        "divergences": wrong_output + runtime_error
+            + [d for d in divergences if d["classification"] != "lean_wrong_python_right"],
+    }
+    (dataset / "eval_divergences.json").write_text(json.dumps(divergence_report, indent=2))
+
     print("\n===== Evaluation summary =====")
     print(f"Solutions evaluated: {agg['solutions']}")
     if agg["lean_total"]:
@@ -189,6 +288,17 @@ def main():
     if agg["py_total"]:
         print(f"Python pass rate: {agg['py_pass']}/{agg['py_total']} "
               f"({agg['py_pass'] / agg['py_total']:.1%})")
+    if not args.skip_python:
+        print(f"Lean-vs-Python divergences: {len(divergences)} "
+              f"(API bugs — Lean wrong, Python right: {len(api_bugs)} "
+              f"= {len(wrong_output)} wrong-output + {len(runtime_error)} runtime-error)")
+        if wrong_output:
+            print("  Wrong-output API bugs (semantic — most actionable):")
+            for d in wrong_output[:20]:
+                print(f"    {d['problem']}/{d['solution']} {d['test']}")
+            if len(wrong_output) > 20:
+                print(f"    … and {len(wrong_output) - 20} more (see eval_divergences.json)")
+        print(f"Divergence detail written to {dataset / 'eval_divergences.json'}")
     print(f"Report written to {dataset / 'eval_report.json'}")
     return 0
 

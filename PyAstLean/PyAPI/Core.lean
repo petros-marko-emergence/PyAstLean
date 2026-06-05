@@ -30,6 +30,18 @@ instance : ToString PyException where
     else
       s!"{exc.kind}: {exc.msg}"
 
+/-- Run `body`, converting any underlying `IO` error into a `PyException` raise (leaving an
+already-raised `PyException` untouched). A bare Python `except:` catches *everything*, including
+the `EOFError`/`OSError` that `input()` raises at end of input — but those surface as `IO` errors
+below the `ExceptT` layer, invisible to a `try … catch` over `PyExcept` (which only sees
+`PyException`). Wrapping the `try` body in this turns such errors into `PyException`s, so the
+translated `catch` (which keeps a real `try … catch`, so `break`/`continue` in the handler still
+work) catches them — matching Python. -/
+def PyExcept.captureIOErrors {α : Type} (body : PyExcept α) : PyExcept α :=
+  ExceptT.mk
+    (try body.run
+     catch e : IO.Error => pure (Except.error (PyException.Raise "Exception" (toString e))))
+
 /-- Python-style `range` supporting positive and negative steps. -/
 def pyRange (stop : Int) (start : Int := 0) (step : Int := 1) : List Int := do
   if step > 0 then

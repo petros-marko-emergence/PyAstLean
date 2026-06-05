@@ -51,8 +51,29 @@ def is_math_only(source):
     return mods.issubset(ALLOWED_IMPORTS)
 
 
+def sanitize_problem_name(name):
+    """The on-disk directory name for a CodeContests problem `name`."""
+    return name.replace("/", "_").replace(" ", "_")
+
+
+def load_excluded(exclude_path):
+    """Read the persistent exclude list (one sanitized problem name per line; `#` comments and
+    blank lines ignored). Problems listed here are never (re-)downloaded — used to drop problems
+    that are not usable for exact-match correctness checking (e.g. special-judge / multiple-valid
+    -answer problems where even a correct solution's output differs from the stored expected)."""
+    path = Path(exclude_path)
+    if not path.exists():
+        return set()
+    names = set()
+    for line in path.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            names.add(line)
+    return names
+
+
 def save_problem(out_dir, name, item, max_solutions):
-    prob_name = name.replace("/", "_").replace(" ", "_")
+    prob_name = sanitize_problem_name(name)
     prob_dir = out_dir / prob_name
 
     languages = item["solutions"]["language"]
@@ -112,7 +133,15 @@ def main():
     parser.add_argument(
         "--split", default="test", help="CodeContests split (test/valid/train)"
     )
+    parser.add_argument(
+        "--exclude-file", default="cp_harness/excluded_problems.txt",
+        help="File listing problem names to never (re-)download (one per line, # comments)",
+    )
     args = parser.parse_args()
+
+    excluded = load_excluded(args.exclude_file)
+    if excluded:
+        print(f"[*] Excluding {len(excluded)} problem(s) from {args.exclude_file}")
 
     try:
         from datasets import load_dataset
@@ -133,6 +162,8 @@ def main():
         name = item["name"]
         if args.problems and name not in args.problems:
             continue
+        if sanitize_problem_name(name) in excluded:
+            continue  # never re-download excluded (non-exact-judge / unusable) problems
         if save_problem(out_dir, name, item, args.max_solutions):
             kept += 1
         if not args.problems and kept >= args.num:

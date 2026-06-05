@@ -10,7 +10,13 @@ def exprStmtDoElemSyntax (valueJson : Json) : PygenM (TSyntax `doElem) := do
     getCode valueJson `doElem
   catch _ =>
     let valueStx ← getCode valueJson `term
-    `(doElem| let _ := $valueStx)
+    -- If the expression carries an effect (e.g. a statement-position ternary
+    -- `print(a) if c else print(b)`, whose branches are `IO`), it must be *run*, not merely
+    -- bound — `let _ := ioAction` discards the action unexecuted. Await it so the effect happens.
+    if jsonUsesMonadicEffect valueJson then
+      `(doElem| let _ ← $valueStx:term)
+    else
+      `(doElem| let _ := $valueStx)
 
 /-- Stable helper name for top-level expression statements lowered as commands. -/
 def topLevelExprCommandIdent (json : Json) : TSyntax `ident :=

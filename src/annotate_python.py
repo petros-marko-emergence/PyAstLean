@@ -441,13 +441,58 @@ class Lean4Annotator(cst.CSTTransformer):
                 declared.add(comp_name)
         return decl_lines
 
+    def leave_SimpleStatementSuite(
+        self,
+        original_node: cst.SimpleStatementSuite,
+        updated_node: cst.SimpleStatementSuite,
+    ) -> cst.BaseSuite:
+        """An inline `for/if/while … : a; b` body is a `SimpleStatementSuite` of small statements
+        (not lines), so the line handler never sees it. Split any tuple/list-unpack assign here too
+        — otherwise `for …: n,m,k = map(...); …` reaches the backend as a raw tuple-assign and a
+        list-returning RHS is mis-lowered as a tuple."""
+        new_body = []
+        changed = False
+        for small in updated_node.body:
+            if (isinstance(small, cst.Assign) and len(small.targets) == 1
+                    and isinstance(small.targets[0].target, (cst.Tuple, cst.List))):
+                split = self._split_unpack_assignment_lines(
+                    small.targets[0].target, small.value)
+                if split:
+                    # _split returns SimpleStatementLines; a suite holds bare small statements.
+                    for line in split:
+                        new_body.extend(line.body)
+                    changed = True
+                    continue
+            new_body.append(small)
+        if not changed:
+            return updated_node
+        # Multiple small statements stay valid as an inline suite (`: a; b; c`).
+        return updated_node.with_changes(body=new_body)
+
     def leave_SimpleStatementLine(
         self,
         original_node: cst.SimpleStatementLine,
         updated_node: cst.SimpleStatementLine,
     ) -> cst.SimpleStatementLine | cst.FlattenSentinel[cst.BaseStatement]:
         if len(updated_node.body) != 1:
-            return updated_node
+            # A `;`-compound line (e.g. `n,m,k=map(...);print(...)`). The single-statement
+            # rewrites below don't apply, but a tuple/list-unpack assign among the statements must
+            # still be split — otherwise it reaches the backend as a raw tuple-assign and a
+            # list-returning RHS (e.g. `map(...)`) is mis-lowered as a tuple (`Prod`). Expand each
+            # small statement onto its own line, splitting unpack-assigns as elsewhere.
+            out_lines = []
+            changed = False
+            for small in updated_node.body:
+                if (isinstance(small, cst.Assign) and len(small.targets) == 1
+                        and isinstance(small.targets[0].target, (cst.Tuple, cst.List))):
+                    split = self._split_unpack_assignment_lines(
+                        small.targets[0].target, small.value)
+                    if split:
+                        out_lines.extend(split)
+                        changed = True
+                        continue
+                out_lines.append(cst.SimpleStatementLine(body=[small]))
+            return cst.FlattenSentinel(out_lines) if changed else updated_node
 
         stmt: cst.BaseSmallStatement = updated_node.body[0]
         # Chained assignment `a = b = … = value`: Python evaluates `value` once, then binds it to
