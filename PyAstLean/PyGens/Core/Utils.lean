@@ -15,6 +15,30 @@ def withFreshVariables {α : Type} (x : PygenM α) : PygenM α :=
     (HashSet.emptyWithCapacity 100)
     x
 
+/--
+Append one generated command into an accumulator, flattening null-node wrappers that
+represent "many commands" or "no commands" from an earlier lowering pass.
+-/
+def appendCommandSyntax (cmds : Array (TSyntax `command)) (cmd : TSyntax `command) :
+    Array (TSyntax `command) :=
+  if cmd.raw.isOfKind nullKind then
+    cmds ++ cmd.raw.getArgs.map (fun arg => ⟨arg⟩)
+  else
+    cmds.push cmd
+
+/--
+Append one generated `doElem` into an accumulator, flattening null-node wrappers that
+represent "many doElems" from a lowering that produced several sibling statements (e.g.
+tuple-unpack assignment). Flattening keeps the bindings as siblings in the enclosing `do`
+rather than scoping them inside a nested `do` block.
+-/
+def appendDoElems (elems : Array (TSyntax `doElem)) (elem : TSyntax `doElem) :
+    Array (TSyntax `doElem) :=
+  if elem.raw.isOfKind nullKind then
+    elems ++ elem.raw.getArgs.map (fun arg => ⟨arg⟩)
+  else
+    elems.push elem
+
 /-- Pick a fresh local name for generated bindings. -/
 partial def freshName (base : Name) (idx : Nat := 0) : PygenM Name := do
   let candidate :=
@@ -37,35 +61,49 @@ def isMainGuardTest (json : Json) : Bool :=
       | _, _, _ => false
   | _ => false
 
+/-- Detect a `range(...)` iterable, which is lowered directly to `pyRange` (already a `List Int`)
+rather than being normalized through `pyIter`. The annotation pre-pass rewrites `range(...)`
+calls to a dedicated `Range` node; a raw `Call` to `range` is also recognized defensively. -/
+def isRangeIter (iterJson : Json) : Bool :=
+  match iterJson.getObjValAs? String "node_type" with
+  | .ok "Range" => true
+  | .ok "Call" =>
+      match iterJson.getObjValAs? Json "func" with
+      | .ok funcJson =>
+          funcJson.getObjValAs? String "node_type" == .ok "Name" &&
+            funcJson.getObjValAs? String "id" == .ok "range"
+      | _ => false
+  | _ => false
+
+/-- Lower a `for`/comprehension iterable to a Lean term that can be iterated as a `List`.
+
+`range(...)` lowers directly to `pyRange` (already a `List Int`). Every other iterable is
+normalized through `pyIter`, so the element type is governed uniformly by the `PyIterable`
+instances: a `String` yields one-character `String`s, a `Std.HashMap` yields its keys, a `List`
+is unchanged. This is what makes iteration over a string behave like Python (`for c in s` binds
+length-1 strings, not `Char`s) and keeps loop bodies interoperable with string literals. -/
 def rangeIterSyntax (iterJson : Json) : PygenM (TSyntax `term) := do
   let .ok iterNodeType := iterJson.getObjValAs? String "node_type" | throwError
     s!"For iterator is missing a node_type field: {iterJson}"
-  if iterNodeType == "Call" then
-    let .ok funcJson := iterJson.getObjValAs? Json "func" | throwError
-      s!"Call iterator is missing a func field: {iterJson}"
-    let .ok funcNodeType := funcJson.getObjValAs? String "node_type" | throwError
-      s!"Call iterator function is missing a node_type field: {funcJson}"
-    if funcNodeType == "Name" then
-      let .ok funcName := funcJson.getObjValAs? String "id" | throwError
-        s!"Call iterator function is missing an id field: {funcJson}"
-      if funcName == "range" then
-        let .ok argsJson := iterJson.getObjValAs? Json "args" | throwError
-          s!"Call iterator is missing an args field: {iterJson}"
-        match argsJson with
-        | .arr arr =>
-            match arr.size with
-            | 1 =>
-                let stopCode ← getCode arr[0]! `term
-                let pyRangeIdent := mkIdent ``pyRange
-                `($pyRangeIdent $stopCode)
-            | _ => throwError "Only range(stop) is supported for for-loops right now."
-        | _ => throwError s!"Call iterator args field is not an array: {argsJson}"
-      else
-        getCode iterJson `term
-    else
-      getCode iterJson `term
-  else
+  if iterNodeType == "Range" then
+    -- The pre-pass already produced a `Range` node; lower it straight to `pyRange`.
     getCode iterJson `term
+  else if iterNodeType == "Call" &&
+      (iterJson.getObjValAs? Json "func").toOption.any
+        (fun f => f.getObjValAs? String "id" == .ok "range") then
+    -- Defensive path for a raw `range(...)` call that escaped the pre-pass rewrite.
+    let funcJson := (iterJson.getObjVal? "func").toOption.getD (Json.mkObj [])
+    let argsJson := (iterJson.getObjVal? "args").toOption.getD (Json.arr #[])
+    let keywordsJson := (iterJson.getObjVal? "keywords").toOption.getD (Json.mkObj [])
+    let rangeJson := Json.mkObj [
+      ("node_type", Json.str "Range"),
+      ("func", funcJson),
+      ("args", argsJson),
+      ("keywords", keywordsJson)
+    ]
+    getCode rangeJson `term
+  else
+    `($(mkIdent ``pyIter) $(← getCode iterJson `term))
 
 /-- Reusable syntax nodes for boolean literals in generated terms. -/
 def trueTerm : TSyntax `term := mkIdent ``true
@@ -136,6 +174,30 @@ partial def statementDefinitelyReturns (stmt : Json) : Bool :=
               | .error _ => false
           bodyReturns && handlersReturn
       | _, _, _ => false
+  | some "Match" =>
+      match stmt.getObjValAs? (Array Json) "cases" with
+      | .ok cases =>
+          -- All cases must return AND the last case must be irrefutable (covers all inputs)
+          let allCasesReturn := cases.toList.all fun caseJson =>
+            match caseJson.getObjValAs? (Array Json) "body" with
+            | .ok bodyElems => statementListDefinitelyReturns bodyElems.toList
+            | .error _ => false
+          let lastCaseExhaustive := match cases.toList.getLast? with
+            | none => false
+            | some lastCase =>
+                let guardAbsent := match lastCase.getObjValAs? Json "guard" with
+                  | .ok .null => true
+                  | .error _ => true
+                  | _ => false
+                match guardAbsent, lastCase.getObjVal? "pattern" with
+                | true, .ok patternJson =>
+                    match patternJson.getObjValAs? String "node_type" with
+                    | .ok "MatchAs" => true
+                    | .ok "MatchStar" => true
+                    | _ => false
+                | _, _ => false
+          allCasesReturn && lastCaseExhaustive
+      | _ => false
   | _ => false
 
 end
@@ -146,7 +208,7 @@ def monadicFunctionBodySyntax (bodyElems : Array Json) : PygenM (Array (TSyntax 
   for elem in bodyElems do
     let elemStx ← withoutCheck do
       getCode elem `doElem
-    bodyStxArray := bodyStxArray.push elemStx
+    bodyStxArray := appendDoElems bodyStxArray elemStx
     if statementDefinitelyReturns elem then
       break
   return bodyStxArray
@@ -233,5 +295,49 @@ def sequenceDoElems (elems : Array (TSyntax `doElem)) (fallback : TSyntax `doEle
 /-- Emit an explicit no-op statement inside `do` notation. -/
 def noopDoElemSyntax : PygenM (TSyntax `doElem) := do
   `(doElem| let _ := ())
+
+/--
+A Python name is module-private when it starts with an underscore but is **not** a dunder.
+This matches what `from module import *` excludes:
+
+  - `foo`      → public
+  - `_foo`     → private (single-underscore "internal use" convention)
+  - `__foo`    → private (double underscore, no trailing — strong private / name-mangled)
+  - `__foo__`  → public  (dunder: `__init__`, `__name__`, ... are the public protocol)
+
+Private names map to a Lean `private def` so they cannot be imported from other modules.
+-/
+def pythonNameIsPrivate (name : String) : Bool :=
+  name.startsWith "_"
+    && name != "_"                                  -- bare `_` is the wildcard
+    && !(name.startsWith "__" && name.endsWith "__") -- `__dunder__` is public
+
+/-- Splice a `private` modifier into an existing `def`/declaration command.
+
+`private` is a `declModifiers` prefix that the parser only accepts directly before a `def`
+keyword, so we cannot wrap an already-built command. Instead we harvest the `private`
+modifier node from a throwaway declaration and swap it into the target's `declModifiers`
+slot (the first child of a `Command.declaration`). Non-declaration commands are unchanged. -/
+def makeCommandPrivate (cmd : TSyntax `command) : PygenM (TSyntax `command) := do
+  let template ← `(command| private def __pyastlean_priv_tmpl := ())
+  let privMods := match template.raw with
+    | .node _ ``Lean.Parser.Command.declaration #[mods, _] => mods
+    | _ => Syntax.missing
+  match cmd.raw with
+  | .node info ``Lean.Parser.Command.declaration #[_oldMods, decl] =>
+      return ⟨.node info ``Lean.Parser.Command.declaration #[privMods, decl]⟩
+  | _ => return cmd
+
+/--
+Prefix a top-level `def` command with `private` when its Python `name` follows the
+leading-underscore privacy convention, so it cannot be imported from other modules
+(matching Python's intent). Names are otherwise preserved verbatim (`_foo` stays `_foo`).
+Null-node command wrappers (multiple commands) are returned unchanged.
+-/
+def applyPrivacy (name : String) (cmd : TSyntax `command) : PygenM (TSyntax `command) := do
+  if pythonNameIsPrivate name && !cmd.raw.isOfKind nullKind then
+    makeCommandPrivate cmd
+  else
+    pure cmd
 
 end PyAstLean

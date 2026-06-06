@@ -2,10 +2,50 @@ import Mathlib
 import PyAstLean.Codegen
 import PyAstLean.PyGens.Basic
 import PyAstLean.PyGens.Attributes
+import PyAstLean.PyGens.Core.Subscript
 
 open Lean Meta Elab Term Qq Std
 
 namespace PyAstLean
+
+/-- Build the `List PyPrintArg` term for a `print(...)` call's arguments.
+
+Each ordinary argument becomes `PyPrintArg.mk (pyStringify arg)`. A `*iterable` (`Starred`)
+argument is spread: its elements are each mapped to a `PyPrintArg`. The pieces are
+concatenated into one `List PyPrintArg`.
+
+We wrap arguments explicitly via `pyStringify` rather than relying on the `CoeOut` into a
+`List PyPrintArg` literal: the coercion pushes the expected element type `PyPrintArg` into
+each argument, which breaks polymorphic argument terms such as `pyListGetItem a i` (the
+element type unifies with `PyPrintArg`, then demands `Inhabited PyPrintArg`). Applying
+`pyStringify` lets each argument elaborate at its natural type first; the result is identical
+for fixed-type arguments. -/
+def buildPrintArgsList (argsArray : Array Json) (resolvedArgs : Array (TSyntax `term)) :
+    PygenM (TSyntax `term) := do
+  let printArgIdent := mkIdent ``PyAstLean.PyPrintArg.mk
+  let stringifyIdent := mkIdent ``PyAstLean.pyStringify
+  -- Each `part` is itself a `List PyPrintArg` (a singleton for ordinary args, the spread for
+  -- starred args); we concatenate them.
+  let mut parts : Array (TSyntax `term) := #[]
+  for i in [0:resolvedArgs.size] do
+    let code := resolvedArgs[i]!
+    let isStarred := match argsArray[i]? with
+      | some argJson =>
+          match argJson.getObjValAs? String "node_type" with
+          | .ok "Starred" => true
+          | _ => false
+      | none => false
+    if isStarred then
+      parts := parts.push (← `(List.map (fun __e => $printArgIdent ($stringifyIdent __e)) $code))
+    else
+      parts := parts.push (← `([$printArgIdent ($stringifyIdent $code)]))
+  match parts.toList with
+  | [] => `(([] : List PyAstLean.PyPrintArg))
+  | first :: rest =>
+      let mut acc := first
+      for p in rest do
+        acc ← `($acc ++ $p)
+      pure acc
 
 /-- Local copy of the exception-effect probe so call lowering can avoid cyclic imports. -/
 partial def basicJsonUsesExceptionEffect (json : Json) : Bool :=
@@ -117,8 +157,13 @@ partial def inlineIOTerm (json : Json) : PygenM (TSyntax `term) := do
                 getCode valueJson `term
             match pythonMethodMap attr with
             | some funcName =>
-                let mapped := mkIdent funcName
-                funcTerm ← `($mapped $receiverTerm)
+                -- Apply the mapped runtime function to the receiver as its *first* argument,
+                -- flat with the call arguments, rather than pre-building `(f receiver)`. The
+                -- latter is a complete sub-application, so a runtime method with a default
+                -- argument (e.g. `pyStringSplit`'s `sep`) would fill the default and then the
+                -- explicit argument (`s.split(" ")`) would be applied to the *result*.
+                funcTerm := (mkIdent funcName : TSyntax `term)
+                inlineArgs := #[receiverTerm] ++ inlineArgs
             | none =>
                 let attrId := mkIdent attr.toName
                 funcTerm ← `($receiverTerm.$attrId)
@@ -160,6 +205,57 @@ partial def inlineIOTerm (json : Json) : PygenM (TSyntax `term) := do
         let valueCode ← inlineIOTerm valueJson
         res ← `($appendIdent $res $valueCode)
       pure res
+  | "BinOp" => do
+      -- Recurse into both operands so an IO subexpression (e.g. `int(input()) + 5`) becomes an
+      -- inline `(← …)` await in a pure arithmetic position rather than an un-awaited `IO _`.
+      let .ok op := json.getObjValAs? String "op" | throwError s!"BinOp node missing 'op': {json}"
+      let .ok leftJson := json.getObjValAs? Json "left" | throwError s!"BinOp node missing 'left': {json}"
+      let .ok rightJson := json.getObjValAs? Json "right" | throwError s!"BinOp node missing 'right': {json}"
+      let leftCode ← inlineIOTerm leftJson
+      let rightCode ← inlineIOTerm rightJson
+      binOpApplyTerm op leftCode rightCode
+  | "UnaryOp" => do
+      let .ok op := json.getObjValAs? String "op" | throwError s!"UnaryOp node missing 'op': {json}"
+      let .ok operandJson := json.getObjValAs? Json "operand" | throwError s!"UnaryOp node missing 'operand': {json}"
+      let operandCode ← inlineIOTerm operandJson
+      unaryOpApplyTerm op operandCode
+  | "Compare" => do
+      let .ok op := json.getObjValAs? String "op" | throwError s!"Compare node missing 'op': {json}"
+      let .ok leftJson := json.getObjValAs? Json "left" | throwError s!"Compare node missing 'left': {json}"
+      let .ok rightJson := json.getObjValAs? Json "right" | throwError s!"Compare node missing 'right': {json}"
+      let leftCode ← inlineIOTerm leftJson
+      let rightCode ← inlineIOTerm rightJson
+      compareApplyTerm op leftJson leftCode rightCode (rightJson := some rightJson)
+  | "BoolOp" => do
+      let .ok op := json.getObjValAs? String "op" | throwError s!"BoolOp node missing 'op': {json}"
+      let .ok valuesJson := json.getObjValAs? Json "values" | throwError s!"BoolOp node missing 'values': {json}"
+      let valuesArray ← match valuesJson with
+        | .arr arr => arr.mapM inlineIOTerm
+        | _ => throwError s!"BoolOp node 'values' field is not an array: {valuesJson}"
+      if valuesArray.isEmpty then throwError s!"BoolOp node 'values' array is empty: {valuesJson}"
+      match op with
+      | "and" => valuesArray.foldlM (fun a b => `($a && $b)) valuesArray[0]! (start := 1)
+      | "or" => valuesArray.foldlM (fun a b => `($a || $b)) valuesArray[0]! (start := 1)
+      | _ => throwError s!"Unsupported boolean operator: {op}"
+  | "ListComp" => do
+      -- A comprehension whose element is itself effectful (e.g. `[int(input()) for _ in …]`)
+      -- lowers to `List.mapM …`, an `IO (List _)` action. Await it inline so the surrounding
+      -- pure position sees the resulting `List _`. When only the *iterable* is IO the element
+      -- stays pure (`List.map`), so the comprehension is already a `List _` — do not await.
+      let compTerm ← getCode json `term
+      match json.getObjValAs? Json "elt" with
+      | .ok eltJson =>
+          if basicJsonUsesIOEffect eltJson then `((← $compTerm)) else pure compTerm
+      | _ => pure compTerm
+  | "Subscript" => do
+      -- `foo()[i]` where `foo()` is `IO _`: inline the awaited container into the index
+      -- position so the subscript runs on the value, not on a raw `IO _`.
+      let .ok valueJson := json.getObjValAs? Json "value" | throwError
+        s!"Subscript node does not have a 'value' field: {json}"
+      let .ok sliceJson := json.getObjValAs? Json "slice" | throwError
+        s!"Subscript node does not have a 'slice' field: {json}"
+      let valueCode ← inlineIOTerm valueJson
+      subscriptTermFromValue valueJson sliceJson valueCode
   | _ =>
       return ← getCode json `term
 
@@ -240,9 +336,10 @@ partial def hoistIOTerm (json : Json) : PygenM (Array (TSyntax `doElem) × TSynt
             else
               resolvedArgs := resolvedArgs.push (← getCode argJson `term)
           let pyPrintIOIdent := mkIdent ``pyPrintIO
+          let printArgs ← buildPrintArgsList argsArray resolvedArgs
           let action ← match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
             | none, none =>
-                `($pyPrintIOIdent [$resolvedArgs,*])
+                `($pyPrintIOIdent $printArgs)
             | _, _ =>
                 let sepCode ← match keyWordsMap.get? "sep" with
                   | some sepJson => getCode sepJson `term
@@ -250,7 +347,7 @@ partial def hoistIOTerm (json : Json) : PygenM (Array (TSyntax `doElem) × TSynt
                 let endCode ← match keyWordsMap.get? "end" with
                   | some endJson => getCode endJson `term
                   | none => `("\n")
-                `($pyPrintIOIdent [$resolvedArgs,*] $sepCode $endCode)
+                `($pyPrintIOIdent $printArgs $sepCode $endCode)
           let binder := mkIdent (s!"__py_print{bindings.size}").toName
           let finalBindings := bindings.push (← `(doElem| let $binder:ident ← $action:term))
           return (finalBindings, binder)
@@ -276,6 +373,16 @@ partial def hoistIOTerm (json : Json) : PygenM (Array (TSyntax `doElem) × TSynt
         bindings := bindings ++ pieceBindings
         res ← `($appendIdent $res $pieceTerm)
       return (bindings, res)
+  | "Subscript" => do
+      -- `foo()[i]` in an argument position: hoist the IO container to a binding, then index the
+      -- bound value (`int(input()[0])` → `let s ← input; pyInt (pyGetItem s 0)`).
+      let .ok valueJson := json.getObjValAs? Json "value" | throwError
+        s!"Subscript node does not have a 'value' field: {json}"
+      let .ok sliceJson := json.getObjValAs? Json "slice" | throwError
+        s!"Subscript node does not have a 'slice' field: {json}"
+      let (valueBindings, valueTerm) ← hoistIOTerm valueJson
+      let term ← subscriptTermFromValue valueJson sliceJson valueTerm
+      return (valueBindings, term)
   | _ =>
       return (#[], ← getCode json `term)
 

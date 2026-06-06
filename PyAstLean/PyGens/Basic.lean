@@ -105,6 +105,21 @@ def listSyntax : (kind : SyntaxNodeKind) → Json →
     `([$eltCodes,*])
   | _, _ => throwError s!"Unsupported syntax category for List node"
 
+/-- `{a, b, c}` set literals lower to a deduplicated list via `pySetFromList`; sets are
+modeled as lists so list-backed protocols (`in`, `len`, iteration) apply. -/
+@[pygen "Set"]
+def setSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
+      s!"Set node does not have an 'elts' field or it is not a JSON value: {json}"
+    let eltCodes ← match eltsJson with
+      | .arr arr => arr.mapM (fun eltJson => getCode eltJson `term)
+      | _ => throwError s!"Set node 'elts' field is not an array: {eltsJson}"
+    let fromListIdent := mkIdent ``PyAstLean.pySetFromList
+    `($fromListIdent [$eltCodes,*])
+  | _, _ => throwError s!"Unsupported syntax category for Set node"
+
 @[pygen "Tuple"]
 def tupleSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -123,6 +138,18 @@ def tupleSyntax : (kind : SyntaxNodeKind) → Json →
           `(($first, $restTuple))
     buildTuple eltCodes.toList
   | _, _ => throwError s!"Unsupported syntax category for Tuple node"
+
+/-- `Starred` (`*iterable`) in a call lowers, in term position, to the iterable itself.
+The only place that interprets the spread is the `print(...)` lowering, which detects a
+`Starred` argument by node type and maps over this value. -/
+@[pygen "Starred"]
+def starredSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok valueJson := json.getObjValAs? Json "value" | throwError
+      s!"Starred node does not have a 'value' field or it is not a JSON value: {json}"
+    getCode valueJson `term
+  | _, _ => throwError s!"Unsupported syntax category for Starred node"
 
 @[pygen "Dict"]
 def dictSyntax : (kind : SyntaxNodeKind) → Json →
@@ -165,11 +192,29 @@ def deleteSyntax : (kind : SyntaxNodeKind) → Json →
   | `doElem, json => do
     let .ok targetsJson := json.getObjValAs? Json "targets" | throwError
       s!"Delete node does not have a 'targets' field or it is not a JSON value: {json}"
-    let _ ← match targetsJson with
-      | .arr arr => arr.mapM (fun targetJson => getCode targetJson `term)
-      | _ => throwError s!"Delete node 'targets' field is not an array: {targetsJson}"
-    -- We currently do not support deletion semantics, so we simply return `()`.
-    `(doElem| let _ := ())
+    let .ok targets := targetsJson.getArr? | throwError
+      s!"Delete node 'targets' field is not an array: {targetsJson}"
+    -- `del container[i]` removes an element: rebuild and reassign the (mut) container variable.
+    -- `del x` on a plain name is a binding removal with no runtime effect here. Other targets
+    -- (slices, attributes) are not supported and stay no-ops.
+    let mut elems : Array (TSyntax `doElem) := #[]
+    for target in targets do
+      if target.getObjValAs? String "node_type" == .ok "Subscript" then
+        let .ok containerJson := target.getObjValAs? Json "value" | throwError
+          s!"del target Subscript is missing a 'value' field: {target}"
+        let .ok sliceJson := target.getObjValAs? Json "slice" | throwError
+          s!"del target Subscript is missing a 'slice' field: {target}"
+        if containerJson.getObjValAs? String "node_type" == .ok "Name"
+            && sliceJson.getObjValAs? String "node_type" != .ok "Slice" then
+          let containerIdent ← getCode containerJson `ident
+          let indexCode ← getCode sliceJson `term
+          let delIdent := mkIdent ``PyAstLean.pyDelItem
+          elems := elems.push (← `(doElem| $containerIdent:ident := $delIdent $containerIdent $indexCode))
+        else
+          elems := elems.push (← `(doElem| let _ := ()))
+      else
+        elems := elems.push (← `(doElem| let _ := ()))
+    pure ⟨mkNullNode (elems.map TSyntax.raw)⟩
   | `command, json => do
     let .ok targetsJson := json.getObjValAs? Json "targets" | throwError
       s!"Delete node does not have a 'targets' field or it is not a JSON value: {json}"
@@ -184,6 +229,109 @@ def isNoneConstantJson (json : Json) : Bool :=
   match json.getObjValAs? String "node_type", json.getObjValAs? Json "value" with
   | .ok "Constant", .ok .null => true
   | _, _ => false
+
+/-- Apply a Python binary operator to already-lowered operand terms. Shared by `binOpSyntax`
+and `inlineIOTerm` so IO-bearing operands can be hoisted without duplicating the op table. -/
+def binOpApplyTerm (op : String) (leftCode rightCode : TSyntax `term) :
+    PygenM (TSyntax `term) := do
+  match op with
+  | "add" => `($leftCode +ₚ $rightCode)
+  | "sub" => `($leftCode -ₚ $rightCode)
+  | "mul" => `($leftCode *ₚ $rightCode)
+  | "div" => `($leftCode /ₚ $rightCode)
+  | "floordiv" =>
+      let floorDivIdent := mkIdent ``PyAstLean.pyFloorDiv
+      `($floorDivIdent $leftCode $rightCode)
+  | "pow" => `($leftCode ^ₚ $rightCode)
+  | "mod" => `($leftCode %ₚ $rightCode)
+  | "bitand" => `($(mkIdent ``PyAstLean.pyBitAnd) $leftCode $rightCode)
+  | "bitor" => `($(mkIdent ``PyAstLean.pyBitOr) $leftCode $rightCode)
+  | "bitxor" => `($(mkIdent ``PyAstLean.pyBitXor) $leftCode $rightCode)
+  | "lshift" => `($(mkIdent ``PyAstLean.pyShiftLeft) $leftCode $rightCode)
+  | "rshift" => `($(mkIdent ``PyAstLean.pyShiftRight) $leftCode $rightCode)
+  | _ => throwError s!"Unsupported binary operator: {op}"
+
+/-- Apply a Python unary operator to an already-lowered operand term. -/
+def unaryOpApplyTerm (op : String) (operandCode : TSyntax `term) :
+    PygenM (TSyntax `term) := do
+  match op with
+  | "not" => `(! $operandCode)
+  | "neg" => `(- $operandCode)
+  | "pos" => `($operandCode)
+  | _ => throwError s!"Unsupported unary operator: {op}"
+
+/-- Whether a condition's IR already lowers to a `Bool` (a comparison, boolean operator,
+`not`, or a boolean literal). Such tests need no truthiness conversion; everything else (a
+bare `int`/`list`/`str`/`Option` used as `if x:` / `while x:`) is wrapped in `pyTruthy`. -/
+def conditionIsBoolean (json : Json) : Bool :=
+  match json.getObjValAs? String "node_type" with
+  | .ok "Compare" => true
+  | .ok "BoolOp" => true
+  | .ok "UnaryOp" => json.getObjValAs? String "op" == .ok "not"
+  | .ok "Constant" =>
+      match json.getObjValAs? Json "value" with
+      | .ok (.bool _) => true
+      | _ => false
+  | _ => false
+
+/-- Lower a condition expression, applying Python truthiness (`pyTruthy`) unless it already
+produces a `Bool`. Used by `if`/`while`/`if`-expression lowering. -/
+def truthyConditionTerm (json : Json) (code : TSyntax `term) : PygenM (TSyntax `term) := do
+  if conditionIsBoolean json then pure code
+  else `($(mkIdent ``PyAstLean.pyTruthy) $code)
+
+/-- A JSON node that lowers to a Lean `String` value: a string literal or an f-string. Used to
+route `x in s` to substring containment when the left operand is statically a string. -/
+def isStringyJson (json : Json) : Bool :=
+  match json.getObjValAs? String "node_type" with
+  | .ok "JoinedStr" => true
+  | .ok "Constant" =>
+      match json.getObjValAs? Json "value" with
+      | .ok (.str _) => true
+      | _ => false
+  | _ => false
+
+/-- Apply a Python comparison operator to already-lowered operand terms. `leftJson` is the
+left operand's IR, used only to decide membership lowering: a string literal on the left of
+`in`/`not in` means *substring* containment (`pyStrContainsSubstr`); otherwise membership
+dispatches through `pyContains`, whose `outParam` element type pins the element from the
+container. -/
+def compareApplyTerm (op : String) (leftJson : Json) (leftCode rightCode : TSyntax `term)
+    (rightJson : Option Json := none) : PygenM (TSyntax `term) := do
+  -- `x is None` / `x is not None`: lower to `Option.isNone`/`Option.isSome` rather than
+  -- `== none`/`!= none`. This needs no `BEq` and works even when `x`'s element type is still an
+  -- unresolved metavariable — exactly the `[None] * n` placeholder pattern, where the list's
+  -- `Option` element type is only pinned later. (`is`/`is not` against a non-`None` operand keep
+  -- the plain `==`/`!=` lowering below.)
+  if (op == "is" || op == "isnot") && (rightJson.any isNoneConstantJson) then
+    if op == "is" then return ← `($(mkIdent ``Option.isNone) $leftCode)
+    else return ← `($(mkIdent ``Option.isSome) $leftCode)
+  match op with
+  | "eq" => `($leftCode == $rightCode)
+  | "ne" => `($leftCode != $rightCode)
+  | "is" => `($leftCode == $rightCode)
+  | "isnot" => `($leftCode != $rightCode)
+  -- Order comparisons go through `decide` so the result is a `Bool`, matching Python (where a
+  -- comparison is a usable `bool` value). Lean's `<`/`>`/… are `Prop`-valued, which only works
+  -- where the surrounding context forces `Bool` (an `if` condition); as a plain value — a list
+  -- comprehension element `[x > 0 for …]`, a `sum`/`any`/`all` generator, `a < b and c < d` —
+  -- the `Prop` would have no `Bool`/`PyBool` instance. (`==`/`!=`/`is` are already `Bool`.)
+  | "lt" => `(decide ($leftCode < $rightCode))
+  | "le" => `(decide ($leftCode <= $rightCode))
+  | "gt" => `(decide ($leftCode > $rightCode))
+  | "ge" => `(decide ($leftCode >= $rightCode))
+  | "in" =>
+      if isStringyJson leftJson then
+        `($(mkIdent ``PyAstLean.pyStrContainsSubstr) $rightCode $leftCode)
+      else
+        `($(mkIdent ``pyContains) $rightCode $leftCode)
+  | "notin" =>
+      if isStringyJson leftJson then
+        `(! ($(mkIdent ``PyAstLean.pyStrContainsSubstr) $rightCode $leftCode))
+      else
+        `(! ($(mkIdent ``pyContains) $rightCode $leftCode))
+  | _ => throwError s!"Unsupported comparison operator: {op}"
+
 @[pygen "BinOp"]
 def binOpSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -197,14 +345,17 @@ def binOpSyntax : (kind : SyntaxNodeKind) → Json →
       s!"BinOp node does not have a 'right' field or it is not a JSON value: {json}"
     let leftCode ←  getCode leftJson `term
     let rightCode ← getCode rightJson `term
-    match op with
-    | "add" => `($leftCode +ₚ $rightCode)
-    | "sub" => `($leftCode -ₚ $rightCode)
-    | "mul" => `($leftCode *ₚ $rightCode)
-    | "div" => `($leftCode /ₚ $rightCode)
-    | "pow" => `($leftCode ^ₚ $rightCode)
-    | "mod" => `($leftCode %ₚ $rightCode)
-    | _ => throwError s!"Unsupported binary operator: {op}"
+    -- List repetition `[..] * n` / `n * [..]`: when an operand is a list literal, target the
+    -- plain `pyListRepeat` (result type concretely `List α`) instead of the `outParam`-result
+    -- `*ₚ`. Otherwise a `[None] * n` placeholder leaves the whole list type postponed, stalling
+    -- every later `pyIter`/`pyGetItem`/`pySetItem` whose element type is only pinned afterwards.
+    if op == "mul" then
+      let repeatIdent := mkIdent ``PyAstLean.pyListRepeat
+      if leftJson.getObjValAs? String "node_type" == .ok "List" then
+        return ← `($repeatIdent $leftCode $rightCode)
+      else if rightJson.getObjValAs? String "node_type" == .ok "List" then
+        return ← `($repeatIdent $rightCode $leftCode)
+    binOpApplyTerm op leftCode rightCode
   | _, _ => throwError s!"Unsupported syntax category for BinOp node"
 
 @[pygen "UnaryOp"]
@@ -216,11 +367,7 @@ def unaryOpSyntax : (kind : SyntaxNodeKind) → Json →
     let .ok operandJson := json.getObjValAs? Json "operand" | throwError
       s!"UnaryOp node does not have an 'operand' field or it is not a JSON value: {json}"
     let operandCode ← getCode operandJson `term
-    match op with
-    | "not" => `(! $operandCode)
-    | "neg" => `(- $operandCode)
-    | "pos" => `($operandCode)
-    | _ => throwError s!"Unsupported unary operator: {op}"
+    unaryOpApplyTerm op operandCode
   | _, _ => throwError s!"Unsupported syntax category for UnaryOp node"
 
 @[pygen "BoolOp"]
@@ -256,34 +403,7 @@ def compareSyntax : (kind : SyntaxNodeKind) → Json →
       s!"Compare node does not have a 'right' field or it is not a JSON value: {json}"
     let leftCode ← getCode leftJson `term
     let rightCode ← getCode rightJson `term
-    let usePyContains :=
-      match rightJson.getObjValAs? String "node_type" with
-      | .ok "BinOp" => true
-      | .ok "Constant" =>
-          match rightJson.getObjValAs? Json "value" with
-          | .ok (.str _) => true
-          | _ => false
-      | _ => false
-    match op with
-    | "eq" => `($leftCode == $rightCode)
-    | "ne" => `($leftCode != $rightCode)
-    | "lt" => `($leftCode < $rightCode)
-    | "le" => `($leftCode <= $rightCode)
-    | "gt" => `($leftCode > $rightCode)
-    | "ge" => `($leftCode >= $rightCode)
-    | "in" =>
-        if usePyContains = true then
-          let containsIdent := mkIdent ``pyContains
-          `($containsIdent $rightCode $leftCode)
-        else
-          `(decide ($leftCode ∈ $rightCode))
-    | "notin" =>
-        if usePyContains = true then
-          let containsIdent := mkIdent ``pyContains
-          `(! ($containsIdent $rightCode $leftCode))
-        else
-          `(decide ($leftCode ∉ $rightCode))
-    | _ => throwError s!"Unsupported comparison operator: {op}"
+    compareApplyTerm op leftJson leftCode rightCode (rightJson := some rightJson)
   | _, _ => throwError s!"Unsupported syntax category for Compare node"
 
 @[pygen "IfExp"]
@@ -296,7 +416,7 @@ def ifExpSyntax : (kind : SyntaxNodeKind) → Json →
       s!"IfExp node does not have a 'body' field or it is not a JSON value: {json}"
     let .ok orelseJson := json.getObjValAs? Json "orelse" | throwError
       s!"IfExp node does not have an 'orelse' field or it is not a JSON value: {json}"
-    let testCode ← getCode testJson `term
+    let testCode ← truthyConditionTerm testJson (← getCode testJson `term)
     let bodyIsNone := isNoneConstantJson bodyJson
     let orelseIsNone := isNoneConstantJson orelseJson
     if bodyIsNone && orelseIsNone then

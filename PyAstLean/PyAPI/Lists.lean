@@ -93,6 +93,24 @@ def pyListInsert (xs : List α) (idx : Int) (elem : α) : List α :=
 def pyInsert : List α → Int → α → List α :=
   pyListInsert
 
+/-- Python `.copy()` (lists and dicts). These are immutable values in this runtime, so a
+shallow copy is the value itself. -/
+def pyCopy {α : Type} (x : α) : α := x
+
+/-- Python slice assignment `xs[start:stop] = repl`: replace the `start:stop` segment with
+`repl` (which may differ in length). Bounds follow Python slice semantics (negative indices
+count from the end; `none` means the list edge), matching `pyListSlice`. -/
+def pySliceSet {α : Type} (xs : List α) (start stop : Option Int) (repl : List α) : List α :=
+  let len := xs.length
+  let s : Nat := match start with
+    | some i => if i < 0 then (max 0 (len + i)).toNat else min len i.toNat
+    | none => 0
+  let e : Nat := match stop with
+    | some i => if i < 0 then (max 0 (len + i)).toNat else min len i.toNat
+    | none => len
+  let e := max s e
+  xs.take s ++ repl ++ xs.drop e
+
 
 theorem pyListReverse_involution (xs : List α) : pyReverse (pyReverse xs) = xs := by
   unfold pyReverse pyListReverse

@@ -19,9 +19,17 @@ open PyAstLean
 #guard_msgs in
 #eval pyJoin "-" ["a", "b", "c"]
 
+/-- info: "a b c" -/
+#guard_msgs in
+#eval pyJoin " " "abc"
+
+/-- info: "2026/05/30" -/
+#guard_msgs in
+#eval pyStringJoin "/" ["2026", "05", "30"]
+
 /-- info: "" -/
 #guard_msgs in
-#eval pyJoin ":" []
+#eval pyJoin ":" ([] : List String)
 
  /-- info: "baaaaa" -/
 #guard_msgs in

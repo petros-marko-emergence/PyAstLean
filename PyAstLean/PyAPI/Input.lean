@@ -9,6 +9,11 @@ def pyInputIO (prompt : String := "") : IO String := do
     IO.print prompt
   let stdin ← IO.getStdin
   let line ← stdin.getLine
+  -- `getLine` returns "" only at end of input (an empty *line* is "\n"). Python's `input()`
+  -- raises `EOFError` there; raising it lets the common read-until-EOF idiom
+  -- (`while True: try: input() … except: break`) terminate instead of spinning on "" forever.
+  if line.isEmpty then
+    throw (IO.userError "EOFError")
   return line.trimAsciiEnd.toString
 
 end PyAstLean

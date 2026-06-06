@@ -1,6 +1,4 @@
 def foo():
-    x = any([0, 0, 0])
-    if x:
-        return 1
-    else:
-        return 0
+    x = ["hi", "hello", "hey"]
+    y = " ".join(x)
+    print(y)

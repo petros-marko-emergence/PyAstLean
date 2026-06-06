@@ -13,6 +13,11 @@ import threading
 from collections import deque
 sys.path.append(os.path.dirname(__file__))
 from node_visitor import *
+from toplevel_state import (
+    annotate_main_entrypoint,
+    annotate_toplevel_state,
+    annotate_if_assigned_names,
+)
 
 HOMEDIR = Path.absolute(Path(__name__).parent.parent)
 SRC_DIR = HOMEDIR / "src"
@@ -101,6 +106,124 @@ def _inject_comments_into_lean(ast_json, lean_code):
 
 def _direct_comment_code(ast_json):
     return "\n".join(_lean_comment_lines(ast_json, ""))
+
+
+def _join_command_parts(parts):
+    """Join generated top-level parts, attaching leading comments to the next part.
+
+    `parts` is a list of `(is_comment, text)`. A comment is followed by a single newline
+    so it sits directly above the next declaration; declarations are separated by a blank
+    line. This avoids a stray blank line after every comment.
+    """
+    out = ""
+    for is_comment, text in parts:
+        if not text:
+            continue
+        if not out:
+            out = text
+        elif out.endswith("\n"):
+            # Previous part was a comment: glue this part directly beneath it.
+            out += text
+        else:
+            out += "\n\n" + text
+        if is_comment:
+            out += "\n"
+    return out
+
+
+def _lean_module_path(python_module):
+    """Map a dotted Python module path to a Lean module path.
+
+    Lean requires each component of a module path to start uppercase (this is how Lean
+    resolves `import` to a file and is enforced by Mathlib's linter). We capitalize the
+    first letter of every dotted segment and leave the rest — including underscores —
+    intact, so the mapping is deterministic and reversible:
+        `mymodule`         -> `Mymodule`
+        `pkg.sub_pkg.mod`  -> `Pkg.Sub_pkg.Mod`
+    Both the importing and the defining file compute this identically, which matters
+    because we translate one file at a time and never see the other.
+    """
+    segments = [seg for seg in python_module.split(".") if seg]
+    capitalized = [seg[:1].upper() + seg[1:] for seg in segments]
+    return ".".join(capitalized)
+
+
+def _crossfile_import_lines(body):
+    """Build the Lean `import` lines for non-library cross-file imports.
+
+    Library imports (`math`, `numpy`, ...) are handled by symbol mapping and skipped here.
+    Both `import a.b` and `from a.b import f, g` become `import A.B`: a translated module
+    emits its definitions at the top level (not inside a per-file namespace), and Lean
+    makes a module's top-level definitions globally available after `import` — so no `open`
+    is needed and the imported names are already unqualified, matching Python's
+    `from ... import`. Private (`_`-prefixed) definitions stay non-importable.
+
+    Imports must appear at the very top of a Lean file, so these lines are assembled into
+    the preamble rather than emitted per-statement by the backend.
+    """
+    import_lines = []
+    seen_imports = set()
+
+    def add_import(lean_path):
+        if lean_path and lean_path not in seen_imports:
+            seen_imports.add(lean_path)
+            import_lines.append(f"import {lean_path}")
+
+    for stmt in body:
+        if not isinstance(stmt, dict):
+            continue
+        node_type = stmt.get("node_type")
+        if node_type == "Import":
+            for alias_node in stmt.get("names", []):
+                if not isinstance(alias_node, dict):
+                    continue
+                module_name = alias_node.get("name")
+                if not isinstance(module_name, str):
+                    continue
+                # `import math` etc. is library-mapped, not a cross-file Lean import.
+                if module_name.split(".")[0] in SUPPORTED_LIBRARY_IMPORTS:
+                    continue
+                add_import(_lean_module_path(module_name))
+        elif node_type == "ImportFrom":
+            module_name = stmt.get("module")
+            if not isinstance(module_name, str) or not module_name:
+                continue
+            if module_name in SUPPORTED_LIBRARY_IMPORTS:
+                continue
+            add_import(_lean_module_path(module_name))
+
+    return import_lines
+
+
+def _collect_scope_function_defs(body):
+    """Collect the `FunctionDef` nodes that live in a single Python scope.
+
+    A `def` nested inside an `if`/`for`/`while`/`try`/`with` block is still in the *same*
+    scope (those compound statements do not introduce a scope in Python), so effect analysis
+    must see it — e.g. the harness wraps bare top-level code under `if __name__ == "__main__":`,
+    which nests the program's functions one level deep. We descend through compound statements
+    but stop at scope boundaries (`FunctionDef`/`AsyncFunctionDef`/`ClassDef`/`Lambda`), whose
+    own bodies form separate scopes handled by recursion.
+    """
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            node_type = node.get("node_type")
+            if node_type == "FunctionDef":
+                found.append(node)
+                return  # separate scope: do not descend into its body
+            if node_type in {"AsyncFunctionDef", "ClassDef", "Lambda"}:
+                return  # separate scopes, not handled by this collector
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    for stmt in body:
+        walk(stmt)
+    return found
 
 
 def _body_has_direct_exception_syntax(body):
@@ -196,9 +319,9 @@ def annotate_exception_effects(module_json):
     """Mark function defs and direct calls that require translated `Except` handling."""
     def annotate_scope(body):
         local_functions = {
-            stmt["name"]: stmt
-            for stmt in body
-            if isinstance(stmt, dict) and stmt.get("node_type") == "FunctionDef"
+            fn["name"]: fn
+            for fn in _collect_scope_function_defs(body)
+            if isinstance(fn.get("name"), str)
         }
         for fn in local_functions.values():
             annotate_scope(fn.get("body", []))
@@ -234,9 +357,9 @@ def annotate_io_effects(module_json):
     """Mark input/print-bearing function defs and direct calls that require translated `IO` handling."""
     def annotate_scope(body):
         local_functions = {
-            stmt["name"]: stmt
-            for stmt in body
-            if isinstance(stmt, dict) and stmt.get("node_type") == "FunctionDef"
+            fn["name"]: fn
+            for fn in _collect_scope_function_defs(body)
+            if isinstance(fn.get("name"), str)
         }
         for fn in local_functions.values():
             annotate_scope(fn.get("body", []))
@@ -421,6 +544,30 @@ def annotate_library_imports(module_json):
     if isinstance(module_json, dict) and module_json.get("node_type") == "Module":
         _annotate_library_imports_in_scope(module_json.get("body", []))
 
+
+def _sanitize_hole_identifiers(ast_tree):
+    """Rename Python variables whose name is a single underscore when they are *read*.
+
+    Python allows `_` as an ordinary identifier (e.g. `for _ in xs: a = int(_)`), but Lean
+    treats a bare `_` as a placeholder/hole, so a read of it elaborates to a metavariable
+    rather than the bound value. When `_` is only ever a throwaway binder (`for _ in range(n)`,
+    `fun _ => ...`) emitting `_` is correct and idiomatic, so we leave those alone and only
+    rewrite when `_` actually appears in a load position somewhere in the module.
+    """
+    reads_underscore = any(
+        isinstance(n, ast.Name) and n.id == "_" and isinstance(n.ctx, ast.Load)
+        for n in ast.walk(ast_tree)
+    )
+    if not reads_underscore:
+        return
+    safe = "__py_us"
+    for n in ast.walk(ast_tree):
+        if isinstance(n, ast.Name) and n.id == "_":
+            n.id = safe
+        elif isinstance(n, ast.arg) and n.arg == "_":
+            n.arg = safe
+
+
 def translate_to_json(source_code, filepath=None):
     """
     Parses Python source code and translates it to a JSON IR.
@@ -442,12 +589,16 @@ def translate_to_json(source_code, filepath=None):
 
     logger.debug("Source passed to Python AST parser:\n%s", source_code)
     ast_tree = ast.parse(source_code)
+    _sanitize_hole_identifiers(ast_tree)
     logger.debug("Parsed Python AST:\n%s", ast.dump(ast_tree, indent=4))
     translator = ASTToJsonLeanVisitor(source_code)
     data = translator.visit(ast_tree)
     annotate_library_imports(data)
     annotate_exception_effects(data)
     annotate_io_effects(data)
+    annotate_main_entrypoint(data)
+    annotate_toplevel_state(data)
+    annotate_if_assigned_names(data)
     logger.debug("Generated JSON IR: %s", json.dumps(data))
     return json.dumps(data)
 
@@ -636,7 +787,7 @@ class LeanBackendClient:
         try:
             return json.loads(response_line)
         except json.JSONDecodeError as err:
-            logger.debug("Persistent Lean backend returned invalid JSON; retrying one-shot.")
+            logger.debug(f"Persistent Lean backend returned invalid JSON; retrying one-shot: {err}")
             self.close()
             return self._one_shot_request(ast_json, target, check)
 
@@ -669,13 +820,16 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
     if ast_json.get("node_type") == "Module":
         body = ast_json.get("body", [])
         if target == "command":
+            # Each part is (is_comment, text). Standalone comments attach to the next
+            # part with a single newline so they read as leading comments, while real
+            # declarations are separated by a blank line.
             code_parts = []
             for stmt in body:
                 # A top-level Python `pass` is a true no-op, so there is no Lean command to emit.
                 if stmt.get("node_type") in {"Pass", "Import", "ImportFrom"}:
                     continue
                 if stmt.get("node_type") in {"Comment", "DocString"}:
-                    code_parts.append(_direct_comment_code(stmt))
+                    code_parts.append((True, _direct_comment_code(stmt)))
                     continue
                 result = invoke_lean_backend(stmt, target, check=False, client=client)
                 if result.get("result") is False:
@@ -683,17 +837,25 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                 code_key = f"lean_{target}"
                 if code_key not in result:
                     return {"result": False, "error": f"Missing '{code_key}' in backend response."}
-                code_parts.append(_inject_comments_into_lean(stmt, result[code_key]))
-            # All imports needed
-            preamble = [
-                "import PyAstLean",
-                "import Libraries",
-                "",
-                "open PyAstLean",
-                "open Libraries",
-                "",
-            ]
-            full_code = "\n".join(preamble) + "\n\n".join(code_parts) if imports_add else "\n\n".join(code_parts)
+                code_parts.append((False, _inject_comments_into_lean(stmt, result[code_key])))
+
+            body_code = _join_command_parts(code_parts)
+            if imports_add:
+                # Every `import` must precede the first command in a Lean file. We list the
+                # runtime imports, then the user's cross-file modules, then the `open`s.
+                crossfile_imports = _crossfile_import_lines(body)
+                preamble_lines = [
+                    "import PyAstLean",
+                    "import Libraries",
+                    *crossfile_imports,
+                    "",
+                    "open PyAstLean",
+                    "open Libraries",
+                    "",
+                ]
+                full_code = "\n".join(preamble_lines) + body_code
+            else:
+                full_code = body_code
             return {"result": True, f"lean_{target}": full_code}
 
         if len(body) == 1:

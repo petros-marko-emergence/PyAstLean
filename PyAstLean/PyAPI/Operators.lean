@@ -18,6 +18,26 @@ instance (priority := high) : PyHAdd Rat Rat Rat where
 instance : PyHAdd String String String where
   hAdd := String.append
 
+/-- String building by appending a single character, e.g. `s + word[i]`. -/
+instance : PyHAdd String Char String where
+  hAdd := fun s c => s ++ c.toString
+
+/-! Mixed numeric `+`. Lean has no heterogeneous `HAdd Nat Int` / `HAdd Rat Int`, so the
+generic `[HAdd α β γ]` instance does not cover these mixed-type sums that arise when one
+operand came from integer division (`Rat`) or a length/count (`Nat`). The result widens to
+the more general type. -/
+instance (priority := high) : PyHAdd Rat Int Rat where
+  hAdd := fun a b => a + (b : Rat)
+
+instance (priority := high) : PyHAdd Int Rat Rat where
+  hAdd := fun a b => (a : Rat) + b
+
+instance (priority := high) : PyHAdd Nat Int Int where
+  hAdd := fun a b => (a : Int) + b
+
+instance (priority := high) : PyHAdd Int Nat Int where
+  hAdd := fun a b => a + (b : Int)
+
 class PyHSub (α β : Type) (γ : outParam Type) where
   hSub : α → β → γ
 
@@ -30,7 +50,10 @@ instance (priority := low) {α β γ} [HSub α β γ] : PyHSub α β γ where
 instance (priority := high) : PyHSub Nat Nat Int where
   hSub := fun a b => (a : Int) - (b : Int)
 
-@[default_instance]
+-- Not a `default_instance`: this instance must remain available for a genuine `Rat - Int`,
+-- but it must NOT be used to *default* an unconstrained left operand to `Rat`. Marking it
+-- default made `ok -ₚ ng` (with `ng : Int` and `ok` a yet-unconstrained parameter) pin
+-- `ok := Rat`, which then forced integer-only follow-ups like `pyFloorDiv (ok +ₚ ng)` to fail.
 instance (priority := high) : PyHSub Rat Int Rat where
   hSub := fun a b => (a : Rat) - (b : Int)
 
@@ -52,6 +75,30 @@ instance : PyHMul String Int String where
       ""
     else
       String.intercalate "" (List.replicate n.toNat s)
+
+/-! Symmetric string repetition `n * s` (Python allows the count on either side). -/
+instance : PyHMul Nat String String where
+  hMul := fun n s => String.intercalate "" (List.replicate n s)
+
+instance : PyHMul Int String String where
+  hMul := fun n s => if n < 0 then "" else String.intercalate "" (List.replicate n.toNat s)
+
+/-- Python list repetition `xs * n` as an ordinary function (not the `outParam`-result `*ₚ`
+operator). Codegen targets this for a *list-literal* operand (`[None] * n`, `[0] * n`) so the
+result type is concretely `List α` even when `α` is still an unresolved metavariable — the
+`outParam` operator would leave the whole list type postponed, which then stalls later
+`pyIter`/`pyGetItem`/`pySetItem` on a `[None] * n` placeholder whose element type only gets
+pinned by a later assignment. A non-positive count yields `[]`, matching Python. -/
+def pyListRepeat {α : Type} (xs : List α) (n : Int) : List α :=
+  if n ≤ 0 then [] else (List.replicate n.toNat xs).flatten
+
+/-- Python list repetition `xs * n` (and the symmetric `n * xs`): repeats the list `n` times,
+matching `[0] * n` style array initialization. A non-positive count yields `[]`. -/
+instance {α : Type} : PyHMul (List α) Int (List α) where
+  hMul := fun xs n => pyListRepeat xs n
+
+instance {α : Type} : PyHMul Int (List α) (List α) where
+  hMul := fun n xs => pyListRepeat xs n
 
 @[default_instance]
 instance (priority := high) : PyHMul Rat Rat Rat where
@@ -96,6 +143,24 @@ instance (priority := high) {α β} [Pow α β] : PyHPow α β α where
 instance (priority := high) : PyHPow Rat Int Rat where
   hPow := fun a b => (a : Rat) ^ (b : Int)
 
+/-- Python `a ** b` on integers, e.g. `2 ** n`. Lean has no `HPow Int Int Int` (a negative
+exponent would be a rational), so we raise to `b.toNat`; this matches competitive-programming
+use, where exponents are non-negative. -/
+@[default_instance]
+instance (priority := high) : PyHPow Int Int Int where
+  hPow := fun a b => a ^ b.toNat
+
+instance : PyHPow Nat Nat Nat where
+  hPow := fun a b => a ^ b
+
+/-- Python `a ** b` with a float exponent (e.g. `n ** 0.5` for a square root) yields a float.
+The base is widened to `Float`; the common idiom is `int(n ** 0.5)`. -/
+instance (priority := high) : PyHPow Int Float Float where
+  hPow := fun a b => Float.pow (Float.ofInt a) b
+
+instance (priority := high) : PyHPow Float Float Float where
+  hPow := fun a b => Float.pow a b
+
 @[default_instance]
 instance (priority := high) : Neg Rat where
   neg := fun a => - (a : Rat)
@@ -118,5 +183,47 @@ instance (priority := high) : PyHDiv Nat Nat Rat where
 @[default_instance]
 instance (priority := high) : PyHDiv Rat Rat Rat where
   hDiv := fun a b => (a : Rat) / (b : Rat)
+
+
+/-- Python-style floor division: `a // b` truncates toward negative infinity. -/
+def pyFloorDiv (a b : Int) : Int :=
+  if b == 0 then
+    panic! "ZeroDivisionError: integer division or modulo by zero"
+  else
+    Int.fdiv a b
+
+/-!
+Python-style integer bitwise operators.
+
+These assume non-negative operands, which covers competitive-programming use. Python's
+infinite two's-complement semantics for negative integers is intentionally out of scope:
+operands are taken through `Int.toNat`, so a negative operand is treated as `0`.
+-/
+
+/-- Python `a & b`. -/
+-- `&`, `|`, `^` are bitwise on integers *and* the binary set operations (intersection, union,
+-- symmetric difference) on Python sets. They are typeclasses (Int instances here; the
+-- list-backed set instances live in `Sets.lean`) so codegen emits one stable name per operator
+-- and the operand type selects the meaning.
+class PyBitAnd (α β : Type) (γ : outParam Type) where bitAnd : α → β → γ
+class PyBitOr (α β : Type) (γ : outParam Type) where bitOr : α → β → γ
+class PyBitXor (α β : Type) (γ : outParam Type) where bitXor : α → β → γ
+
+/-- Python `a & b` (integer bitwise-and, or set intersection). -/
+def pyBitAnd {α β γ : Type} [PyBitAnd α β γ] (a : α) (b : β) : γ := PyBitAnd.bitAnd a b
+/-- Python `a | b` (integer bitwise-or, or set union). -/
+def pyBitOr {α β γ : Type} [PyBitOr α β γ] (a : α) (b : β) : γ := PyBitOr.bitOr a b
+/-- Python `a ^ b` (integer bitwise-xor, or set symmetric difference). -/
+def pyBitXor {α β γ : Type} [PyBitXor α β γ] (a : α) (b : β) : γ := PyBitXor.bitXor a b
+
+instance : PyBitAnd Int Int Int where bitAnd a b := Int.ofNat (Nat.land a.toNat b.toNat)
+instance : PyBitOr Int Int Int where bitOr a b := Int.ofNat (Nat.lor a.toNat b.toNat)
+instance : PyBitXor Int Int Int where bitXor a b := Int.ofNat (Nat.xor a.toNat b.toNat)
+
+/-- Python `a << b`. -/
+def pyShiftLeft (a b : Int) : Int := a * (2 ^ b.toNat)
+
+/-- Python `a >> b` (floor division by `2 ^ b`). -/
+def pyShiftRight (a b : Int) : Int := Int.fdiv a (2 ^ b.toNat)
 
 end PyAstLean

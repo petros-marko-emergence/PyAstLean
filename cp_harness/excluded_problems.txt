@@ -1,0 +1,12 @@
+# Problems excluded from the CP harness — fetch.py will never (re-)download these.
+#
+# These are "special-judge" / multiple-valid-answer problems: the statement asks for ANY valid
+# answer, so even a correct solution's output need not equal the single stored expected output.
+# Exact-match comparison is therefore meaningless for them (both Python and Lean get flagged
+# "wrong"), and they only add noise to the Lean-vs-Python divergence report. Drop them so the
+# report focuses on problems where output equality is a valid correctness oracle.
+#
+# One sanitized problem directory name per line (`#` comments and blank lines ignored).
+
+1582_D._Vupsen,_Pupsen_and_0
+1586_B._Omkar_and_Heavenly_Tree

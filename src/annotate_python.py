@@ -297,6 +297,105 @@ class Lean4Annotator(cst.CSTTransformer):
             ]
         )
 
+    def _call_returns_tuple(self, value: cst.BaseExpression) -> bool:
+        """True when `value` is a call to a function whose stub return type is `tuple[...]`.
+
+        Such a result is a heterogeneous `Prod` at the Lean level, so the caller must keep
+        native tuple unpacking (Prod projections) rather than expanding to list subscripts.
+        """
+        if not isinstance(value, cst.Call) or not isinstance(value.func, cst.Name):
+            return False
+        # Builtins that return a fixed-size tuple (a heterogeneous `Prod`), so `a, b = f(...)`
+        # must keep native Prod-projection unpacking rather than list-subscript splitting.
+        if value.func.value == "divmod":
+            return True
+        fn_data = self.stub_annotations.get("functions", {}).get(value.func.value)
+        if not fn_data:
+            return False
+        returns = fn_data.get("returns")
+        if returns is None:
+            return False
+        ret_str = node_to_str(returns)
+        return ret_str == "tuple" or ret_str.startswith("tuple[") or ret_str.startswith("Tuple[")
+
+    def _split_unpack_assignment_lines(
+        self,
+        target: cst.Tuple | cst.List,
+        value: cst.BaseExpression,
+    ) -> list[cst.BaseStatement]:
+        names: list[cst.Name] = []
+        for element in target.elements:
+            if not isinstance(element.value, cst.Name):
+                return []
+            names.append(element.value)
+
+        # When the RHS is a tuple/list literal of matching arity (e.g. `a, b = b, a`),
+        # leave the native unpacking intact: the Lean backend lowers it directly through
+        # `Prod.fst`/`Prod.snd`, which is correct for tuples. Expanding to `tmp[i]`
+        # subscripts would mis-lower as list indexing on a tuple value.
+        if isinstance(value, (cst.Tuple, cst.List)) and len(value.elements) == len(names):
+            return []
+
+        # When the RHS is a call to a function that returns a `tuple[...]` (e.g. `c, a = f()`
+        # where `def f() -> tuple[int, list]`), the result is a heterogeneous `Prod`, not a
+        # `List`. Subscripting it (`tmp[0]`, `tmp[1]`) would demand `PyGetItem (α × β) Int`,
+        # which is impossible (the element type depends on the index). Leave it as native
+        # unpacking so the Lean backend lowers it through `Prod.fst`/`Prod.snd`.
+        if self._call_returns_tuple(value):
+            return []
+
+        self.unpack_counter += 1
+        temp_name = f"__py_unpack{self.unpack_counter}"
+        split_lines: list[cst.BaseStatement] = [
+            cst.SimpleStatementLine(
+                body=[
+                    cst.Assign(
+                        targets=[cst.AssignTarget(target=cst.Name(temp_name))],
+                        value=value,
+                    )
+                ]
+            )
+        ]
+
+        for idx, name in enumerate(names):
+            rhs: cst.BaseExpression = cst.Subscript(
+                value=cst.Name(temp_name),
+                slice=[
+                    cst.SubscriptElement(
+                        slice=cst.Index(value=cst.Integer(str(idx)))
+                    )
+                ],
+            )
+            best: cst.BaseExpression | None = self._get_best_ann(name.value, rhs)
+            if best:
+                split_lines.append(
+                    cst.SimpleStatementLine(
+                        body=[
+                            cst.AnnAssign(
+                                target=name,
+                                annotation=cst.Annotation(annotation=best),
+                                value=rhs,
+                                equal=cst.AssignEqual(
+                                    whitespace_before=cst.SimpleWhitespace(" "),
+                                    whitespace_after=cst.SimpleWhitespace(" "),
+                                ),
+                            )
+                        ]
+                    )
+                )
+            else:
+                split_lines.append(
+                    cst.SimpleStatementLine(
+                        body=[
+                            cst.Assign(
+                                targets=[cst.AssignTarget(target=name)],
+                                value=rhs,
+                            )
+                        ]
+                    )
+                )
+        return split_lines
+
     def _extract_match_binder_names(self, pattern: cst.CSTNode) -> list[str]:
         names: list[str] = []
         if isinstance(pattern, cst.MatchAs):
@@ -342,15 +441,75 @@ class Lean4Annotator(cst.CSTTransformer):
                 declared.add(comp_name)
         return decl_lines
 
+    def leave_SimpleStatementSuite(
+        self,
+        original_node: cst.SimpleStatementSuite,
+        updated_node: cst.SimpleStatementSuite,
+    ) -> cst.BaseSuite:
+        """An inline `for/if/while … : a; b` body is a `SimpleStatementSuite` of small statements
+        (not lines), so the line handler never sees it. Split any tuple/list-unpack assign here too
+        — otherwise `for …: n,m,k = map(...); …` reaches the backend as a raw tuple-assign and a
+        list-returning RHS is mis-lowered as a tuple."""
+        new_body = []
+        changed = False
+        for small in updated_node.body:
+            if (isinstance(small, cst.Assign) and len(small.targets) == 1
+                    and isinstance(small.targets[0].target, (cst.Tuple, cst.List))):
+                split = self._split_unpack_assignment_lines(
+                    small.targets[0].target, small.value)
+                if split:
+                    # _split returns SimpleStatementLines; a suite holds bare small statements.
+                    for line in split:
+                        new_body.extend(line.body)
+                    changed = True
+                    continue
+            new_body.append(small)
+        if not changed:
+            return updated_node
+        # Multiple small statements stay valid as an inline suite (`: a; b; c`).
+        return updated_node.with_changes(body=new_body)
+
     def leave_SimpleStatementLine(
         self,
         original_node: cst.SimpleStatementLine,
         updated_node: cst.SimpleStatementLine,
     ) -> cst.SimpleStatementLine | cst.FlattenSentinel[cst.BaseStatement]:
         if len(updated_node.body) != 1:
-            return updated_node
+            # A `;`-compound line (e.g. `n,m,k=map(...);print(...)`). The single-statement
+            # rewrites below don't apply, but a tuple/list-unpack assign among the statements must
+            # still be split — otherwise it reaches the backend as a raw tuple-assign and a
+            # list-returning RHS (e.g. `map(...)`) is mis-lowered as a tuple (`Prod`). Expand each
+            # small statement onto its own line, splitting unpack-assigns as elsewhere.
+            out_lines = []
+            changed = False
+            for small in updated_node.body:
+                if (isinstance(small, cst.Assign) and len(small.targets) == 1
+                        and isinstance(small.targets[0].target, (cst.Tuple, cst.List))):
+                    split = self._split_unpack_assignment_lines(
+                        small.targets[0].target, small.value)
+                    if split:
+                        out_lines.extend(split)
+                        changed = True
+                        continue
+                out_lines.append(cst.SimpleStatementLine(body=[small]))
+            return cst.FlattenSentinel(out_lines) if changed else updated_node
 
         stmt: cst.BaseSmallStatement = updated_node.body[0]
+        # Chained assignment `a = b = … = value`: Python evaluates `value` once, then binds it to
+        # each target left to right. Expand into `__tmp = value; a = __tmp; b = __tmp; …` so the
+        # single-target backend handles each, and a side-effecting `value` runs exactly once.
+        if isinstance(stmt, cst.Assign) and len(stmt.targets) >= 2:
+            self.unpack_counter += 1
+            tmp_name = f"__py_multi{self.unpack_counter}"
+            new_lines: list[cst.BaseStatement] = [
+                cst.SimpleStatementLine(body=[cst.Assign(
+                    targets=[cst.AssignTarget(target=cst.Name(tmp_name))], value=stmt.value)])
+            ]
+            for assign_target in stmt.targets:
+                new_lines.append(cst.SimpleStatementLine(body=[cst.Assign(
+                    targets=[cst.AssignTarget(target=assign_target.target)],
+                    value=cst.Name(tmp_name))]))
+            return cst.FlattenSentinel(new_lines)
         if isinstance(stmt, cst.Assign) and len(stmt.targets) == 1:
             target: cst.BaseAssignTargetExpression = stmt.targets[0].target
             if isinstance(target, cst.Name):
@@ -386,42 +545,9 @@ class Lean4Annotator(cst.CSTTransformer):
                         ]
                     )
             elif isinstance(target, (cst.Tuple, cst.List)):
-                if isinstance(stmt.value, (cst.Tuple, cst.List)) and len(target.elements) == len(stmt.value.elements):
-                    split_lines: list[cst.BaseStatement] = []
-                    for idx, element in enumerate(target.elements):
-                        if not isinstance(element.value, cst.Name):
-                            continue
-                        rhs: cst.BaseExpression = stmt.value.elements[idx].value
-                        best: cst.BaseExpression | None = self._get_best_ann(element.value.value, rhs)
-                        if best:
-                            split_lines.append(
-                                cst.SimpleStatementLine(
-                                    body=[
-                                        cst.AnnAssign(
-                                            target=element.value,
-                                            annotation=cst.Annotation(annotation=best),
-                                            value=rhs,
-                                            equal=cst.AssignEqual(
-                                                whitespace_before=cst.SimpleWhitespace(" "),
-                                                whitespace_after=cst.SimpleWhitespace(" "),
-                                            ),
-                                        )
-                                    ]
-                                )
-                            )
-                        else:
-                            split_lines.append(
-                                cst.SimpleStatementLine(
-                                    body=[
-                                        cst.Assign(
-                                            targets=[cst.AssignTarget(target=element.value)],
-                                            value=rhs,
-                                        )
-                                    ]
-                                )
-                            )
-                    if split_lines:
-                        return cst.FlattenSentinel(split_lines)
+                split_lines = self._split_unpack_assignment_lines(target, stmt.value)
+                if split_lines:
+                    return cst.FlattenSentinel(split_lines)
                 return updated_node
 
         if isinstance(stmt, cst.AnnAssign) and isinstance(stmt.target, cst.Name):
@@ -1114,6 +1240,7 @@ def annotate_file(file_path: str, write_back: bool = True) -> str:
             .replace("List[", "list[")
             .replace("Dict[", "dict[")
             .replace("Tuple[", "tuple[")
+            .replace("Variable", "Any")
         )
         # if not code.startswith("from __future__ import annotations"):
         #     code = f"from __future__ import annotations\n\n{code}"

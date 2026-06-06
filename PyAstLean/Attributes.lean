@@ -36,17 +36,20 @@ def pythonMethodMap? (attr : String) : Option Lean.Name :=
   | "append"     => some ``pyAppend
   | "extend"     => some ``pyExtend
   | "reverse"    => some ``pyReverse
+  | "copy"       => some ``pyCopy
   -- Dict Only
   | "items"      => some ``pyItems
   | "keys"       => some ``pyKeys
   | "values"     => some ``pyValues
+  -- Dunder methods
+  | "__len__"    => some ``pyLen
   -- Common
   | "clear"      => some ``pyClear
   | "update"     => some ``pyUpdate
   | "pop"        => some ``pyPop
   | "count"      => some ``pyCount
   | "find"        => some ``pyStringFind
-  | "index"      => some ``pyStringIndex
+  | "index"      => some ``pyIndex
   | _            => none
 
 /--

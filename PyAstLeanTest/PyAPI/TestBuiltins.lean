@@ -11,7 +11,7 @@ open PyAstLean
 
 /-- info: "ABC" -/
 #guard_msgs in
-#eval String.ofList <| pyMap (fun c : Char => c.toUpper) "abc"
+#eval String.join <| pyMap (fun c : String => c.toUpper) "abc"
 
 /-- info: [2, 4] -/
 #guard_msgs in
@@ -25,7 +25,7 @@ open PyAstLean
 #guard_msgs in
 #eval pyZip ([1, 2, 3] : List Int) ([10, 20] : List Int)
 
-/-- info: [('a', 1), ('b', 2)] -/
+/-- info: [("a", 1), ("b", 2)] -/
 #guard_msgs in
 #eval pyZip "ab" ([1, 2, 3] : List Int)
 
@@ -33,7 +33,7 @@ open PyAstLean
 #guard_msgs in
 #eval pyEnumerate (["x", "y"] : List String)
 
-/-- info: [(5, 'c'), (6, 'a'), (7, 'b')] -/
+/-- info: [(5, "c"), (6, "a"), (7, "b")] -/
 #guard_msgs in
 #eval pyEnumerate "cab" 5
 
@@ -49,7 +49,7 @@ open PyAstLean
 #guard_msgs in
 #eval pyMin ([3, 1, 4, 2])
 
-/-- info: 'a' -/
+/-- info: "a" -/
 #guard_msgs in
 #eval pyMin "cab"
 
@@ -57,7 +57,7 @@ open PyAstLean
 #guard_msgs in
 #eval pyMax ([3, 1, 9, 2] : List Int)
 
-/-- info: 'z' -/
+/-- info: "z" -/
 #guard_msgs in
 #eval pyMax "ayz"
 

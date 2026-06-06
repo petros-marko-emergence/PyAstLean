@@ -16,6 +16,19 @@ class PyIterable (α : Type) (β : outParam Type) where
 def pyIter {α β : Type} [inst : PyIterable α β] (value : α) : List β :=
   inst.toPyList value
 
+/--
+Unpack exactly two elements from a Python-style iterable.
+
+This matches the common tuple-assignment shape `a, b = value` and raises a runtime-style
+error when the iterable length is not exactly two.
+-/
+def pyUnpack2 {α β : Type} [inst : PyIterable α β] [Inhabited β] (value : α) : β × β :=
+  match pyIter value with
+  | [first, second] => (first, second)
+  | [] => panic! "ValueError: not enough values to unpack (expected 2, got 0)"
+  | [_] => panic! "ValueError: not enough values to unpack (expected 2, got 1)"
+  | _ => panic! "ValueError: too many values to unpack (expected 2)"
+
 
 /-- Lists are already Python-style iterables. -/
 instance : PyIterable (List α) α where
@@ -25,9 +38,11 @@ instance : PyIterable (List α) α where
 instance : PyIterable (Array α) α where
   toPyList := Array.toList
 
-/-- Strings iterate over characters. -/
-instance : PyIterable String Char where
-  toPyList := String.toList
+/-- Strings iterate over their characters as one-character strings, since Python has no separate
+character type — iterating a `str` yields length-1 `str`s. This keeps loop variables, `pyList`
+casts, and comprehensions over strings interoperable with string literals and methods. -/
+instance : PyIterable String String where
+  toPyList s := s.toList.map (·.toString)
 
 /-- Dictionaries iterate over keys, matching Python's default dictionary iteration. -/
 instance [BEq α] [Hashable α] : PyIterable (Std.HashMap α β) α where

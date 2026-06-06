@@ -10,7 +10,12 @@ BINOP_MAP = {
     ast.Mult: "mul",
     ast.Pow: "pow",
     ast.Div: "div",
+    ast.FloorDiv: "floordiv",
     ast.BitOr: "bitor",
+    ast.BitAnd: "bitand",
+    ast.BitXor: "bitxor",
+    ast.LShift: "lshift",
+    ast.RShift: "rshift",
     ast.Mod : "mod",
 }
 
@@ -34,6 +39,8 @@ COMPAREOP_MAP = {
     ast.GtE: "ge",
     ast.In: "in",
     ast.NotIn: "notin",
+    ast.Is: "is",
+    ast.IsNot: "isnot",
 }
 
 AUGASSIGN_MAP = {
@@ -287,17 +294,32 @@ class ASTToJsonLeanVisitorBase:
             "operand": self.visit(node.operand)
         }
 
-    def visit_Compare(self, node):
-        """Translates ast.Compare (e.g., a <= b) to a JSON IR node."""
-        if len(node.ops) != 1 or len(node.comparators) != 1:
-            raise NotImplementedError("Chained comparisons are not supported.")
-        op = self._map_ast_type(node.ops[0], COMPAREOP_MAP, "Comparison operator")
-
+    def _single_compare(self, left_json, op_ast, right_json):
+        """Build one Compare IR node from already-visited operands."""
         return {
             "node_type": "Compare",
-            "op": op,
-            "left": self.visit(node.left),
-            "right": self.visit(node.comparators[0])
+            "op": self._map_ast_type(op_ast, COMPAREOP_MAP, "Comparison operator"),
+            "left": left_json,
+            "right": right_json,
+        }
+
+    def visit_Compare(self, node):
+        """Translates ast.Compare (e.g., a <= b) to a JSON IR node.
+
+        Chained comparisons like `a < b < c` are expanded to `(a < b) and (b < c)`, the
+        same desugaring Python uses (each middle operand is evaluated once at the IR level
+        here; side-effecting middle operands are out of scope)."""
+        operands = [self.visit(node.left)] + [self.visit(c) for c in node.comparators]
+        comparisons = [
+            self._single_compare(operands[i], node.ops[i], operands[i + 1])
+            for i in range(len(node.ops))
+        ]
+        if len(comparisons) == 1:
+            return comparisons[0]
+        return {
+            "node_type": "BoolOp",
+            "op": "and",
+            "values": comparisons,
         }
     
     def visit_Constant(self, node):
@@ -312,7 +334,10 @@ class ASTToJsonLeanVisitorBase:
         
     def visit_Expr(self, node):
         """Translates ast.Expr (e.g., a standalone expression) to a JSON IR node."""
-        return self.visit(node.value)
+        return {
+            "node_type": "Expr",
+            "value": self.visit(node.value)
+        }
 
     def visit_Pass(self, node):
         """Translates ast.Pass to a JSON IR no-op node."""
@@ -350,6 +375,42 @@ class ASTToJsonLeanVisitorBase:
                 "args": args_json,
                 "keywords": keywords_json
             }
+        # `min(a, b, ...)` / `max(a, b, ...)` (two or more positional args) is the
+        # element-wise form. Normalize it to the single-iterable form `min([a, b, ...])`
+        # so the backend's iterable-based `pyMin`/`pyMax` handles both call shapes.
+        if (
+            func_json.get("node_type") == "Name"
+            and func_json.get("id") in {"min", "max"}
+            and len(args_json) >= 2
+            and not keywords_json
+        ):
+            args_json = [{"node_type": "List", "elts": args_json}]
+        # `set()` with no arguments is the empty set; lower it to an empty set literal so the
+        # backend needs no zero-argument `set` builtin (`set(xs)` stays a call to `pySet`).
+        if (
+            func_json.get("node_type") == "Name"
+            and func_json.get("id") == "set"
+            and not args_json
+            and not keywords_json
+        ):
+            return {"node_type": "Set", "elts": []}
+        # `list()` / `tuple()` with no arguments is the empty list; `list(x)`/`tuple(x)` stay
+        # calls (lowered to `pyList`).
+        if (
+            func_json.get("node_type") == "Name"
+            and func_json.get("id") in {"list", "tuple"}
+            and not args_json
+            and not keywords_json
+        ):
+            return {"node_type": "List", "elts": []}
+        # `dict()` with no arguments is the empty dict.
+        if (
+            func_json.get("node_type") == "Name"
+            and func_json.get("id") == "dict"
+            and not args_json
+            and not keywords_json
+        ):
+            return {"node_type": "Dict", "entries": []}
         return {
             "node_type": "Call",
             "func": func_json,
@@ -405,6 +466,20 @@ class ASTToJsonLeanVisitorBase:
         return {
             "node_type": "Dict",
             "entries": entries
+        }
+
+    def visit_Starred(self, node):
+        """Translates ast.Starred (`*iterable`) used as a call argument."""
+        return {
+            "node_type": "Starred",
+            "value": self.visit(node.value)
+        }
+
+    def visit_Set(self, node):
+        """Translates ast.Set (`{a, b, c}` set literal) to a JSON IR node."""
+        return {
+            "node_type": "Set",
+            "elts": [self.visit(elt) for elt in node.elts]
         }
 
     def visit_Tuple(self, node):
@@ -750,6 +825,25 @@ class ASTToJsonLeanVisitorBase:
         return {
             "node_type": "GeneratorExp",
             "elt": self.visit(node.elt),
+            "generators": [self.visit(gen) for gen in node.generators]
+        }
+
+    def visit_SetComp(self, node):
+        """Translates ast.SetComp (set comprehensions) — same IR shape as a list comprehension;
+        the backend lowers the produced list and deduplicates it into the set runtime."""
+        return {
+            "node_type": "SetComp",
+            "elt": self.visit(node.elt),
+            "generators": [self.visit(gen) for gen in node.generators]
+        }
+
+    def visit_DictComp(self, node):
+        """Translates ast.DictComp (dict comprehensions). Like a comprehension but with a
+        key/value pair per element; the backend builds a hash map from the produced pairs."""
+        return {
+            "node_type": "DictComp",
+            "key": self.visit(node.key),
+            "value": self.visit(node.value),
             "generators": [self.visit(gen) for gen in node.generators]
         }
     

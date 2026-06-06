@@ -109,6 +109,23 @@ def joinedStrSyntax : (kind : SyntaxNodeKind) → Json →
         $effectTy))
   | _, _ => throwError s!"Unsupported syntax category for JoinedStr node"
 
+/-- Fold a binary runtime function `fn` over `args` (length ≥ 2), associating per `dir`. A right
+fold builds `fn a₁ (fn a₂ (… (fn aₙ₋₁ aₙ)))`; a left fold builds `fn (… (fn a₁ a₂) …) aₙ`. Drives
+the variadic-builtin lowering (e.g. `zip`) from `variadicFoldBuiltin?`. -/
+def foldBinaryOverArgs (fn : TSyntax `term) (dir : BuiltinFoldDir) (args : Array (TSyntax `term)) :
+    PygenM (TSyntax `term) := do
+  match dir with
+  | .right =>
+      let mut acc := args[args.size - 1]!
+      for i in (List.range (args.size - 1)).reverse do
+        acc ← `($fn $(args[i]!) $acc)
+      pure acc
+  | .left =>
+      let mut acc := args[0]!
+      for i in [1:args.size] do
+        acc ← `($fn $acc $(args[i]!))
+      pure acc
+
 /-- Map a bare Python builtin function name to the Lean runtime symbol when it is used as a value. -/
 def mappedCallableValueCode (json : Json) : PygenM (TSyntax `term) := do
   match ← jsonLibraryMappedName? json with
@@ -124,6 +141,29 @@ def mappedCallableValueCode (json : Json) : PygenM (TSyntax `term) := do
               pure (mkIdent mappedName : TSyntax `term)
       | _, _ =>
           getCode json `term
+
+/-- Lower `min(...)` / `max(...)` (`which` is `"min"` or `"max"`). Handles a single iterable
+(`min(xs)`), several positionals gathered into a list (`min(a, b, c)`), and the optional
+`key=f` keyword (→ `pyMinBy`/`pyMaxBy`). -/
+def lowerMinMaxCall (which : String) (argsArray : Array Json) (argsCodes : Array (TSyntax `term))
+    (keyWordsMap : PyKeywordArgs) : PygenM (TSyntax `term) := do
+  for (kwName, _) in keyWordsMap.toList do
+    unless kwName == "key" do
+      throwError s!"{which}() keyword argument '{kwName}' is not supported yet."
+  unless argsArray.size ≥ 1 do
+    throwError s!"{which}() expects at least one argument."
+  let keyOpt := keyWordsMap.get? "key"
+  buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+    let iterable ← if resolvedArgs.size == 1 then pure resolvedArgs[0]!
+      else `([$resolvedArgs,*])
+    match keyOpt with
+    | none =>
+        let fn := mkIdent (if which == "min" then ``pyMin else ``pyMax)
+        `($fn $iterable)
+    | some kJson =>
+        let keyCode ← mappedCallableValueCode kJson
+        let fn := mkIdent (if which == "min" then ``pyMinBy else ``pyMaxBy)
+        `($fn $keyCode $iterable)
 
 @[pygen "Call"]
 def callSyntax : (kind : SyntaxNodeKind) → Json →
@@ -181,6 +221,25 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
         if attr == "sort" then
           throwError "sort() is only supported as a statement; use sorted(x) in expressions."
 
+        if attr == "format" then
+          -- `"… {} …".format(a, b)`: stringify each argument and fill the `{}` placeholders.
+          unless keyWordsMap.isEmpty do
+            throwError "str.format() keyword arguments are not supported yet."
+          let receiverCode ← getCode valueJson `term
+          let stringifyIdent := mkIdent ``PyAstLean.pyStringify
+          let formatIdent := mkIdent ``PyAstLean.pyStrFormat
+          return ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+            let stringified ← resolvedArgs.mapM (fun a => `($stringifyIdent $a))
+            `($formatIdent $receiverCode [$stringified,*])
+
+        -- `pop` both returns a value and mutates its receiver, which a pure term cannot express.
+        -- Refuse it in expression position so the pure-function path falls back to the monadic
+        -- lowering, where `x = container.pop(...)` is handled as a statement (value bind +
+        -- container update). `pop` in any other expression position stays a clear error.
+        if attr == "pop" then
+          throwError "pop() returns a value *and* mutates its receiver; it is only supported as \
+            a direct assignment `x = container.pop(...)`, not as a sub-expression."
+
         let valCode ← getCode valueJson `term
         allArgs := allArgs.push valCode
         allArgJsons := allArgJsons.push valueJson
@@ -199,9 +258,10 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                 throwError s!"print() keyword argument '{kwName}' is not supported yet."
             return ← buildIOActionApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               let pyPrintIOIdent := mkIdent ``pyPrintIO
+              let printArgs ← buildPrintArgsList argsArray resolvedArgs
               match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
               | none, none =>
-                  `($pyPrintIOIdent [$resolvedArgs,*])
+                  `($pyPrintIOIdent $printArgs)
               | _, _ =>
                   let sepCode ← match keyWordsMap.get? "sep" with
                     | some sepJson => getCode sepJson `term
@@ -209,7 +269,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                   let endCode ← match keyWordsMap.get? "end" with
                     | some endJson => getCode endJson `term
                     | none => `("\n")
-                  `($pyPrintIOIdent [$resolvedArgs,*] $sepCode $endCode)
+                  `($pyPrintIOIdent $printArgs $sepCode $endCode)
         | .ok "Name", .ok "input" => do
             unless keyWordsMap.isEmpty do
               throwError "input() keyword arguments are not supported yet."
@@ -277,7 +337,55 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
               let f := resolvedArgs[0]!
               let xs := resolvedArgs[1]!
               `($pyFilterIdent $f $xs)
+        | .ok "Name", .ok "sorted" => do
+            -- `sorted(iterable)` → `pySort`; `sorted(iterable, key=f, reverse=b)` → `pySortBy`.
+            -- Only `key`/`reverse` keywords are meaningful for Python's `sorted`.
+            for (kwName, _) in keyWordsMap.toList do
+              unless kwName == "key" || kwName == "reverse" do
+                throwError s!"sorted() keyword argument '{kwName}' is not supported yet."
+            unless argsArray.size == 1 do
+              throwError "sorted() expects exactly one positional argument (the iterable)."
+            match keyWordsMap.get? "key", keyWordsMap.get? "reverse" with
+            | none, none =>
+                let pySortIdent := mkIdent ``pySort
+                return ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+                  `($pySortIdent $(resolvedArgs[0]!))
+            | keyOpt, revOpt =>
+                let keyCode ← match keyOpt with
+                  | some kJson => mappedCallableValueCode kJson
+                  | none => `(fun x => x)
+                let revCode ← match revOpt with
+                  | some rJson => getCode rJson `term
+                  | none => `(false)
+                let pySortByIdent := mkIdent ``pySortBy
+                return ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+                  `($pySortByIdent $keyCode $revCode $(resolvedArgs[0]!))
+        | .ok "Name", .ok "round" => do
+            -- `round(x)` returns an `int` (banker's rounding); `round(x, n)` returns a `float`.
+            unless keyWordsMap.isEmpty do
+              throwError "round() keyword arguments are not supported yet."
+            match argsArray.size with
+            | 1 =>
+                return ← buildIOPureApplicationFromArgs argsArray argsCodes fun r => do
+                  `($(mkIdent ``pyRound) $(r[0]!))
+            | 2 =>
+                return ← buildIOPureApplicationFromArgs argsArray argsCodes fun r => do
+                  `($(mkIdent ``pyRoundDigits) $(r[0]!) $(r[1]!))
+            | _ => throwError "round() expects one or two arguments."
+        | .ok "Name", .ok "min" => return ← lowerMinMaxCall "min" argsArray argsCodes keyWordsMap
+        | .ok "Name", .ok "max" => return ← lowerMinMaxCall "max" argsArray argsCodes keyWordsMap
         | .ok "Name", .ok funcName =>
+            -- Variadic builtins that fold a binary runtime function over their args (e.g. `zip`)
+            -- are handled generically from the `variadicFoldBuiltin?` registry — one handler for
+            -- all of them, so a new such builtin is a registry row, not a branch here.
+            if let some (foldFn, dir) := variadicFoldBuiltin? funcName then
+              unless keyWordsMap.isEmpty do
+                throwError s!"{funcName}() keyword arguments are not supported yet."
+              unless argsArray.size ≥ 2 do
+                throwError s!"{funcName}() expects at least two arguments."
+              let foldIdent := mkIdent foldFn
+              return ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
+                foldBinaryOverArgs foldIdent dir resolvedArgs
             match pythonBuiltinMap? funcName with
             | some mappedName => funcIdent := (mkIdent mappedName : TSyntax `term)
             | none =>
@@ -347,6 +455,21 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           let pyAppendIdent := mkIdent ``pyAppend
           return ← `(doElem| $targetIdent:ident := $pyAppendIdent $targetIdent $argCode)
 
+        -- Set mutators rebuild the set and reassign the variable, like `append`.
+        if attr == "add" || attr == "discard" || attr == "remove" then
+          unless keyWordsMap.isEmpty do
+            throwError s!"{attr}() calls do not support keyword arguments."
+          let some argJson := argsArray[0]? | throwError s!"{attr}() expects exactly one positional argument."
+          unless argsArray.size == 1 do
+            throwError s!"{attr}() expects exactly one positional argument."
+          let targetIdent ← getCode valueJson `ident
+          let argCode ← getCode argJson `term
+          let mutIdent := match attr with
+            | "add" => mkIdent ``pySetAdd
+            | "discard" => mkIdent ``pySetDiscard
+            | _ => mkIdent ``pySetRemove
+          return ← `(doElem| $targetIdent:ident := $mutIdent $targetIdent $argCode)
+
         if attr == "get" then
           unless keyWordsMap.isEmpty do
             throwError "get() calls with keyword arguments are not supported yet."
@@ -366,13 +489,27 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           return ← `(doElem| let _ := $t)
 
         if attr == "sort" then
-          unless keyWordsMap.isEmpty do
-            throwError "sort() calls do not support keyword arguments yet."
+          -- In-place `list.sort()`: lower to a reassignment of the (immutable-value) list.
+          -- Supports Python's `key=` / `reverse=` keywords; rejects positional args.
+          for (kwName, _) in keyWordsMap.toList do
+            unless kwName == "key" || kwName == "reverse" do
+              throwError s!"sort() keyword argument '{kwName}' is not supported yet."
           unless argsArray.isEmpty do
             throwError "sort() expects no positional arguments."
           let targetIdent ← getCode valueJson `ident
-          let pySortIdent := mkIdent ``pySort
-          return ← `(doElem| $targetIdent:ident := $pySortIdent $targetIdent)
+          match keyWordsMap.get? "key", keyWordsMap.get? "reverse" with
+          | none, none =>
+              let pySortIdent := mkIdent ``pySort
+              return ← `(doElem| $targetIdent:ident := $pySortIdent $targetIdent)
+          | keyOpt, revOpt =>
+              let keyCode ← match keyOpt with
+                | some kJson => mappedCallableValueCode kJson
+                | none => `(fun x => x)
+              let revCode ← match revOpt with
+                | some rJson => getCode rJson `term
+                | none => `(false)
+              let pySortByIdent := mkIdent ``pySortBy
+              return ← `(doElem| $targetIdent:ident := $pySortByIdent $keyCode $revCode $targetIdent)
 
         let valCode ← getCode valueJson `term
         allArgs := allArgs.push valCode
@@ -392,9 +529,10 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                 throwError s!"print() keyword argument '{kwName}' is not supported yet."
             let t ← buildIOActionApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               let pyPrintIOIdent := mkIdent ``pyPrintIO
+              let printArgs ← buildPrintArgsList argsArray resolvedArgs
               match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
               | none, none =>
-                  `($pyPrintIOIdent [$resolvedArgs,*])
+                  `($pyPrintIOIdent $printArgs)
               | _, _ =>
                   let sepCode ← match keyWordsMap.get? "sep" with
                     | some sepJson => getCode sepJson `term
@@ -402,7 +540,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                   let endCode ← match keyWordsMap.get? "end" with
                     | some endJson => getCode endJson `term
                     | none => `("\n")
-                  `($pyPrintIOIdent [$resolvedArgs,*] $sepCode $endCode)
+                  `($pyPrintIOIdent $printArgs $sepCode $endCode)
             return ← `(doElem| let _ ← $t:term)
         | .ok "Name", .ok "input" => do
             unless keyWordsMap.isEmpty do

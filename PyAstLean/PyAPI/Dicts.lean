@@ -1,6 +1,13 @@
 import Mathlib
+import PyAstLean.PyAPI.CommonProtocols.Iterable
 
 namespace PyAstLean
+
+/-- Python `dict(pairs)`: build a hash map from an iterable of key/value pairs (e.g.
+`dict(zip(keys, values))`). Later duplicate keys overwrite earlier ones, matching Python. -/
+def pyDict {α β γ : Type} [PyIterable γ (α × β)] [BEq α] [Hashable α] (pairs : γ) :
+    Std.HashMap α β :=
+  Std.HashMap.ofList (pyIter pairs)
 
 /-- Concrete dictionary implementation for Python-style `items()`. -/
 def pyDictItems [BEq α] [Hashable α] : Std.HashMap α β → List (α × β)

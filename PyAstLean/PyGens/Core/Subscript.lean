@@ -14,16 +14,11 @@ def isStringConstant (json : Lean.Json) : Bool :=
 open Lean Elab Term Meta
 open PyAstLean
 
-@[pygen "Subscript"]
-def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
-    PygenM (TSyntax kind)
-  | `term, json => do
-    let .ok valueJson := json.getObjValAs? Json "value" | throwError
-      s!"Subscript node does not have a 'value' field or it is not a JSON value: {json}"
-    let .ok sliceJson := json.getObjValAs? Json "slice" | throwError
-      s!"Subscript node does not have a 'slice' field or it is not a JSON value: {json}"
-    let valueCode ← getCode valueJson `term
-
+/-- Build the Lean term for `value[slice]` from an *already-lowered* `valueCode`. Factoring this
+out of the `@[pygen]` entry point lets IO inlining/hoisting rebuild a subscript over an awaited
+container (`foo()[i]` where `foo()` is `IO _`) without re-lowering — and re-awaiting — the base. -/
+def subscriptTermFromValue (valueJson sliceJson : Json) (valueCode : TSyntax `term) :
+    PygenM (TSyntax `term) := do
     let isTuple := match valueJson.getObjValAs? String "node_type" with
     | .ok "Tuple" => true
     | _ => false
@@ -31,32 +26,31 @@ def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
 
     let sliceType := sliceJson.getObjValAs? String "node_type"
     if sliceType == .ok "Slice" then
-        let parseBound (j : Json) : Option Int :=
-            match j.getObjValAs? Json "node_type" with
-            | .ok "Constant" =>
-                match j.getObjValAs? Int "value" with
-                | .ok i => some i
-                | _ => none
-            | .ok "UnaryOp" =>
-                match j.getObjValAs? String "op", j.getObjValAs? Json "operand" with
-                | .ok "neg", .ok operand =>
-                    match operand.getObjValAs? Int "value" with
-                    | .ok i => some (-i)
-                    | _ => none
-                | _, _ => none
-            | _ => none
-
-        let lowerOpt := (sliceJson.getObjVal? "lower").toOption.bind parseBound
-        let upperOpt := (sliceJson.getObjVal? "upper").toOption.bind parseBound
-            
-        let sliceIdent := mkIdent `PyAstLean.pyStringSlice
-        let startStx ← match lowerOpt with
-            | some i => let iStx ← intToStx i; `(some $iStx)
+        -- Lower each slice bound to an `Option Int` term. A missing or `None` bound is `none`;
+        -- any other bound expression (constant, variable, arithmetic) is lowered through `getCode`
+        -- and wrapped in `some`, so `a[i:j]`, `a[n-1::-1]`, etc. all carry the real bound rather
+        -- than being silently dropped to a full slice.
+        let boundStx (field : String) : PygenM (TSyntax `term) := do
+            match (sliceJson.getObjVal? field).toOption with
             | none => `(none)
-        let stopStx ← match upperOpt with
-            | some i => let iStx ← intToStx i; `(some $iStx)
-            | none => `(none)
-        `($sliceIdent $valueCode $startStx $stopStx)
+            | some j =>
+                if j.getObjValAs? String "node_type" == .ok "Constant"
+                    && (j.getObjVal? "value").toOption.any (· == Json.null) then
+                  `(none)
+                else
+                  match j with
+                  | .null => `(none)
+                  | _ => `(some $(← getCode j `term))
+        let startStx ← boundStx "lower"
+        let stopStx ← boundStx "upper"
+        let stepStx ← boundStx "step"
+        -- Generic slice dispatch: a `String` slices to `String`, a `List` to `List`; the `step`
+        -- bound makes `a[::-1]`/`a[::2]` correct. (A bare string literal uses the String slicer
+        -- directly for predictable output.)
+        let sliceIdent :=
+          if isString then mkIdent `PyAstLean.pyStringSliceStep
+          else mkIdent `PyAstLean.pySlice
+        `($sliceIdent $valueCode $startStx $stopStx $stepStx)
     else if isTuple then
         match sliceJson.getObjValAs? String "node_type", sliceJson.getObjValAs? Json "value" with
         | .ok "Constant", .ok (.num (JsonNumber.mk 0 0)) =>
@@ -70,22 +64,22 @@ def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
             let getIdent := mkIdent `getElem!
             `($getIdent $valueCode $sliceCode)
     else if isString then
+        -- Indexing a string literal yields a one-character string (Python has no char type),
+        -- matching `pyGetItem`/`PyGetItem String Int String` on string variables.
+        let getIdent := mkIdent `PyAstLean.pyStringGetItemStr
         let sliceType := sliceJson.getObjValAs? String "node_type"
         match sliceType with
         | .ok "Constant" =>
             let idx := sliceJson.getObjValAs? Int "value"
             match idx with
             | .ok i =>
-                let getIdent := mkIdent `PyAstLean.pyStringGetItem
                 let iStx ← intToStx i
                 `($getIdent $valueCode $iStx)
             | _ =>
                 let sliceCode ← getCode sliceJson `term
-                let getIdent := mkIdent `getElem!
                 `($getIdent $valueCode $sliceCode)
         | _ =>
             let sliceCode ← getCode sliceJson `term
-            let getIdent := mkIdent `getElem!
             `($getIdent $valueCode $sliceCode)
     else
         let sliceType := sliceJson.getObjValAs? String "node_type"
@@ -94,12 +88,12 @@ def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
             let idx := sliceJson.getObjValAs? Int "value"
             match idx with
             | .ok i =>
-                let getIdent := mkIdent `PyAstLean.pyListGetItem
+                let getIdent := mkIdent `PyAstLean.pyGetItem
                 let iStx ← intToStx i
                 `($getIdent $valueCode $iStx)
             | _ =>
                 let sliceCode ← getCode sliceJson `term
-                let getIdent := mkIdent `PyAstLean.pyListGetItem
+                let getIdent := mkIdent `PyAstLean.pyGetItem
                 `($getIdent $valueCode $sliceCode)
         | .ok "UnaryOp" =>
             let op := sliceJson.getObjValAs? String "op"
@@ -113,7 +107,7 @@ def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
                         match jVal.getNat? with
                         | .ok n =>
                             let idx := -(n : Int)
-                            let getIdent := mkIdent `PyAstLean.pyListGetItem
+                            let getIdent := mkIdent `PyAstLean.pyGetItem
                             let iStx ← intToStx idx
                             `($getIdent $valueCode $iStx)
                         | _ =>
@@ -122,20 +116,31 @@ def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
                             `($getIdent $valueCode $sliceCode)
                     | _ =>
                         let sliceCode ← getCode sliceJson `term
-                        let getIdent := mkIdent `PyAstLean.pyListGetItem
+                        let getIdent := mkIdent `PyAstLean.pyGetItem
                         `($getIdent $valueCode $sliceCode)
                 | _ =>
                     let sliceCode ← getCode sliceJson `term
-                    let getIdent := mkIdent `PyAstLean.pyListGetItem
+                    let getIdent := mkIdent `PyAstLean.pyGetItem
                     `($getIdent $valueCode $sliceCode)
             else
                 let sliceCode ← getCode sliceJson `term
-                let getIdent := mkIdent `PyAstLean.pyListGetItem
+                let getIdent := mkIdent `PyAstLean.pyGetItem
                 `($getIdent $valueCode $sliceCode)
         | _ =>
             let sliceCode ← getCode sliceJson `term
-            let getIdent := mkIdent `PyAstLean.pyListGetItem
+            let getIdent := mkIdent `PyAstLean.pyGetItem
             `($getIdent $valueCode $sliceCode)
+
+@[pygen "Subscript"]
+def subscriptSyntax : (kind : SyntaxNodeKind) → Json →
+    PygenM (TSyntax kind)
+  | `term, json => do
+    let .ok valueJson := json.getObjValAs? Json "value" | throwError
+      s!"Subscript node does not have a 'value' field or it is not a JSON value: {json}"
+    let .ok sliceJson := json.getObjValAs? Json "slice" | throwError
+      s!"Subscript node does not have a 'slice' field or it is not a JSON value: {json}"
+    let valueCode ← getCode valueJson `term
+    subscriptTermFromValue valueJson sliceJson valueCode
   | _, _ => throwError s!"Unsupported syntax category for Subscript node"
 
 end PyAstLean

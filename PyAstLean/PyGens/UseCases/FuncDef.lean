@@ -37,7 +37,7 @@ def moduleSyntax : (kind : SyntaxNodeKind) → Json →
         for elem in bodyElems do
           let elemStx ← withFreshVariables do
             getCode elem `command
-          cmds := cmds.push elemStx
+          cmds := appendCommandSyntax cmds elemStx
         return ⟨mkNullNode (cmds.map TSyntax.raw)⟩
     | _, _ => throwError s!"Unsupported syntax category for Module node"
 
@@ -123,11 +123,75 @@ partial def jsonReferencesName (json : Json) (target : String) : Bool :=
     | .obj fields => fields.toList.any (fun (_, value) => jsonReferencesName value target)
     | _ => false
 
+/-- Does assigning to this target node mutate the variable `name`? Covers a bare `Name`, tuple/
+list unpacking, `Starred`, and a `Subscript`/`Attribute` whose base (recursively) is `name`
+(`a[i] = …` reassigns the immutable-value container `a`, so it mutates `a`). -/
+partial def assignTargetMutatesName (target : Json) (name : String) : Bool :=
+  match target.getObjValAs? String "node_type" with
+  | .ok "Name" => target.getObjValAs? String "id" == .ok name
+  | .ok "Tuple" | .ok "List" =>
+      match target.getObjValAs? (Array Json) "elts" with
+      | .ok elts => elts.any (fun e => assignTargetMutatesName e name)
+      | _ => false
+  | .ok "Starred" | .ok "Subscript" | .ok "Attribute" =>
+      (target.getObjVal? "value").toOption.any (fun v => assignTargetMutatesName v name)
+  | _ => false
+
+/-- Python list/set/dict methods that mutate their receiver in place. Codegen lowers each as a
+reassignment of the (immutable-value) receiver, so a parameter used as the receiver of one of
+these must be shadowed by `let mut`. Over-inclusion is harmless (an unused shadow). -/
+def inPlaceMutatingMethods : List String :=
+  [ "append", "extend", "insert", "remove", "pop", "clear", "sort", "reverse",
+    "add", "discard", "update", "setdefault", "popitem",
+    "intersection_update", "difference_update", "symmetric_difference_update",
+    "appendleft", "popleft", "appendright" ]
+
+/-- Is `name` mutated (an `=`, augmented `op=`, annotated assignment, or `for` target — including
+unpacking and subscript-assignment) anywhere in this subtree, without descending into a nested
+function/lambda/class scope (which rebinds the name in a separate scope)? Used to decide which
+function parameters must be shadowed by `let mut` so the monadic body can reassign them. -/
+partial def jsonMutatesName (json : Json) (name : String) : Bool :=
+  match json with
+  | .arr elems => elems.toList.any (fun e => jsonMutatesName e name)
+  | .obj fields =>
+      match json.getObjValAs? String "node_type" with
+      | .ok "FunctionDef" | .ok "AsyncFunctionDef" | .ok "Lambda" | .ok "ClassDef" => false
+      | nodeType =>
+          let mutatedHere :=
+            match nodeType with
+            | .ok "Assign" | .ok "AugAssign" | .ok "AnnAssign" | .ok "For" =>
+                (json.getObjVal? "target").toOption.any (fun t => assignTargetMutatesName t name)
+            | .ok "Delete" =>
+                -- `del name[i]` rebuilds and reassigns the container, so it mutates `name`.
+                match (json.getObjVal? "targets").toOption.bind (·.getArr?.toOption) with
+                | some targets => targets.any (fun t => assignTargetMutatesName t name)
+                | none => false
+            | .ok "Call" =>
+                -- An in-place mutating method (`name.append(x)`, `name.add(x)`, …) is lowered as a
+                -- reassignment of the receiver, so it mutates `name`.
+                match (json.getObjVal? "func").toOption with
+                | some funcJson =>
+                    funcJson.getObjValAs? String "node_type" == .ok "Attribute"
+                      && (match funcJson.getObjValAs? String "attr" with
+                          | .ok m => inPlaceMutatingMethods.contains m
+                          | _ => false)
+                      && (funcJson.getObjVal? "value").toOption.any
+                          (fun recv => assignTargetMutatesName recv name)
+                | none => false
+            | _ => false
+          mutatedHere || fields.toList.any (fun (_, v) => jsonMutatesName v name)
+  | _ => false
+
 /-- Build the Lean value for a Python function body, using a pure term when possible and
 falling back to `do` notation for effectful bodies. This helper is reused for top-level
-definitions, nested local functions, and `Head_FunctionDef` threading. -/
+definitions, nested local functions, and `Head_FunctionDef` threading.
+
+The body is lowered against a fresh variable set (`withFreshVariables`) so locals declared
+inside a nested function do not leak into the enclosing scope's `let`/`let mut` tracking — a
+leak would otherwise cause a later same-named outer assignment to be emitted as a reassignment
+of a variable that was never declared `let mut`. -/
 def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) (bodyElems : Array Json) :
-    PygenM (TSyntax `term) := do
+    PygenM (TSyntax `term) := withFreshVariables do
   let usesExceptions := bodyNeedsExceptionMonad bodyElems
   let usesIO := !usesExceptions && bodyNeedsIOMonad bodyElems
   let mkLambda (body : TSyntax `term) : PygenM (TSyntax `term) := do
@@ -137,10 +201,20 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
         | some ty => `(fun ($argIdent : $ty) ↦ $result)
         | none => `(fun $argIdent ↦ $result)
     pure result
+  -- A Lean function parameter is an immutable binder, but Python lets a body reassign or
+  -- augment its parameters (`i -= 1`, `a[k] = v`). For each mutated parameter, register it and
+  -- emit a `let mut p := p` shadow at the top of the (monadic) body, then reassignments resolve
+  -- against the mutable shadow. Pure bodies never mutate, so this prelude is empty for them.
+  let mut paramPrelude : Array (TSyntax `doElem) := #[]
+  for (argIdent, _) in argInfos do
+    if bodyElems.any (fun b => jsonMutatesName b argIdent.getId.toString) then
+      addVar argIdent.getId
+      paramPrelude := paramPrelude.push (← `(doElem| let mut $argIdent:ident := $argIdent))
   if usesExceptions then
     let bodyStxArray ← monadicFunctionBodySyntax bodyElems
     let exceptIdent := mkIdent ``PyAstLean.PyExcept
     let exceptBody ← `(((do
+          $[$paramPrelude:doElem]*
           $[$bodyStxArray:doElem]*) : $exceptIdent _))
     if argInfos.isEmpty then
       pure exceptBody
@@ -150,6 +224,7 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     let bodyStxArray ← monadicFunctionBodySyntax bodyElems
     let ioIdent := mkIdent ``IO
     let ioBody ← `(((do
+          $[$paramPrelude:doElem]*
           $[$bodyStxArray:doElem]*) : $ioIdent _))
     if argInfos.isEmpty then
       pure ioBody
@@ -168,9 +243,11 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
       let idRunIdent := mkIdent ``Id.run
       if argInfos.isEmpty then
         `($idRunIdent do
+            $[$paramPrelude:doElem]*
             $[$bodyStxArray:doElem]*)
       else
         mkLambda (← `($idRunIdent do
+            $[$paramPrelude:doElem]*
             $[$bodyStxArray:doElem]*))
 
 /-- Build a lambda-wrapped monadic body term without adding an inner effect cast. -/
@@ -241,12 +318,14 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
           s!"FuncDef node does not have a 'name' field or it is not a string: {json}"
         let nameIdent := mkIdent name.toName
         let argInfos ← functionArgInfos json
-        match ← functionCommandWithEffectSignature? nameIdent argInfos json with
-        | some cmd => pure cmd
-        | none =>
-            let bodyElems ← functionBodyElems json
-            let valueStx ← functionValueSyntax argInfos bodyElems
-            `(def $nameIdent := $valueStx)
+        let cmd ← match ← functionCommandWithEffectSignature? nameIdent argInfos json with
+          | some cmd => pure cmd
+          | none =>
+              let bodyElems ← functionBodyElems json
+              let valueStx ← functionValueSyntax argInfos bodyElems
+              `(def $nameIdent := $valueStx)
+        -- Python's leading-underscore convention (`def _foo`) maps to a Lean `private def`.
+        applyPrivacy name cmd
     | `term, json => do
         let argInfos ← functionArgInfos json
         let bodyElems ← functionBodyElems json
@@ -267,17 +346,34 @@ def assignHeadSyntax : (kind : SyntaxNodeKind) → Json →
     | `term, json => do
         let .ok target := json.getObjVal? "target" | throwError
           s!"Assign node does not have a 'target' field or it is not a JSON value: {json}"
-        let nameIdent ← getCode target `ident
         let .ok value := json.getObjVal? "value" | throwError
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
-        let valueStx ← getCode value `term
         let .ok rest := json.getObjValAs? (List Json) "rest" | throwError
           s!"Assign node does not have a 'rest' field or it is not a JSON value: {json}"
         let splitRest ← splitList rest
         let tailCode ← withoutCheck do
           getCode splitRest `term
-        `(let $nameIdent := $valueStx
-          $tailCode)
+        match ← tupleAssignTargetNames? target with
+        | some idents => do
+            let n := idents.size
+            let valueStx ← getCode value `term
+            let unpackTmpIdent := mkIdent (← freshName `__unpack_pair)
+            -- A `Tuple` literal or a tuple-returning function call both produce a `Prod` (use
+            -- `Prod.fst`/`Prod.snd`); list-returning RHSs are pre-split into subscripts and never
+            -- reach native unpacking (see Core/Assign.lean for the same reasoning).
+            let isTuple := jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call"
+            let mut result := tailCode
+            for i in (List.range n).reverse do
+              let acc ← unpackAccessTerm isTuple unpackTmpIdent i n
+              result ← `(let $(idents[i]!) := $acc
+                $result)
+            `(let $unpackTmpIdent := $valueStx
+              $result)
+        | none => do
+            let nameIdent ← getCode target `ident
+            let valueStx ← getCode value `term
+            `(let $nameIdent := $valueStx
+              $tailCode)
     | _, _ => throwError s!"Unsupported syntax category for Head_Assign node"
 
 @[pygen "Head_AnnAssign"]
