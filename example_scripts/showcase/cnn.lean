@@ -163,15 +163,9 @@ def main' :=
         else
           let _ := ()
       let _ ←
-        PyAstLean.pyPrintIO
-            [PyAstLean.pyArg "accuracy:", PyAstLean.pyArg correct, PyAstLean.pyArg "/",
-              PyAstLean.pyArg (PyAstLean.pyLen images)]
-      let _ ←
-        PyAstLean.pyPrintIO
-            [PyAstLean.pyArg "vertical   sample -> class", PyAstLean.pyArg (CNN.predict cnn images⦋(0 : Int)⦌)]
-      let _ ←
-        PyAstLean.pyPrintIO
-            [PyAstLean.pyArg "horizontal sample -> class", PyAstLean.pyArg (CNN.predict cnn images⦋(3 : Int)⦌)]) :
+        pyPrintIO [pyPrintArg "accuracy:", pyPrintArg correct, pyPrintArg "/", pyPrintArg (PyAstLean.pyLen images)]
+      let _ ← pyPrintIO [pyPrintArg "vertical   sample -> class", pyPrintArg (CNN.predict cnn images⦋(0 : Int)⦌)]
+      let _ ← pyPrintIO [pyPrintArg "horizontal sample -> class", pyPrintArg (CNN.predict cnn images⦋(3 : Int)⦌)]) :
     IO _)
 
 def main : IO Unit := do

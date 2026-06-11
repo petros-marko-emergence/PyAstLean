@@ -518,7 +518,16 @@ def _annotate_library_imports_in_scope(body, inherited_env=None):
 
         _annotate_library_refs_in_expr(stmt, env)
 
-        if node_type == "FunctionDef":
+        if node_type == "ClassDef":
+            # Class methods are FunctionDefs under "methods"; annotate library refs in each body.
+            for method in stmt.get("methods", []):
+                if not isinstance(method, dict):
+                    continue
+                child_env = dict(env)
+                for arg_name in _function_arg_names(method):
+                    child_env.pop(arg_name, None)
+                _annotate_library_imports_in_scope(method.get("body", []), child_env)
+        elif node_type == "FunctionDef":
             child_env = dict(env)
             for arg_name in _function_arg_names(stmt):
                 child_env.pop(arg_name, None)
@@ -853,10 +862,185 @@ def _mutual_recursion_groups(body):
     }
 
 
+def _collect_class_table(body):
+    """Build {class_name: {methods, mutators, fields, bases}} from the module's ClassDefs, folding
+    a single base class's members into each subclass (so inherited methods dispatch correctly)."""
+    table = {}
+    for s in body:
+        if isinstance(s, dict) and s.get("node_type") == "ClassDef":
+            table[s["name"]] = {
+                "methods": set(m.get("name") for m in s.get("methods", [])),
+                "mutators": set(s.get("mutators", [])),
+                "fields": set(f.get("name") for f in s.get("fields", [])),
+                "statics": set(s.get("staticmethods", [])) | set(s.get("classmethods", [])),
+                "bases": [b.get("id") for b in s.get("bases", []) if isinstance(b, dict)],
+            }
+    for info in table.values():
+        for base in info["bases"]:
+            if base in table:
+                info["methods"] |= table[base]["methods"]
+                info["mutators"] |= table[base]["mutators"]
+                info["fields"] |= table[base]["fields"]
+    return table
+
+
+def _prune_inherited_fields(body):
+    """Drop a subclass ClassDef's fields that are already declared by its base, so the emitted Lean
+    `structure Sub extends Base` does not redeclare an inherited field (which Lean rejects)."""
+    own = {}
+    for s in body:
+        if isinstance(s, dict) and s.get("node_type") == "ClassDef":
+            own[s["name"]] = {f.get("name") for f in s.get("fields", [])}
+            own[s["name"]] |= set()  # ensure a set even with no fields
+    # Transitive base-field set per class (single inheritance).
+    bases = {
+        s["name"]: [b.get("id") for b in s.get("bases", []) if isinstance(b, dict)]
+        for s in body
+        if isinstance(s, dict) and s.get("node_type") == "ClassDef"
+    }
+    def base_fields(name, seen=None):
+        seen = seen or set()
+        acc = set()
+        for base in bases.get(name, []):
+            if base in own and base not in seen:
+                seen.add(base)
+                acc |= own[base] | base_fields(base, seen)
+        return acc
+    for s in body:
+        if isinstance(s, dict) and s.get("node_type") == "ClassDef":
+            inherited = base_fields(s["name"])
+            if inherited:
+                s["fields"] = [f for f in s.get("fields", []) if f.get("name") not in inherited]
+
+
+def _method_owner_index(table):
+    """Map a method name to its class when exactly one class declares it (ambiguous names omitted).
+    Used to resolve a method-call receiver's class when its variable type is otherwise unknown."""
+    owners = {}
+    for cname, info in table.items():
+        for m in info["methods"]:
+            owners.setdefault(m, set()).add(cname)
+    return {m: next(iter(cs)) for m, cs in owners.items() if len(cs) == 1}
+
+
+def _stamp_class_dispatch(ast_json):
+    """Annotate Call nodes with class-dispatch hints so the Lean backend (which sees one statement
+    at a time, with no shared state) can lower them deterministically:
+      * instantiation `C(..)`  -> `_class_ctor: "C"`
+      * method call `obj.m(..)` -> `_receiver_class: "C"`, `_is_mutator: bool`
+    Receiver class is resolved from `self` (the enclosing class), tracked `x = C(..)` bindings,
+    typed parameters, or a method name unique to one class."""
+    if ast_json.get("node_type") != "Module":
+        return ast_json
+    body = ast_json.get("body", [])
+    table = _collect_class_table(body)
+    if not table:
+        return ast_json
+    _prune_inherited_fields(body)
+    owners = _method_owner_index(table)
+
+    def ctor_class_of(func, current_class):
+        if isinstance(func, dict) and func.get("node_type") == "Name":
+            fid = func.get("id")
+            if fid in table:
+                return fid
+            if fid == "cls" and current_class:
+                return current_class
+        return None
+
+    def receiver_class_of(recv, scope, current_class, method):
+        if isinstance(recv, dict) and recv.get("node_type") == "Name":
+            rid = recv.get("id")
+            if rid == "self" and current_class:
+                return current_class
+            if rid in scope:
+                return scope[rid]
+        if method in owners:
+            return owners[method]
+        return None
+
+    def walk_expr(node, scope, current_class):
+        """Stamp Calls anywhere inside an expression (scope is read-only here)."""
+        if isinstance(node, list):
+            for x in node:
+                walk_expr(x, scope, current_class)
+            return
+        if not isinstance(node, dict):
+            return
+        if node.get("node_type") == "Call":
+            func = node.get("func")
+            cls = ctor_class_of(func, current_class)
+            if cls is not None:
+                node["_class_ctor"] = cls
+            elif isinstance(func, dict) and func.get("node_type") == "Attribute":
+                method = func.get("attr")
+                recv = func.get("value")
+                # `ClassName.method(...)` (static, classmethod, or an unbound call passing an
+                # explicit instance) calls `C.method` directly without prepending a receiver.
+                if (isinstance(recv, dict) and recv.get("node_type") == "Name"
+                        and recv.get("id") in table
+                        and method in table[recv["id"]]["methods"]):
+                    node["_static_class"] = recv["id"]
+                else:
+                    rcls = receiver_class_of(recv, scope, current_class, method)
+                    if rcls is not None and method in table.get(rcls, {}).get("methods", set()):
+                        node["_receiver_class"] = rcls
+                        node["_is_mutator"] = method in table[rcls]["mutators"]
+        for v in node.values():
+            walk_expr(v, scope, current_class)
+
+    def param_scope(funcdef):
+        """Seed a function scope with parameters whose annotation names a known class."""
+        sc = {}
+        args = (funcdef.get("args") or {}).get("args", [])
+        for a in args:
+            ann = a.get("annotation")
+            if isinstance(ann, dict) and ann.get("node_type") == "Name" and ann.get("id") in table:
+                sc[a.get("arg")] = ann["id"]
+        return sc
+
+    def walk_stmts(stmts, scope, current_class):
+        for stmt in stmts:
+            if not isinstance(stmt, dict):
+                continue
+            nt = stmt.get("node_type")
+            if nt == "ClassDef":
+                cname = stmt.get("name")
+                for m in stmt.get("methods", []):
+                    msc = param_scope(m)
+                    walk_stmts(m.get("body", []), msc, cname)
+                continue
+            if nt in ("FunctionDef", "AsyncFunctionDef"):
+                walk_stmts(stmt.get("body", []), param_scope(stmt), current_class)
+                continue
+            # Stamp every expression in the statement, then learn `x = C(..)` bindings.
+            walk_expr(stmt, scope, current_class)
+            if nt == "Assign":
+                target = stmt.get("target")
+                value = stmt.get("value")
+                if (isinstance(target, dict) and target.get("node_type") == "Name"
+                        and isinstance(value, dict) and value.get("node_type") == "Call"):
+                    cls = ctor_class_of(value.get("func"), current_class)
+                    if cls is not None:
+                        scope[target["id"]] = cls
+            # Recurse into compound-statement blocks (their bodies share this scope).
+            for block_attr in ("body", "orelse", "finalbody"):
+                blk = stmt.get(block_attr)
+                if isinstance(blk, list):
+                    walk_stmts(blk, scope, current_class)
+            for handler in stmt.get("handlers", []) or []:
+                if isinstance(handler, dict):
+                    walk_stmts(handler.get("body", []), scope, current_class)
+
+    walk_stmts(body, {}, None)
+    return ast_json
+
+
 def translate_to_lean(source_code, target="term", filepath = None, imports_add = True):
     """Translate Python source to Lean via JSON IR and the Lean backend executable."""
     json_ir = translate_to_json(source_code, filepath)
     ast_json = json.loads(json_ir)
+    _stamp_class_dispatch(ast_json)
     client = _LEAN_BACKEND
 
     if ast_json.get("node_type") == "Module":
