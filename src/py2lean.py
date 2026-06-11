@@ -811,6 +811,48 @@ def invoke_lean_backend(ast_json, target, check=True, client=None):
     except Exception as err:
         return {"result": False, "error": str(err)}
 
+def _references_name(node, target):
+    """Recursively check whether a JSON subtree references a `Name` with id `target`."""
+    if isinstance(node, dict):
+        if node.get("node_type") == "Name" and node.get("id") == target:
+            return True
+        return any(_references_name(v, target) for v in node.values())
+    if isinstance(node, list):
+        return any(_references_name(x, target) for x in node)
+    return False
+
+
+def _mutual_recursion_groups(body):
+    """Map each top-level function name to its mutual-recursion group (a strongly-connected
+    component of the call graph). Singletons are self- or non-recursive; groups of size >= 2 are
+    mutually recursive and must be emitted together inside a Lean `mutual … end` block.
+
+    The backend translates one top-level statement at a time, so it never sees two functions
+    together; this whole-module analysis lives here and drives sending a group as one `Module`."""
+    funcs = [
+        (s.get("name"), s)
+        for s in body
+        if isinstance(s, dict) and s.get("node_type") == "FunctionDef" and isinstance(s.get("name"), str)
+    ]
+    names = [n for n, _ in funcs]
+    reach = {n: {m for m in names if _references_name(b, m)} for n, b in funcs}
+    # Transitive closure of "references".
+    changed = True
+    while changed:
+        changed = False
+        for n in names:
+            for r in list(reach[n]):
+                extra = reach.get(r, set()) - reach[n]
+                if extra:
+                    reach[n] |= extra
+                    changed = True
+    # SCC of n = every m that n reaches and that reaches n back.
+    return {
+        n: frozenset([n] + [m for m in reach[n] if m != n and n in reach.get(m, set())])
+        for n in names
+    }
+
+
 def translate_to_lean(source_code, target="term", filepath = None, imports_add = True):
     """Translate Python source to Lean via JSON IR and the Lean backend executable."""
     json_ir = translate_to_json(source_code, filepath)
@@ -824,6 +866,8 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
             # part with a single newline so they read as leading comments, while real
             # declarations are separated by a blank line.
             code_parts = []
+            mutual_groups = _mutual_recursion_groups(body)
+            emitted_funcs = set()
             for stmt in body:
                 # A top-level Python `pass` is a true no-op, so there is no Lean command to emit.
                 if stmt.get("node_type") in {"Pass", "Import", "ImportFrom"}:
@@ -831,10 +875,32 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                 if stmt.get("node_type") in {"Comment", "DocString"}:
                     code_parts.append((True, _direct_comment_code(stmt)))
                     continue
+                code_key = f"lean_{target}"
+                # Mutually-recursive functions can't be separate `def`s — send the whole group as a
+                # single `Module` so the backend emits one `mutual … end` block.
+                if stmt.get("node_type") == "FunctionDef":
+                    name = stmt.get("name")
+                    if name in emitted_funcs:
+                        continue
+                    group = mutual_groups.get(name, frozenset([name]))
+                    if len(group) >= 2:
+                        members = [
+                            s for s in body
+                            if isinstance(s, dict) and s.get("node_type") == "FunctionDef"
+                            and s.get("name") in group
+                        ]
+                        module_node = {"node_type": "Module", "body": members}
+                        result = invoke_lean_backend(module_node, target, check=False, client=client)
+                        if result.get("result") is False:
+                            return result
+                        if code_key not in result:
+                            return {"result": False, "error": f"Missing '{code_key}' in backend response."}
+                        code_parts.append((False, result[code_key]))
+                        emitted_funcs.update(group)
+                        continue
                 result = invoke_lean_backend(stmt, target, check=False, client=client)
                 if result.get("result") is False:
                     return result
-                code_key = f"lean_{target}"
                 if code_key not in result:
                     return {"result": False, "error": f"Missing '{code_key}' in backend response."}
                 code_parts.append((False, _inject_comments_into_lean(stmt, result[code_key])))
