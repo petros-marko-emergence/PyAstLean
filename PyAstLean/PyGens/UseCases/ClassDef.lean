@@ -183,16 +183,36 @@ def classDefSyntax : (kind : SyntaxNodeKind) → Json → PygenM (TSyntax kind)
       registerClass name info
 
       let hasEq := methodNames.contains "__eq__"
-      -- The structure (with optional single base via `extends`). `BEq` is derived separately
-      -- below unless the class supplies `__eq__` (which becomes a custom `BEq` instance).
+      -- The structure, carrying the class docstring as its `/-- … -/` doc comment (when present)
+      -- and `extends Base` for a single base. `BEq` is derived separately below unless the class
+      -- supplies `__eq__` (which becomes a custom `BEq` instance).
       let fieldBinders ← fields.mapM classStructFieldSyntax
-      let structCmd ← match bases[0]? with
+      let baseId? : Option (TSyntax `ident) ←
+        match bases[0]? with
         | some baseJson =>
-            let baseId := mkIdent (← baseJson.getObjValAs? String "id" |>.toOption.getDM
-              (throwError s!"Class base is not a simple Name: {baseJson}")).toName
+            match baseJson.getObjValAs? String "id" with
+            | .ok bid => pure (some (mkIdent bid.toName))
+            | _ => throwError s!"Class base is not a simple Name: {baseJson}"
+        | none => pure none
+      -- A leading class docstring → `/-- … -/`. `-/` inside the text is defanged so it can't close
+      -- the comment early.
+      let docStx? : Option (TSyntax ``Lean.Parser.Command.docComment) :=
+        match (json.getObjValAs? String "docstring").toOption with
+        | some text =>
+            let body := (text.trimAscii).toString.replace "-/" "- /"
+            some ⟨mkNode ``Lean.Parser.Command.docComment #[mkAtom "/--", mkAtom (body ++ " -/")]⟩
+        | none => none
+      let structCmd ← match docStx?, baseId? with
+        | some doc, some baseId =>
+            `(command| $doc:docComment structure $nameId:ident extends $baseId:ident where
+                $[$fieldBinders]* deriving Inhabited, Repr)
+        | some doc, none =>
+            `(command| $doc:docComment structure $nameId:ident where
+                $[$fieldBinders]* deriving Inhabited, Repr)
+        | none, some baseId =>
             `(command| structure $nameId:ident extends $baseId:ident where
                 $[$fieldBinders]* deriving Inhabited, Repr)
-        | none =>
+        | none, none =>
             `(command| structure $nameId:ident where
                 $[$fieldBinders]* deriving Inhabited, Repr)
 

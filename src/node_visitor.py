@@ -681,6 +681,12 @@ class ASTToJsonLeanVisitorBase:
         staticmethods = []
         classmethods = []
 
+        # A leading class docstring is captured here (the per-statement loop below skips bare
+        # `ast.Expr` strings); the backend renders it as the structure's `/-- … -/` doc comment.
+        docstring = None
+        if node.body and self._is_docstring_stmt(node.body[0]):
+            docstring = node.body[0].value.value
+
         for stmt in node.body:
             if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
                 self._add_class_field(fields, seen, stmt.target.id, stmt.annotation, stmt.value)
@@ -716,6 +722,7 @@ class ASTToJsonLeanVisitorBase:
             "name": node.name,
             "bases": bases,
             "decorator_list": [self.visit(d) for d in node.decorator_list],
+            "docstring": docstring,
             "fields": fields,
             "methods": methods,
             "mutators": mutators,
