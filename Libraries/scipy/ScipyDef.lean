@@ -133,4 +133,40 @@ partial def pyScipyDet (m : List (List Float)) : Float :=
       let sign := if j % 2 == 0 then 1.0 else -1.0
       acc + sign * (first.getD j 0.0) * pyScipyDet minor)
 
+/-! ## scipy.integrate -/
+
+/-- Element-wise `a + s · b` on equal-length float vectors. -/
+private def vecAxpy (s : Float) (a b : List Float) : List Float :=
+  (a.zip b).map (fun (x, y) => x + s * y)
+
+/-- One classical RK4 step of `y' = f(y, t)` over a step of size `dt`. -/
+private def rk4Step (f : List Float → Float → List Float) (y : List Float) (t dt : Float) :
+    List Float :=
+  let k1 := f y t
+  let k2 := f (vecAxpy (dt / 2.0) y k1) (t + dt / 2.0)
+  let k3 := f (vecAxpy (dt / 2.0) y k2) (t + dt / 2.0)
+  let k4 := f (vecAxpy dt y k3) (t + dt)
+  let incr := (k1.zip (k2.zip (k3.zip k4))).map (fun (a, b, c, d) => a + 2.0 * b + 2.0 * c + d)
+  vecAxpy (dt / 6.0) y incr
+
+/--
+`scipy.integrate.odeint(f, y0, t)` — integrate the system `y' = f(y, t)` from initial state `y0`,
+returning the state at every time in `t` (a row per time point, like SciPy).
+
+Uses one fixed classical-RK4 step per output interval. SciPy uses adaptive LSODA, so for smooth
+non-stiff systems the trajectories agree closely (not bit-for-bit). `f` takes `(state, t)` and
+returns the derivative vector — exactly the Python signature `f(y, t)`.
+-/
+def pyScipyOdeint (f : List Float → Float → List Float) (y0 : List Float) (ts : List Float) :
+    List (List Float) :=
+  match ts with
+  | [] => []
+  | t0 :: rest =>
+    let stepFn := fun (st : List (List Float) × List Float × Float) (tcur : Float) =>
+      let (acc, yprev, tprev) := st
+      let ynext := rk4Step f yprev tprev (tcur - tprev)
+      (acc ++ [ynext], ynext, tcur)
+    let (states, _, _) := rest.foldl stepFn ([y0], y0, t0)
+    states
+
 end Libraries.scipy

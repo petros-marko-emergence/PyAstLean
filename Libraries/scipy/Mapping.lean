@@ -24,6 +24,8 @@ def pythonScipyMemberMap? (member : String) : Option Lean.Name :=
   -- scipy.linalg
   | "norm" => some ``pyScipyNorm
   | "det" => some ``pyScipyDet
+  -- scipy.integrate
+  | "odeint" => some ``pyScipyOdeint
   | _ => none
 
 end Libraries.scipy

@@ -56,15 +56,19 @@ def pyNumpyArange (a : Float) (b : Float := pyNumpyNaN) (c : Float := pyNumpyNaN
     else
       panic! "ValueError: arange() received invalid defaults"
 
-/-- Evenly spaced values over a closed interval. -/
-def pyNumpyLinspace (start stop : Float) (num : Int) : List Float :=
+/-- Evenly spaced values over a closed interval. `start`/`stop` accept any numpy scalar, so
+`np.linspace(0, 100, n)` with integer bounds works as well as float bounds. -/
+def pyNumpyLinspace {α β : Type} [PyNumpyScalar α] [PyNumpyScalar β]
+    (start : α) (stop : β) (num : Int) : List Float :=
+  let s := toFloat start
+  let e := toFloat stop
   let n := pyNumpyNatFromInt num
   match n with
   | 0 => []
-  | 1 => [start]
+  | 1 => [s]
   | n + 1 =>
-      let step := (stop - start) / Rat.toFloat (n : Rat)
-      (List.range (n + 1)).map (fun i => start + step * Rat.toFloat (i : Rat))
+      let step := (e - s) / Rat.toFloat (n : Rat)
+      (List.range (n + 1)).map (fun i => s + step * Rat.toFloat (i : Rat))
 
 /-- Logarithmically spaced values over a closed interval. -/
 def pyNumpyLogspace (start stop : Float) (num : Int) (base : Float := pyNumpyNaN) : List Float :=

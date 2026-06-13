@@ -100,9 +100,17 @@ inner value is used directly (Lean's `s!` applies `toString`); anything else is 
 def joinedInterpTerm (valueJson : Json) : PygenM (TSyntax `term) := do
   match valueJson.getObjValAs? String "node_type" with
   | .ok "FormattedValue" =>
-      match valueJson.getObjVal? "value" with
-      | .ok inner => getCode inner `term
-      | .error _ => getCode valueJson `term
+      let innerCode ← match valueJson.getObjVal? "value" with
+        | .ok inner => getCode inner `term
+        | .error _ => getCode valueJson `term
+      -- A `:.Nf`-style format spec wraps the value in `pyFormatSpec`, which returns the formatted
+      -- String (and `s!`'s `toString` on a String is the identity).
+      match valueJson.getObjValAs? String "format_spec" with
+      | .ok spec =>
+          let fmtIdent := mkIdent ``PyAstLean.pyFormatSpec
+          let specLit := Syntax.mkStrLit spec
+          `($fmtIdent $innerCode $specLit)
+      | .error _ => pure innerCode
   | _ => getCode valueJson `term
 
 /-- Build a Lean interpolated string `s!"lit{e}lit…"` from the literal/interpolation pieces of an

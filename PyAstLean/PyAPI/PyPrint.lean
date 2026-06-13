@@ -160,4 +160,43 @@ def pyPrint (parts : List PyPrintArg) (sep : String := " ") (ending : String := 
   let _ := pyPrintArgsRendered parts sep ending
   ()
 
+/-! ## f-string format specifiers (`{x:.2f}`) -/
+
+/-- Numeric values an f-string format spec can apply to (`Float`/`Int`/`Nat`/`Rat`). -/
+class PyFmtNum (α : Type) where
+  toFmtFloat : α → Float
+
+instance : PyFmtNum Float := ⟨id⟩
+instance : PyFmtNum Nat := ⟨Float.ofNat⟩
+instance : PyFmtNum Int := ⟨fun n => if n ≥ 0 then Float.ofNat n.toNat else - Float.ofNat (-n).toNat⟩
+instance : PyFmtNum Rat := ⟨Rat.toFloat⟩
+
+/-- Format a `Float` with exactly `prec` digits after the decimal point (Python `:.Nf`). -/
+def pyFixedFloat (x : Float) (prec : Nat) : String :=
+  let neg := x < 0.0
+  let pow := 10 ^ prec
+  let scaledNat := (Float.floor (Float.abs x * Float.ofNat pow + 0.5)).toUInt64.toNat
+  let intPart := scaledNat / pow
+  let fracPart := scaledNat % pow
+  let body :=
+    if prec == 0 then toString intPart
+    else
+      let fracStr := toString fracPart
+      let pad := String.mk (List.replicate (prec - fracStr.length) '0')
+      s!"{intPart}.{pad}{fracStr}"
+  if neg && scaledNat != 0 then "-" ++ body else body
+
+/-- The precision (digits after `.`) requested by a format spec, defaulting to Python's 6. -/
+private def pyFmtPrecision (spec : String) : Nat :=
+  match spec.toList.dropWhile (· != '.') with
+  | '.' :: rest => (String.mk (rest.takeWhile Char.isDigit)).toNat?.getD 6
+  | _ => 6
+
+/-- Apply a Python f-string format spec to a numeric value. Supports `.Nf` (fixed decimals); any
+other spec falls back to the default rendering. -/
+def pyFormatSpec {α : Type} [PyFmtNum α] (x : α) (spec : String) : String :=
+  let f := PyFmtNum.toFmtFloat x
+  if spec.endsWith "f" then pyFixedFloat f (pyFmtPrecision spec)
+  else toString f
+
 end PyAstLean
