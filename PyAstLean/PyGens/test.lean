@@ -4,17 +4,6 @@ import Libraries
 open PyAstLean
 open Libraries
 
-/-
-Demonstrates `--best-effort`: unsupported libraries (logging, requests, random) don't abort
-the whole translation — those lines become `pyUnsupported(...)` placeholders that carry the
-original Python source, and the rest of the program transpiles and runs normally.
-
-    # strict (default): fails, because `logging`/`requests`/`random` aren't supported
-    python3 src/py2lean.py example_scripts/showcase/best_effort_demo.py --target command
-
-    # best-effort: foreign lines become no-op placeholders; the real logic still runs
-    python3 src/py2lean.py example_scripts/showcase/best_effort_demo.py --target command --best-effort
--/
 def logger :=
   pyUnsupported "logger: Logger = logging.getLogger(__name__)"
 
