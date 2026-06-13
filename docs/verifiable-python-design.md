@@ -145,7 +145,7 @@ functional builtins above.
 
 ## 6. The recipe — maximize Tier 0
 
-1. **One expression per math function.** Aim for a single `return <expr>`. If you're tempted to
+1. **One or few expression per math function.** Aim for a single `return <expr>` or a set of expressions to make a meaningful function. If you're tempted to
    write a loop, reach for a comprehension / `sum` / `map` / `filter` / `reduce` / recursion.
 2. **No mutation, no `for`/`while`** in functions you want to prove. (They're pure, but Tier 1 —
    not provable yet.)
@@ -158,6 +158,8 @@ functional builtins above.
 7. **No globals.** The math depends only on its arguments.
 8. **Annotate types** (`int`, `float`, `list[float]`) so the term gets a concrete Lean signature
    — proofs need it.
+9. **Simple Python** Try to avoid fancy python features that don't transpile to Lean (e.g., `with`, `async`, `await`, `yield`). Simplify the Python to a subset most commonly used. You can assume most standard Python features are supported.
+tiny pure terms with a single monadic `main` at the root.**
 
 ---
 

@@ -201,7 +201,7 @@ class ASTToJsonLeanVisitorBase:
         """Rewrite an unsupported statement into a `pyUnsupported("<source>")` placeholder,
         reusing the ordinary Assign/Expr codegen paths. The single concrete-typed sink keeps any
         assigned variable *declared* (no unconstrained `Inhabited ?m`). A bare statement becomes
-        `let _ := pyUnsupported ...`; at top level it is kept as a synthetic `def _py_unsup_N`
+        `let _ := pyUnsupported ...`; at top level it is kept as a synthetic `def __py_unsup_N`
         rather than removed."""
         src = ast.get_source_segment(self.source_code, stmt) or "<unsupported>"
         src = " ".join(src.split())  # collapse to one line for a clean Lean string literal
@@ -214,7 +214,7 @@ class ASTToJsonLeanVisitorBase:
 
         if top_level:
             # Don't drop a top-level bare statement — keep it as a named placeholder def.
-            name = f"_py_unsup_{self._next_unsup_id}"
+            name = f"__py_unsup_{self._next_unsup_id}"
             self._next_unsup_id += 1
             return {"node_type": "Assign",
                     "target": {"node_type": "Name", "id": name},
