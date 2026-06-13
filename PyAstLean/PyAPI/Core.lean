@@ -157,30 +157,21 @@ instance : PySlice String where
   slice s lo hi step := pyStringSliceStep s lo hi step
 
 /--
-Best-effort fallback sink for Python constructs the transpiler does not support (foreign
-libraries like `logging`/`requests`, unhandled syntax, ...).
-
-The value form is polymorphic with an `Inhabited` default so an *assignment* whose right-hand
-side was unsupported keeps its variable declared and typed — downstream code that uses it still
-elaborates (with a dummy default at runtime) instead of cascading into "unknown identifier".
--/
-@[inline] def pyUnsupported {α : Type} [Inhabited α] (_source : String) : α := default
-
-/-- Statement form of [`pyUnsupported`] for unsupported bare expressions / effectful calls. -/
-@[inline] def pyUnsupportedUnit (_source : String) : Unit := ()
-
-/--
-Concrete carrier for an unsupported result whose type nothing else constrains (a foreign value
-that is only ever read by other dropped statements, or a top-level placeholder). Using a real
-type keeps the assigned variable **declared** without leaving its type an unconstrained
-metavariable (`Inhabited ?m` "stuck"), which the polymorphic [`pyUnsupported`] would. It carries
-the original source and prints as `<unsupported: ...>` via the derived `Repr`.
+Concrete carrier for a Python construct the transpiler does not support (foreign libraries like
+`logging`/`requests`, unhandled syntax, ...). It carries the original source and prints as its
+`Repr`.
 -/
 structure PyUnsupportedValue where
   source : String
   deriving Inhabited, Repr, BEq
 
-/-- Bind an unsupported value to a concretely-typed placeholder (see [`PyUnsupportedValue`]). -/
-@[inline] def pyUnsupportedVal (source : String) : PyUnsupportedValue := ⟨source⟩
+/--
+Best-effort fallback sink. Codegen emits `pyUnsupported "<original source>"` in
+every position a dropped statement appears — bare statement (`let _ := …`), assignment
+(`let x := …`), or top-level (`def … := …`). Because it returns a concrete type, the binding
+always elaborates and keeps the variable **declared** (no unconstrained `Inhabited ?m`); the
+[`PyAstLean.Linter`] flags each use with a yellow "not supported" warning.
+-/
+@[inline] def pyUnsupported (source : String) : PyUnsupportedValue := ⟨source⟩
 
 end PyAstLean

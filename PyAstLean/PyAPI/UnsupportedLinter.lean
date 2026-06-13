@@ -1,10 +1,10 @@
 import Lean
 
 /-!
-A linter that flags every best-effort placeholder (`pyUnsupported` / `pyUnsupportedUnit` /
-`pyUnsupportedVal`) emitted by `py2lean`'s best-effort fallback. Each use site gets a yellow
-"not supported" warning in the editor, so degraded lines are impossible to miss — without the
-"deprecated" framing (these are not deprecated; they're transpiler placeholders).
+A linter that flags every best-effort placeholder (`pyUnsupported`) emitted by `py2lean`'s
+best-effort fallback. Each use site gets a yellow "not supported" warning in the editor, so
+degraded lines are impossible to miss — without the "deprecated" framing (these are not
+deprecated; they're transpiler placeholders).
 -/
 
 open Lean Elab Command

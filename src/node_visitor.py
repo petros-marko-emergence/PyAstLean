@@ -197,39 +197,20 @@ class ASTToJsonLeanVisitorBase:
             return {"node_type": "Tuple", "elts": [{"node_type": "Name", "id": e.id} for e in target.elts]}
         return None
 
-    def _target_names(self, stmt):
-        """Assigned target names of a simple assignment statement (empty for non-assignments)."""
-        targets = []
-        if isinstance(stmt, ast.Assign):
-            targets = stmt.targets
-        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
-            targets = [stmt.target]
-        names = []
-        for t in targets:
-            names.extend(n.id for n in ast.walk(t) if isinstance(n, ast.Name))
-        return names
-
     def _make_unsupported_node(self, stmt, top_level=False):
-        """Rewrite an unsupported statement into a placeholder, reusing the ordinary Assign/Expr
-        codegen paths. The original source is carried as a string literal so the generated Lean
-        still says what was dropped. Every assignment keeps its variable *declared*:
-          - foreign-derived / unconstrained targets bind the concretely-typed `pyUnsupportedVal`
-            (avoids an `Inhabited ?m` stuck metavariable);
-          - other (syntax-degraded) targets bind the polymorphic `pyUnsupported`, so a later
-            typed use can still pin the type.
-        A bare statement becomes `let _ := pyUnsupportedUnit ...`; at top level it is kept as a
-        synthetic `def _py_unsup_N := ...` rather than removed."""
+        """Rewrite an unsupported statement into a `pyUnsupported("<source>")` placeholder,
+        reusing the ordinary Assign/Expr codegen paths. The single concrete-typed sink keeps any
+        assigned variable *declared* (no unconstrained `Inhabited ?m`). A bare statement becomes
+        `let _ := pyUnsupported ...`; at top level it is kept as a synthetic `def _py_unsup_N`
+        rather than removed."""
         src = ast.get_source_segment(self.source_code, stmt) or "<unsupported>"
         src = " ".join(src.split())  # collapse to one line for a clean Lean string literal
         self.unsupported_log.append(src)
 
         target_json = self._assign_target_json(stmt)
-        target_names = self._target_names(stmt)
         if target_json is not None:
-            all_foreign = bool(target_names) and all(n in self.foreign_names for n in target_names)
-            func = "pyUnsupportedVal" if all_foreign else "pyUnsupported"
             return {"node_type": "Assign", "target": target_json,
-                    "value": self._unsupported_call(func, src)}
+                    "value": self._unsupported_call("pyUnsupported", src)}
 
         if top_level:
             # Don't drop a top-level bare statement — keep it as a named placeholder def.
@@ -237,8 +218,8 @@ class ASTToJsonLeanVisitorBase:
             self._next_unsup_id += 1
             return {"node_type": "Assign",
                     "target": {"node_type": "Name", "id": name},
-                    "value": self._unsupported_call("pyUnsupportedVal", src)}
-        return {"node_type": "Expr", "value": self._unsupported_call("pyUnsupportedUnit", src)}
+                    "value": self._unsupported_call("pyUnsupported", src)}
+        return {"node_type": "Expr", "value": self._unsupported_call("pyUnsupported", src)}
 
     # Statements whose sub-bodies are themselves translated through `visit_body_statements`; we
     # must NOT degrade these wholesale on foreign use, or a single foreign line would swallow a
