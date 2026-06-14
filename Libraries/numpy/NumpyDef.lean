@@ -40,6 +40,20 @@ instance : PyNumpyCompute Bool Float := ⟨fun b => if b then 1.0 else 0.0⟩
 e.g. `np.dot` over `sigmoid` outputs in exact mode) compute in `ℝ`. -/
 noncomputable instance : PyNumpyCompute ℝ ℝ := ⟨id⟩
 
+/-- Common compute type for a binary numpy op over two (possibly DIFFERENT) element types. Lets
+`np.dot` mix `ℚ` data with `ℝ` weights — `(ℚ,ℝ) → ℝ` — without a `List ℚ → List ℝ` coercion (which
+Lean does not provide). Same-type pairs reuse `PyNumpyCompute`; only the mixed `ℚ`/`ℝ` cases are
+extra. -/
+class PyNumpyJoin (α β : Type) (γ : outParam Type) where
+  castL : α → γ
+  castR : β → γ
+
+instance {α γ} [PyNumpyCompute α γ] : PyNumpyJoin α α γ where
+  castL := PyNumpyCompute.cast
+  castR := PyNumpyCompute.cast
+noncomputable instance : PyNumpyJoin Rat ℝ ℝ where castL := fun q => (q : ℝ); castR := id
+noncomputable instance : PyNumpyJoin ℝ Rat ℝ where castL := id; castR := fun q => (q : ℝ)
+
 /-- Exact (`ℝ`) counterpart of `PyNumpyScalar`, used in the default numeric mode so numpy's
 transcendental maps (`exp`/`log`/`sqrt`/`std`) produce provable `ℝ` values instead of `Float`. -/
 class PyNumpyRealScalar (α : Type) where

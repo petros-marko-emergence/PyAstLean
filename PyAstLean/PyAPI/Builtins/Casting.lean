@@ -20,6 +20,16 @@ def pyInt {α : Type} [PyIntCast α] (x : α) : Int :=
 instance : PyIntCast Int where
   pyInt x := x
 
+/-- `int(x)` on an exact-mode real number (a transcendental result). `ℝ` is noncomputable, so this
+is `noncomputable` and only lets the program elaborate — regenerate with `--approx` to evaluate.
+Uses the floor `⌊x⌋`. -/
+noncomputable instance : PyIntCast ℝ where
+  pyInt x := ⌊x⌋
+
+/-- `int(q)` on an exact-mode rational truncates toward the floor (`⌊q⌋`), computable. -/
+instance : PyIntCast Rat where
+  pyInt q := ⌊q⌋
+
 instance : PyIntCast Nat where
   pyInt x := x
 

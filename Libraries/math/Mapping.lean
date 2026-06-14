@@ -65,4 +65,12 @@ def pythonMathMemberMapReal? (member : String) : Option Lean.Name :=
   | "e" => some ``pyMathER
   | _ => none
 
+/-- Exact-mode overrides that are computable + provable but NOT transcendental (so they go in their
+own tier, not the `ℝ` real map): `math.pow` with an integer exponent stays in `ℚ`/`ℤ`. `none`
+otherwise (keeps the regular `Float` mapping). -/
+def pythonMathMemberMapExact? (member : String) : Option Lean.Name :=
+  match member with
+  | "pow" => some ``pyMathPowExact
+  | _ => none
+
 end Libraries.math

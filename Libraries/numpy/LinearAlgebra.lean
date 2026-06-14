@@ -59,11 +59,14 @@ def pyNumpyDotField {γ} [Add γ] [Mul γ] [Zero γ] [Inhabited γ] : List γ ->
   | x :: xs, y :: ys => x * y + pyNumpyDotField xs ys
   | _, _ => panic! "ValueError: dot() expects vectors of the same length"
 
-/-- Dot product of two vectors. The result lives in the entries' computation type
-(`Float` in `--approx`, `ℚ` in exact mode), so it composes with the surrounding numeric code. -/
-def pyNumpyDot {α γ} [PyNumpyCompute α γ] [Add γ] [Mul γ] [Zero γ] [Inhabited γ] (lhs rhs : List α) : γ :=
+/-- Dot product of two vectors whose element types may DIFFER (e.g. `ℚ` data · `ℝ` weights in a
+neural net under exact mode). Both element types join to a common compute type `γ` via
+`PyNumpyJoin` (`(ℚ,ℝ)→ℝ`, same-type pairs → their `PyNumpyCompute` field). -/
+def pyNumpyDot {α β γ} [PyNumpyJoin α β γ] [Add γ] [Mul γ] [Zero γ] [Inhabited γ]
+    (lhs : List α) (rhs : List β) : γ :=
   if lhs.length = rhs.length then
-    pyNumpyDotField (lhs.map PyNumpyCompute.cast) (rhs.map PyNumpyCompute.cast)
+    pyNumpyDotField (lhs.map (fun x => PyNumpyJoin.castL (β := β) x))
+                    (rhs.map (fun y => PyNumpyJoin.castR (α := α) y))
   else
     panic! "ValueError: dot() expects vectors of the same length"
 

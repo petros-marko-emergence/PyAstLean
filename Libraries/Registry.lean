@@ -35,4 +35,12 @@ def pythonLibraryMapReal? (moduleName member : String) : Option Lean.Name :=
   | "scipy" => scipy.pythonScipyMemberMapReal? member
   | _ => none
 
+/-- Exact-mode overrides that are computable + provable but NOT transcendental `ℝ` (e.g.
+`math.pow` with an integer exponent → rational power). Consulted in exact mode after the real map
+and before the regular (`Float`) map. -/
+def pythonLibraryMapExact? (moduleName member : String) : Option Lean.Name :=
+  match moduleName with
+  | "math" => math.pythonMathMemberMapExact? member
+  | _ => none
+
 end Libraries

@@ -104,6 +104,12 @@ def pyMathTrunc {α : Type} [PyMathFloatArg α] (x : α) : Int :=
 def pyMathPow {α β : Type} [PyMathFloatArg α] [PyMathFloatArg β] (x : α) (y : β) : Float :=
   Float.pow (toFloat x) (toFloat y)
 
+/-- Exact-mode `math.pow` with an integer exponent: `math.pow(x, n)` is *algebraic* (`xⁿ`), NOT
+transcendental, so it stays in the base's type (`ℤ`/`ℚ`) and remains computable + provable — unlike
+`Float.pow`. Keeps e.g. `sqrt(sum(pow(d, 2)))` rational under the `sqrt`. -/
+def pyMathPowExact {α : Type} [Monoid α] (x : α) (y : Int) : α :=
+  x ^ y.toNat
+
 /-- Python `math.asin`, using Lean's computable floating-point arcsine. -/
 def pyMathAsin {α : Type} [PyMathFloatArg α] (x : α) : Float :=
   Float.asin (toFloat x)

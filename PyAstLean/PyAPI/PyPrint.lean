@@ -87,6 +87,18 @@ fraction `n/d` — matching `print` output when `float` lowers to `ℚ` (exact m
 instance : PyPrintable Rat where
   pyStringify q := toString (Rat.toFloat q)
 
+/-- Printing a real number `ℝ` arises only in exact mode when a value flows from a transcendental
+(`math.exp`, `np.sqrt`, scipy `norm`, …) into a `print`. Such an `ℝ` is *noncomputable* — there is
+no algorithm to extract its digits — and Mathlib's own `Repr ℝ` is `unsafe`. These safe, computable
+placeholders let a program that prints an exact `ℝ` still **elaborate** (type-check); to actually
+evaluate/print the number, regenerate with `--approx` (which lowers `float` to `Float`). -/
+private def realPrintPlaceholder : String := "<ℝ: noncomputable in exact mode — use --approx to evaluate>"
+
+instance (priority := high) : ToString ℝ := ⟨fun _ => realPrintPlaceholder⟩
+instance (priority := high) : Repr ℝ := ⟨fun _ _ => realPrintPlaceholder⟩
+instance : PyPrintable ℝ where
+  pyStringify _ := realPrintPlaceholder
+
 /-- Python exceptions print with their existing `ToString` rendering. -/
 instance : PyPrintable PyException where
   pyStringify exc := toString exc
