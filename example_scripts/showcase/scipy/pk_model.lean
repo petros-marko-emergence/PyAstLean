@@ -21,54 +21,54 @@ converges to a steady state, then washes out -- the textbook drug-accumulation c
 Run directly it uses real SciPy; transpiled by PyAstLean it uses the Mathlib-only `Libraries.scipy`
 shim. The showcase runs both and overlays the Python and Lean trajectories.
 -/
-def depot_rate := fun (ka : Float) ↦ fun (depot : Float) ↦
+def depot_rate := fun (ka : Rat) ↦ fun (depot : Rat) ↦
   /-
   dD/dt -- drug leaving the gut depot by absorption.
   -/
   -ka *ₚ depot
 
-def central_rate := fun (ka : Float) ↦ fun (ke : Float) ↦ fun (k12 : Float) ↦ fun (k21 : Float) ↦ fun (depot : Float) ↦
-  fun (central : Float) ↦ fun (periph : Float) ↦
+def central_rate := fun (ka : Rat) ↦ fun (ke : Rat) ↦ fun (k12 : Rat) ↦ fun (k21 : Rat) ↦ fun (depot : Rat) ↦
+  fun (central : Rat) ↦ fun (periph : Rat) ↦
   /-
   dC/dt -- absorption in, elimination out, exchange with the peripheral compartment.
   -/
   ka *ₚ depot -ₚ ke *ₚ central -ₚ k12 *ₚ central +ₚ k21 *ₚ periph
 
-def periph_rate := fun (k12 : Float) ↦ fun (k21 : Float) ↦ fun (central : Float) ↦ fun (periph : Float) ↦
+def periph_rate := fun (k12 : Rat) ↦ fun (k21 : Rat) ↦ fun (central : Rat) ↦ fun (periph : Rat) ↦
   /-
   dP/dt -- distribution into and back out of the tissue compartment.
   -/
   k12 *ₚ central -ₚ k21 *ₚ periph
 
-def concentration := fun (amount : Float) ↦ fun (vol : Float) ↦
+def concentration := fun (amount : Rat) ↦ fun (vol : Rat) ↦
   /-
   Convert a compartment amount (mg) to a concentration (mg/L).
   -/
   amount /ₚ vol
 
-def body_load := fun (depot : Float) ↦ fun (central : Float) ↦ fun (periph : Float) ↦
+noncomputable def body_load := fun (depot : Rat) ↦ fun (central : Rat) ↦ fun (periph : Rat) ↦
   /-
   Total body drug load as the Euclidean norm of the compartment vector (via scipy).
   -/
-  Libraries.scipy.pyScipyNorm [depot, central, periph]
+  Libraries.scipy.pyScipyNormR [depot, central, periph]
 
-def main' :=
+noncomputable def main' :=
   ((do
-      let mut ka := PyAstLean.pyFloat (← PyAstLean.pyInputIO "")
-      let mut ke := PyAstLean.pyFloat (← PyAstLean.pyInputIO "")
-      let mut k12 := PyAstLean.pyFloat (← PyAstLean.pyInputIO "")
-      let mut k21 := PyAstLean.pyFloat (← PyAstLean.pyInputIO "")
-      let mut vol := PyAstLean.pyFloat (← PyAstLean.pyInputIO "")
-      let mut dose := PyAstLean.pyFloat (← PyAstLean.pyInputIO "")
-      let mut dt := PyAstLean.pyFloat (← PyAstLean.pyInputIO "")
+      let mut ka := PyAstLean.pyRat (← PyAstLean.pyInputIO "")
+      let mut ke := PyAstLean.pyRat (← PyAstLean.pyInputIO "")
+      let mut k12 := PyAstLean.pyRat (← PyAstLean.pyInputIO "")
+      let mut k21 := PyAstLean.pyRat (← PyAstLean.pyInputIO "")
+      let mut vol := PyAstLean.pyRat (← PyAstLean.pyInputIO "")
+      let mut dose := PyAstLean.pyRat (← PyAstLean.pyInputIO "")
+      let mut dt := PyAstLean.pyRat (← PyAstLean.pyInputIO "")
       let mut dose_step := PyAstLean.pyInt (← PyAstLean.pyInputIO "")
       let mut ndoses := PyAstLean.pyInt (← PyAstLean.pyInputIO "")
       let mut nsteps := PyAstLean.pyInt (← PyAstLean.pyInputIO "")
       let mut every := PyAstLean.pyInt (← PyAstLean.pyInputIO "")
-      let mut depot := (0.0 : Float)
-      let mut central := (0.0 : Float)
-      let mut periph := (0.0 : Float)
-      let mut t := (0.0 : Float)
+      let mut depot := (0.0 : Rat)
+      let mut central := (0.0 : Rat)
+      let mut periph := (0.0 : Rat)
+      let mut t := (0.0 : Rat)
       let mut dose_num := (0 : Int)
       for step in (PyAstLean.pyRange nsteps)do
         -- Administer a dose into the gut depot when one is due.
@@ -97,6 +97,6 @@ def main' :=
           let _ := ()) :
     IO _)
 
-def main : IO Unit := do
+noncomputable def main : IO Unit := do
   let _ ← main'
   pure ()

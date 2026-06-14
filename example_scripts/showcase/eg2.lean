@@ -4,42 +4,43 @@ import Libraries
 open PyAstLean
 open Libraries
 
-def process_data : List (List Float) → List (List Float) → PyAstLean.PyExcept (List (List Float)) :=
-  fun (data : List (List Float)) ↦ fun (weights : List (List Float)) ↦ do
-  try
-    do
-      let __py_try_val ←
-        PyAstLean.PyExcept.captureIOErrors
-            (do
-              do
-                -- Calculate mean of the dataset
-                let mut m := Libraries.numpy.pyNumpyMean data
-                let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
-                -- Center the data by subtracting the mean
-                -- (Using a manual broadcast-like subtraction for this example)
-                -- Note: np.subtract is mapped to pyNumpySubtract
-                let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
-                -- Perform matrix multiplication
-                -- Note: np.matmul is mapped to pyNumpyMatmul
-                let mut result := Libraries.numpy.pyNumpyMatmul centered weights
-                return result)
-      return __py_try_val
-  catch caught =>
-    if (caught).OfKind == "ValueError" then 
-      do
-        let e := caught
-        let _ ← pyPrintIO [pyPrintArg s! "Processing failed: {e}"]
-        -- Fallback to a zero matrix if dimensions fail
-        let __py_ret := Libraries.numpy.pyNumpyZeros ((2 : Int), (2 : Int))
-        return __py_ret
-    else
-      throw caught
+def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List Rat)) ↦
+  ((do
+      try
+        do
+          let __py_try_val ←
+            PyAstLean.PyExcept.captureIOErrors
+                (do
+                  do
+                    -- Calculate mean of the dataset
+                    let mut m := Libraries.numpy.pyNumpyMean data
+                    let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
+                    -- Center the data by subtracting the mean
+                    -- (Using a manual broadcast-like subtraction for this example)
+                    -- Note: np.subtract is mapped to pyNumpySubtract
+                    let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+                    -- Perform matrix multiplication
+                    -- Note: np.matmul is mapped to pyNumpyMatmul
+                    let mut result := Libraries.numpy.pyNumpyMatmul centered weights
+                    return result)
+          return __py_try_val
+      catch caught =>
+        if (caught).OfKind == "ValueError" then 
+          do
+            let e := caught
+            let _ ← pyPrintIO [pyPrintArg s! "Processing failed: {e}"]
+            -- Fallback to a zero matrix if dimensions fail
+            let __py_ret := Libraries.numpy.pyNumpyZeros ((2 : Int), (2 : Int))
+            return __py_ret
+        else
+          throw caught) :
+    PyAstLean.PyExcept _)
 
 def run_example :=
   ((do
       -- Define a 2x2 dataset and a 2x2 weight matrix
-      let mut dataset := [[(1.0 : Float), (2.0 : Float)], [(3.0 : Float), (4.0 : Float)]]
-      let mut weights := [[(0.5 : Float), (0.5 : Float)], [(1.0 : Float), (2.0 : Float)]]
+      let mut dataset := [[(1.0 : Rat), (2.0 : Rat)], [(3.0 : Rat), (4.0 : Rat)]]
+      let mut weights := [[(0.5 : Rat), (0.5 : Rat)], [(1.0 : Rat), (2.0 : Rat)]]
       let _ ← pyPrintIO [pyPrintArg "=== PyAstLean NumPy Showcase ==="]
       let _ ← pyPrintIO [pyPrintArg s! "Input Data: {dataset}"]
       let _ ← pyPrintIO [pyPrintArg s! "Weight Matrix: {weights}"]
@@ -57,7 +58,7 @@ def run_example :=
       let _ ← pyPrintIO [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
       -- 4. Error Handling Simulation
       let _ ← pyPrintIO [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
-      let mut invalid_data := [[(1.0 : Float), (2.0 : Float), (3.0 : Float)]]
+      let mut invalid_data := [[(1.0 : Rat), (2.0 : Rat), (3.0 : Rat)]]
       -- This should trigger the ValueError in np.matmul(1x3, 2x2)
       let _ ← process_data invalid_data weights) :
     PyAstLean.PyExcept _)
