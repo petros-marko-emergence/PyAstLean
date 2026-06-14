@@ -59,6 +59,9 @@ def floatNumToStx (mantissa : Int) (exponent : Nat) (scientific : Bool) :
   -- Default `exact` mode lowers a Python float to an exact `ℚ` (provable + computable); `approx`
   -- mode keeps `Float` (today's behavior).
   let mode ← getNumericMode
+  -- Inside a real-valued function (exact mode), a float literal is `ℝ` so it composes with the
+  -- transcendental results in that function; otherwise exact mode uses `ℚ`.
+  let exactTy : Name := if (← getRealContext) then ``Real else ``Rat
   let base ←
     if scientific then
       let magnitudeStx := Syntax.mkNumLit (toString magnitude)
@@ -69,11 +72,11 @@ def floatNumToStx (mantissa : Int) (exponent : Nat) (scientific : Bool) :
         `($floatScientificIdent $magnitudeStx true $exponentStx)
       | .exact =>
         let ofSciIdent := mkIdent ``OfScientific.ofScientific
-        let ratIdent := mkIdent ``Rat
-        `(($ofSciIdent $magnitudeStx true $exponentStx : $ratIdent))
+        let exactIdent := mkIdent exactTy
+        `(($ofSciIdent $magnitudeStx true $exponentStx : $exactIdent))
     else
       let sciLit := Syntax.mkScientificLit (floatDecimalString magnitude exponent)
-      let tyIdent := match mode with | .approx => mkIdent ``Float | .exact => mkIdent ``Rat
+      let tyIdent := match mode with | .approx => mkIdent ``Float | .exact => mkIdent exactTy
       `(($sciLit : $tyIdent))
   if mantissa < 0 then
     `(- $base:term)
@@ -112,8 +115,11 @@ def jsonLibraryMappedName? (json : Json) : PygenM (Option Lean.Name) := do
   | .ok moduleName, .ok memberName =>
       -- In exact mode prefer the `ℝ`/`noncomputable` variant for transcendentals so generated
       -- code is provable; everything else (and all of `--approx`) uses the regular mapping.
+      -- Exact mode: a transcendental → `ℝ` (real map); else a computable-but-non-Float override
+      -- like `math.pow`→rational (exact map); else the regular (often `Float`) mapping.
       let realName? ← if (← getNumericMode) == .exact
-        then pure (Libraries.pythonLibraryMapReal? moduleName memberName)
+        then pure (Libraries.pythonLibraryMapReal? moduleName memberName
+                    <|> Libraries.pythonLibraryMapExact? moduleName memberName)
         else pure none
       match realName? <|> Libraries.pythonLibraryMap? moduleName memberName with
       | some leanName => pure (some leanName)

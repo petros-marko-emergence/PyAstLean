@@ -31,10 +31,12 @@ partial def functionArgTypeSyntax? (annotationJson : Json) : PygenM (Option (TSy
       | "int" | "Int" => return some (mkIdent ``Int)
       | "bool" | "Bool" => return some (mkIdent ``Bool)
       | "str" | "String" => return some (mkIdent ``String)
-      -- `float` → exact `ℚ` (default) or `Float` (--approx).
+      -- `float` → exact `ℚ` (default), `ℝ` under real-context (a real-marked param, set in
+      -- `functionArgInfos`), or `Float` (--approx). Real-context preserves container shape:
+      -- `list[list[float]]` → `List (List ℝ)`, a scalar `float` → `ℝ`.
       | "float" | "Float" =>
           match ← getNumericMode with
-          | .exact => return some (mkIdent ``Rat)
+          | .exact => return some (mkIdent (if (← getRealContext) then ``Real else ``Rat))
           | .approx => return some (mkIdent ``Float)
       | "Any" => return none -- let Lean handle the type inference for now
       | _ => return none
@@ -73,10 +75,15 @@ def functionArgInfos (json : Json) : PygenM (Array (TSyntax `ident × Option (TS
   for arg in argsArray do
     let .ok argName := arg.getObjValAs? String "arg" | throwError
       s!"FuncDef argument does not have an 'arg' field or it is not a string: {arg}"
-    let annotation? := jsonFieldOption arg "annotation"
-    let ty? ← match annotation? with
-      | some annotationJson => functionArgTypeSyntax? annotationJson
-      | none => pure none
+    -- A parameter the per-variable real-flow pass stamped `_real` receives an `ℝ` value at some
+    -- call site → ascribe `ℝ` (exact mode), overriding the annotation. Everything else stays `ℚ`.
+    let isRealParam := (← getNumericMode) == .exact && arg.getObjValAs? Bool "_real" == .ok true
+    let ty? ← match jsonFieldOption arg "annotation" with
+      -- Real-marked params lower their annotation under real-context so `float` → `ℝ` while the
+      -- container shape is preserved (`list[list[float]]` → `List (List ℝ)`, scalar → `ℝ`).
+      | some annotationJson => withRealContext isRealParam (functionArgTypeSyntax? annotationJson)
+      -- No annotation but real: ascribe a bare scalar `ℝ` (best effort).
+      | none => if isRealParam then pure (some (← `(Real))) else pure none
     argInfos := argInfos.push (mkIdent argName.toName, ty?)
   return argInfos
 
@@ -299,10 +306,14 @@ For top-level effectful defs, prefer putting the effect in the signature instead
 the body cast when the argument types are known.
 -/
 def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
-    (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) (json : Json) :
+    (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) (json : Json)
+    (noncomp : Bool := false) :
     PygenM (Option (TSyntax `command)) := do
   let bodyElems ← functionBodyElems json
   let returnTy? ← functionReturnTypeSyntax? json
+  let mkDef : TSyntax `term → TSyntax `term → PygenM (TSyntax `command) := fun fullTy valueStx =>
+    if noncomp then `(command| noncomputable def $nameIdent : $fullTy := $valueStx)
+    else `(command| def $nameIdent : $fullTy := $valueStx)
   -- Exceptions take precedence over `IO`: `PyExcept` already layers `ExceptT` over `IO`, so a body
   -- that both prints and raises must be typed `PyExcept` (not `IO`), or the `try`/`catch` runs in
   -- raw `IO` and the caught value is `IO.Error` instead of `PyException`. Mirrors the body-lowering
@@ -316,7 +327,7 @@ def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
         match ← functionArrowTypeSyntax? argInfos codomain with
         | some fullTy =>
             let valueStx ← functionMonadicValueNoCast argInfos bodyElems
-            return some (← `(command| def $nameIdent : $fullTy := $valueStx))
+            return some (← mkDef fullTy valueStx)
         | none =>
             return none
   else if bodyNeedsIOMonad bodyElems then
@@ -328,7 +339,7 @@ def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
         match ← functionArrowTypeSyntax? argInfos codomain with
         | some fullTy =>
             let valueStx ← functionMonadicValueNoCast argInfos bodyElems
-            return some (← `(command| def $nameIdent : $fullTy := $valueStx))
+            return some (← mkDef fullTy valueStx)
         | none =>
             return none
   else
@@ -348,14 +359,21 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         -- is a plain helper with no guard, and must yield the reserved name to stay compilable.
         let name := if rawName == "main" then "main'" else rawName
         let nameIdent := mkIdent name.toName
-        let argInfos ← functionArgInfos json
-        let cmd ← match ← functionCommandWithEffectSignature? nameIdent argInfos json with
+        -- `_real_fn` (set by the Python per-variable pass) means the function produces or handles an
+        -- `ℝ` value → it must be `noncomputable` in exact mode. This is now DECOUPLED from which
+        -- floats are `ℝ`: real params carry a per-`arg` `_real` stamp (read in `functionArgInfos`)
+        -- and real local literals are lowered under a per-assignment `withRealContext`; the function
+        -- is NOT blanket-lifted, so its `ℚ` locals stay `ℚ`.
+        let isReal := (← getNumericMode) == .exact && json.getObjValAs? Bool "_real_fn" == .ok true
+        let cmd ← do
+          let argInfos ← functionArgInfos json
+          match ← functionCommandWithEffectSignature? nameIdent argInfos json isReal with
           | some cmd => pure cmd
           | none =>
               let bodyElems ← functionBodyElems json
               let valueStx ← functionValueSyntax argInfos bodyElems
-              -- A body using an `ℝ` transcendental (exact mode) forces a `noncomputable def`.
-              let nc ← bodyNeedsNoncomputable bodyElems
+              -- A real-valued body (transcendental, directly or via a callee) forces `noncomputable`.
+              let nc := isReal || (← bodyNeedsNoncomputable bodyElems)
               -- take care of recursion function Type
               if bodyElems.any (jsonReferencesName · name) then
                 let fullTy? ← match ← functionReturnTypeSyntax? json with

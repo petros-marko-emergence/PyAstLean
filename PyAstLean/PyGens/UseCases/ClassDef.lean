@@ -32,10 +32,13 @@ def classStructFieldSyntax (fieldJson : Json) :
     s!"Class field is missing a 'name': {fieldJson}"
   let fid := mkIdent fname.toName
   let intTy : TSyntax `term := mkIdent ``Int
+  -- A field the per-variable pass marked `_real` (holds an `ℝ` value, e.g. a trained weight) types
+  -- its annotation under real-context so `float`/`list[float]` → `ℝ`/`List ℝ`.
+  let isRealField := (← getNumericMode) == .exact && fieldJson.getObjValAs? Bool "_real" == .ok true
   let ty : TSyntax `term ←
     match (fieldJson.getObjVal? "annotation").toOption with
     | some (.null) | none => pure intTy
-    | some annJson => pure ((← functionArgTypeSyntax? annJson).getD intTy)
+    | some annJson => pure ((← withRealContext isRealField (functionArgTypeSyntax? annJson)).getD intTy)
   match (fieldJson.getObjVal? "default").toOption with
   | some (.null) | none => `(structSimpleBinder| $fid:ident : $ty)
   | some defJson =>
@@ -130,7 +133,12 @@ def classMethodDef (className : String) (info : ClassInfo) (m : Json) : PygenM (
       classSelfThreadingValue argInfos classTy bodyElems (selfIsParam := true)
     else
       functionValueSyntax argInfos bodyElems
-  applyPrivacy mName (← `(command| def $defIdent := $valueStx))
+  -- A method the per-variable pass stamped `_real_fn` (produces/handles an `ℝ` transcendental)
+  -- must be `noncomputable` in exact mode, exactly like a free function.
+  let nc := (← getNumericMode) == .exact && m.getObjValAs? Bool "_real_fn" == .ok true
+  let cmd ← if nc then `(command| noncomputable def $defIdent := $valueStx)
+            else `(command| def $defIdent := $valueStx)
+  applyPrivacy mName cmd
 
 /-- A `__repr__`/`__str__` method becomes a `PyPrintable` instance, so `print(obj)` / `str(obj)`
 use it (overriding the `deriving Repr` fallback). -/

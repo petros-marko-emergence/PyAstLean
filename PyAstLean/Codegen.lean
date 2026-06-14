@@ -28,6 +28,15 @@ def getNumericMode : IO NumericMode := numericModeRef.get
 /-- True when `float` should lower to `ℚ` (the default exact mode). -/
 def numericModeIsExact : IO Bool := return (← getNumericMode) == .exact
 
+/-- Whether the function currently being lowered is "real-valued" — it (transitively) produces an
+`ℝ` transcendental (the Python pass stamps such defs `_real_fn`). While set, exact-mode `float`
+literals/params lower to `ℝ` instead of `ℚ`, so the whole function is uniformly `ℝ` (noncomputable)
+rather than a `ℚ`/`ℝ` mix that won't type-check. Only consulted in exact mode. -/
+initialize realContextRef : IO.Ref Bool ← IO.mkRef false
+
+/-- Read whether we're lowering inside a real-valued (`ℝ`) function body. -/
+def getRealContext : IO Bool := realContextRef.get
+
 /-!
 ## Code generation from JSON data
 
@@ -86,6 +95,28 @@ def withoutCheck {α : Type} (x : PygenM α) : PygenM α :=
 
 def withUseArrow {α : Type} (x : PygenM α) : PygenM α :=
   withPygenStateField (·.useArrow) (fun st useArrow => { st with useArrow := useArrow }) true x
+
+/-- Run `x` with the real-context flag set to `b` (restoring it afterwards). Used to lower a
+real-marked assignment's RHS so its float literals (and list literals) become `ℝ`. -/
+def withRealContext {α : Type} (b : Bool) (x : PygenM α) : PygenM α := do
+  let saved ← realContextRef.get
+  realContextRef.set b
+  try
+    let r ← x
+    realContextRef.set saved
+    return r
+  catch e =>
+    realContextRef.set saved
+    throw e
+
+/-- Lower `x` in real-context when `json` carries the per-variable `_real` stamp (exact mode) — set
+by the Python pass on every assignment whose root variable holds an `ℝ` value, so the RHS literals
+are born `ℝ` (scalars would coerce, but `List ℚ ↛ List ℝ`, so list literals must be `ℝ` directly). -/
+def withRealIfMarked {α : Type} (json : Lean.Json) (x : PygenM α) : PygenM α := do
+  if (← getNumericMode) == .exact && json.getObjValAs? Bool "_real" == .ok true then
+    withRealContext true x
+  else
+    x
 
 def withFixedVariables {α : Type} (x : PygenM α) : PygenM α := do
   withPygenStateField (·.varNames) (fun st varNames => { st with varNames := varNames }) (← get).varNames x
