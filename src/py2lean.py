@@ -427,6 +427,245 @@ def annotate_io_effects(module_json):
         annotate_scope(module_json.get("body", []))
 
 
+# Library members whose result is a real (irrational) number — they lower to noncomputable `ℝ`
+# in exact mode (mirrors `pythonLibraryMapReal?` on the Lean side). A function that (transitively)
+# produces one of these can't stay in `ℚ`, so its floats lower to `ℝ` instead.
+REAL_TRANSCENDENTAL_MEMBERS = {
+    "math": {"sqrt", "exp", "log", "sin", "cos", "tan", "pi", "e"},
+    "numpy": {"exp", "log", "log10", "log2", "sqrt", "std"},
+    "scipy": {"pi", "gamma", "gmean", "norm"},
+}
+
+
+def _node_uses_transcendental(node):
+    module = node.get("library_module")
+    member = node.get("library_member")
+    return (
+        isinstance(module, str)
+        and module in REAL_TRANSCENDENTAL_MEMBERS
+        and member in REAL_TRANSCENDENTAL_MEMBERS[module]
+    )
+
+
+def _body_uses_transcendental(body):
+    for stmt in body:
+        for node in _walk_json_nodes(stmt, skip_nested_function_bodies=True):
+            if isinstance(node, dict) and _node_uses_transcendental(node):
+                return True
+    return False
+
+
+def _iter_function_defs(module_json):
+    """Every `FunctionDef` node anywhere in the module (including class methods and nested defs)."""
+    return [
+        node
+        for node in _walk_json_nodes(module_json)
+        if isinstance(node, dict) and node.get("node_type") == "FunctionDef"
+    ]
+
+
+def _func_own_body_nodes(fn):
+    """All IR nodes in `fn`'s OWN body — does not descend into nested function bodies."""
+    for stmt in fn.get("body", []):
+        yield from _walk_json_nodes(stmt, skip_nested_function_bodies=True)
+
+
+def _callee_name(func):
+    """The function/method name a `Call.func` refers to: a plain `Name` id, or an `Attribute`'s
+    `attr` (so `self.sigmoid(x)` / `obj.m(x)` resolve to method `sigmoid`/`m` by name)."""
+    if isinstance(func, dict):
+        if func.get("node_type") == "Name":
+            return func.get("id"), 0
+        if func.get("node_type") == "Attribute":
+            return func.get("attr"), 1  # method: args line up after the implicit `self`
+    return None, 0
+
+
+def _self_field_name(target):
+    """If `target` writes to `self.<field>` (possibly through subscripts, e.g. `self.w[i] = …`),
+    the field name; else `None`. Mutating an element makes the whole field hold the element type."""
+    t = target
+    while isinstance(t, dict) and t.get("node_type") == "Subscript":
+        t = t.get("value")
+    if isinstance(t, dict) and t.get("node_type") == "Attribute":
+        owner = t.get("value")
+        if isinstance(owner, dict) and owner.get("node_type") == "Name" and owner.get("id") == "self":
+            return t.get("attr")
+    return None
+
+
+def _assign_base_name(node):
+    """The root variable name an Assign/AnnAssign/AugAssign writes to, plus the `Name` target node
+    when the target is a plain `Name`. Follows `Subscript`/`Attribute` chains to the root (so
+    `w[0] = …` and `w[0][1] = …` both attribute to `w`), since mutating an element makes the whole
+    container hold the element's type."""
+    target = node.get("target")
+    name_node = target if isinstance(target, dict) and target.get("node_type") == "Name" else None
+    while isinstance(target, dict) and target.get("node_type") in ("Subscript", "Attribute"):
+        target = target.get("value")
+    if isinstance(target, dict) and target.get("node_type") == "Name":
+        return target.get("id"), name_node
+    return None, None
+
+
+def annotate_real_flow(module_json):
+    """Per-VARIABLE real-number dataflow. Marks (in exact mode) exactly the variables/parameters
+    that hold an irrational `ℝ` value, so the Lean backend ascribes `ℝ` only to those slots and
+    leaves everything else `ℚ`/`Int` (which stays computable + provable). Lean's `ℚ ↪ ℝ` scalar
+    coercion bridges a `ℚ` value flowing into an `ℝ` scalar position (call args, `q + sqrt x`).
+
+    Forward monotone fixpoint over a per-`(function, name)` lattice:
+      - a variable assigned an expression that is real → real;
+      - a call argument that is real → the callee's matching parameter is real (arg→param);
+      - a function whose `return` value is real → "returns real", which makes `y = f(…)` real.
+    An expression is real if it contains a transcendental member, references a real var/param, or
+    calls a function that returns real.
+
+    Stamps: `_real` on real parameter (`arg`) nodes and real assignment targets; `_real_fn` on any
+    function/guard that produces or *handles* an `ℝ` (drives `noncomputable`, decoupled from which
+    individual floats are `ℝ`)."""
+    if not (isinstance(module_json, dict) and module_json.get("node_type") == "Module"):
+        return
+
+    functions = {}
+    for fn in _iter_function_defs(module_json):
+        name = fn.get("name")
+        if isinstance(name, str):
+            functions[name] = fn  # last def wins on a (rare) name collision
+
+    param_names = {
+        name: [
+            a.get("arg")
+            for a in fn.get("args", {}).get("args", [])
+            if isinstance(a, dict)
+        ]
+        for name, fn in functions.items()
+    }
+    real_names = {name: set() for name in functions}  # real var/param names, per function
+    returns_real = {name: False for name in functions}
+    real_fields = set()  # instance fields `self.X` that hold an ℝ value (class-global)
+
+    def expr_is_real(expr, scope):
+        for node in _walk_json_nodes(expr, skip_nested_function_bodies=True):
+            if not isinstance(node, dict):
+                continue
+            if _node_uses_transcendental(node):
+                return True
+            node_type = node.get("node_type")
+            if node_type == "Name" and node.get("id") in real_names[scope]:
+                return True
+            if node_type == "Attribute":
+                owner = node.get("value")
+                if (
+                    isinstance(owner, dict)
+                    and owner.get("node_type") == "Name"
+                    and owner.get("id") == "self"
+                    and node.get("attr") in real_fields
+                ):
+                    return True
+            if node_type == "Call":
+                callee, _ = _callee_name(node.get("func"))
+                if returns_real.get(callee, False):
+                    return True
+        return False
+
+    changed = True
+    while changed:
+        changed = False
+        for name, fn in functions.items():
+            for node in _func_own_body_nodes(fn):
+                node_type = node.get("node_type")
+                if node_type in ("Assign", "AnnAssign", "AugAssign"):
+                    base_name, _ = _assign_base_name(node)
+                    value = node.get("value")
+                    if (
+                        base_name
+                        and value is not None
+                        and base_name not in real_names[name]
+                        and expr_is_real(value, name)
+                    ):
+                        real_names[name].add(base_name)
+                        changed = True
+                    field = _self_field_name(node.get("target"))
+                    if (
+                        field
+                        and field not in real_fields
+                        and value is not None
+                        and expr_is_real(value, name)
+                    ):
+                        real_fields.add(field)
+                        changed = True
+                elif node_type == "Call":
+                    callee, self_offset = _callee_name(node.get("func"))
+                    if callee in functions:
+                        for i, arg in enumerate(node.get("args", [])):
+                            pi = i + self_offset  # skip the implicit `self` for method calls
+                            if pi >= len(param_names[callee]):
+                                break
+                            pname = param_names[callee][pi]
+                            if (
+                                pname
+                                and pname not in real_names[callee]
+                                and expr_is_real(arg, name)
+                            ):
+                                real_names[callee].add(pname)
+                                changed = True
+                elif node_type == "Return":
+                    value = node.get("value")
+                    if (
+                        value is not None
+                        and not returns_real[name]
+                        and expr_is_real(value, name)
+                    ):
+                        returns_real[name] = True
+                        changed = True
+
+    # Stamp the IR with the converged marks.
+    for name, fn in functions.items():
+        reals = real_names[name]
+        for a in fn.get("args", {}).get("args", []):
+            if isinstance(a, dict) and a.get("arg") in reals:
+                a["_real"] = True
+        for node in _func_own_body_nodes(fn):
+            node_type = node.get("node_type")
+            if node_type in ("Assign", "AnnAssign", "AugAssign"):
+                base_name, target_node = _assign_base_name(node)
+                # Stamp EVERY assignment whose root var is real (even a `x = 0.0` whose own RHS
+                # isn't real but `x` is real elsewhere), so the RHS is lowered in real-context
+                # (literals → `ℝ`, list literals → `List ℝ`); the mutable then infers `ℝ`.
+                if base_name in reals or _self_field_name(node.get("target")) in real_fields:
+                    node["_real"] = True
+                    if target_node is not None:
+                        target_node["_real"] = True
+            elif node_type == "Return" and returns_real[name]:
+                # The function's return type is `ℝ`; lower every `return` value in real-context so a
+                # literal-only branch (e.g. `return -1.0, []`) matches an `ℝ`-valued branch.
+                node["_real"] = True
+        # `noncomputable` if the function produces OR merely handles any ℝ value (e.g. prints it).
+        handles_real = any(expr_is_real(stmt, name) for stmt in fn.get("body", []))
+        if reals or returns_real[name] or handles_real:
+            fn["_real_fn"] = True
+
+    # Stamp `_real` on the structure-field declarations of real instance fields (so the Lean
+    # `structure` types them `ℝ`), matching the real-context values written into them.
+    for node in _walk_json_nodes(module_json):
+        if isinstance(node, dict) and node.get("node_type") == "ClassDef":
+            for fld in node.get("fields", []):
+                if isinstance(fld, dict) and fld.get("name") in real_fields:
+                    fld["_real"] = True
+
+    # The `__main__` guard becomes Lean's `def main`; if it calls a noncomputable (`_real_fn`)
+    # function, that wrapper must be `noncomputable` too.
+    real_fn_names = {name for name, fn in functions.items() if fn.get("_real_fn")}
+    for stmt in module_json.get("body", []):
+        if isinstance(stmt, dict) and stmt.get("node_type") == "If":
+            guard_body = stmt.get("body", [])
+            if _body_uses_transcendental(guard_body) or _body_calls_known_functions(
+                guard_body, real_fn_names
+            ):
+                stmt["_real_fn"] = True
+
+
 def _imported_alias_name(alias_node):
     asname = alias_node.get("asname")
     if isinstance(asname, str) and asname:
@@ -658,6 +897,7 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
     annotate_library_imports(data)
     annotate_exception_effects(data)
     annotate_io_effects(data)
+    annotate_real_flow(data)
     annotate_main_entrypoint(data)
     annotate_toplevel_state(data)
     annotate_if_assigned_names(data)
