@@ -215,7 +215,7 @@ def mappedCallableValueCode (json : Json) : PygenM (TSyntax `term) := do
   | none =>
       match json.getObjValAs? String "node_type", json.getObjValAs? String "id" with
       | .ok "Name", .ok funcName =>
-          match pythonBuiltinMap? funcName with
+          match ← builtinMappedName? funcName with
           | some mappedName => pure (mkIdent mappedName : TSyntax `term)
           | none =>
               let mappedName ← leanName funcName.toName
@@ -542,7 +542,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
               let foldIdent := mkIdent foldFn
               return ← buildIOPureApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
                 foldBinaryOverArgs foldIdent dir resolvedArgs
-            else match pythonBuiltinMap? funcName with
+            else match ← builtinMappedName? funcName with
             | some mappedName => funcIdent := (mkIdent mappedName : TSyntax `term)
             | none =>
                 let mappedName ← leanName funcName.toName
@@ -862,7 +862,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
                         | some c => pure (some c) | none => constructorClassOfName? funcName) with
             | some cls => funcIdent := (mkIdent (Name.mkStr cls.toName "new") : TSyntax `term)
             | none =>
-            match pythonBuiltinMap? funcName with
+            match ← builtinMappedName? funcName with
             | some mappedName => funcIdent := (mkIdent mappedName : TSyntax `term)
             | none =>
                 let mappedName ← leanName funcName.toName

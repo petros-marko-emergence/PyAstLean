@@ -142,7 +142,7 @@ partial def inlineIOTerm (json : Json) : PygenM (TSyntax `term) := do
             else
               match argJson.getObjValAs? String "node_type", argJson.getObjValAs? String "id" with
               | .ok "Name", .ok funcName =>
-                  match pythonBuiltinMap? funcName with
+                  match ← builtinMappedName? funcName with
                   | some mappedName =>
                       inlineArgs := inlineArgs.push ((mkIdent mappedName : TSyntax `term))
                   | none =>
@@ -176,7 +176,7 @@ partial def inlineIOTerm (json : Json) : PygenM (TSyntax `term) := do
           else
             match funcJson.getObjValAs? String "node_type", funcJson.getObjValAs? String "id" with
             | .ok "Name", .ok funcName =>
-                match pythonBuiltinMap? funcName with
+                match ← builtinMappedName? funcName with
                 | some mappedName => funcTerm := (mkIdent mappedName : TSyntax `term)
                 | none =>
                     let mappedName ← leanName funcName.toName

@@ -61,6 +61,47 @@ def exceptionValueTerm (excJson? : Option Json) : PygenM (TSyntax `term) := do
           let msgTerm ← getCode excJson `term
           `($mkExcIdent "Exception" (toString $msgTerm))
 
+/-- Whether a statement may `return` a value on some path, scanning the statement and the
+control-flow branches it owns (`If`/`For`/`While`/`With`/nested `Try`) but **not** descending into
+nested `FunctionDef`/`Lambda` bodies (whose `return`s belong to the inner scope). Used to decide
+whether a `try` body produces a non-`Unit` value that must be propagated out of the `try`. -/
+partial def statementMayYieldValue (stmt : Json) : Bool :=
+  match jsonNodeType? stmt with
+  | some "Return" =>
+      -- A bare `return` (no value) yields `Unit`; a `return <expr>` yields a value.
+      match jsonFieldOption stmt "value" with
+      | some _ => true
+      | none => false
+  | some "FunctionDef" => false
+  | some "Lambda" => false
+  | some _ =>
+      match stmt with
+      | .obj fields =>
+          fields.toList.any fun (key, value) =>
+            -- Only recurse into fields that hold owned sub-statements.
+            if key == "body" || key == "orelse" || key == "finalbody"
+                || key == "handlers" then
+              match value with
+              | .arr elems => elems.toList.any statementMayYieldValue
+              | _ => statementMayYieldValue value
+            else
+              false
+      | _ => false
+  | none => false
+
+/-- Whether any statement in `bodyElems` may `return` a value (see `statementMayYieldValue`). -/
+def statementListMayYieldValue (bodyElems : Array Json) : Bool :=
+  bodyElems.toList.any statementMayYieldValue
+
+/-- Whether any `except` handler's body may `return` a value. If a handler returns a value, the
+whole `try` expression has a non-`Unit` result type, so the `try` branch must also produce that
+type (even when the try-body itself only raises). -/
+def handlersListMayYieldValue (handlersElems : Array Json) : Bool :=
+  handlersElems.toList.any fun handlerJson =>
+    match handlerJson.getObjValAs? (Array Json) "body" with
+    | .ok bodyElems => statementListMayYieldValue bodyElems
+    | .error _ => false
+
 /-- Build the guard deciding whether a caught exception should enter a given handler. -/
 def handlerConditionTerm (caughtIdent : TSyntax `ident) (handlerType? : Option Json) : PygenM (TSyntax `term) := do
   match handlerType? with
@@ -165,10 +206,32 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
   -- in the handler still target the enclosing loop), matching Python's catch-all `except:`.
   let captureIdent := mkIdent ``PyAstLean.PyExcept.captureIOErrors
   let wrappedBody ← `($captureIdent (do $bodyBlock:doElem))
+  -- If the try-body (or its `else`) can `return` a value, that value is the result of the whole
+  -- `try` expression and must be propagated out; binding-and-discarding with `let _ ←` would pin
+  -- the try-branch to `Unit` and clash with a value-returning `catch`. When the body is purely
+  -- effectful we keep `let _ ←` so the try-branch stays `Unit` (e.g. inside a loop body, where an
+  -- unconditional `return` would wrongly exit the enclosing function).
+  -- The whole `try` expression yields a value if the body (or `else`) can `return` one, OR if any
+  -- `except` handler can — in the latter case the `catch` branch produces a value, so the `try`
+  -- branch must produce the same type. We bind the body's result to a fresh name and `return` it
+  -- (rather than emitting a bare `return (← …)`, which mis-pretty-prints into an illegal
+  -- mid-sequence `return`). When the body only raises, `wrappedBody` is polymorphic and unifies
+  -- with the handler's value type.
+  let bodyYieldsValue :=
+    statementListMayYieldValue (bodyElems ++ orelseElems)
+      || handlersListMayYieldValue handlersElems
+  let tryBranch ←
+    if bodyYieldsValue then
+      let tryValName := mkIdent (← freshName `__py_try_val)
+      `(doElem| do
+          let $tryValName ← $wrappedBody:term
+          return $tryValName)
+    else
+      `(doElem| let _ ← $wrappedBody:term)
   if finalbodyElems.isEmpty then
     `(((do
           try
-            let _ ← $wrappedBody:term
+            $tryBranch:doElem
           catch $catchIdent =>
             $catchBody:doElem) : $exceptIdent _))
   else
@@ -176,7 +239,7 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
     let finalBlock ← sequenceDoElems finalElems (← noopDoElemSyntax)
     `(((do
           try
-            let _ ← $wrappedBody:term
+            $tryBranch:doElem
           catch $catchIdent =>
             $catchBody:doElem
           finally
@@ -216,16 +279,30 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
         -- `break`/`continue` still target the enclosing loop. Matches Python's catch-all `except:`.
         let captureIdent := mkIdent ``PyAstLean.PyExcept.captureIOErrors
         let wrappedBody ← `($captureIdent (do $bodyBlock:doElem))
+        -- See `tryExceptTerm`: propagate the body's value out of the `try` when it (or any handler)
+        -- can `return` one, binding it to a fresh name and returning it; otherwise keep the
+        -- effectful `let _ ←` form.
+        let bodyYieldsValue :=
+          statementListMayYieldValue (bodyElems ++ orelseElems)
+            || handlersListMayYieldValue handlersElems
+        let tryBranch ←
+          if bodyYieldsValue then
+            let tryValName := mkIdent (← freshName `__py_try_val)
+            `(doElem| do
+                let $tryValName ← $wrappedBody:term
+                return $tryValName)
+          else
+            `(doElem| let _ ← $wrappedBody:term)
         if finalbodyElems.isEmpty then
           `(doElem| try
-              let _ ← $wrappedBody:term
+              $tryBranch:doElem
             catch $catchIdent =>
               $catchBody:doElem)
         else
           let finalElems ← tryBranchBodySyntax finalbodyElems
           let finalBlock ← sequenceDoElems finalElems (← noopDoElemSyntax)
           `(doElem| try
-              let _ ← $wrappedBody:term
+              $tryBranch:doElem
             catch $catchIdent =>
               $catchBody:doElem
             finally

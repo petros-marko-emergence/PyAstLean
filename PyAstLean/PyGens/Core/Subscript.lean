@@ -21,7 +21,14 @@ def subscriptTermFromValue (valueJson sliceJson : Json) (valueCode : TSyntax `te
     PygenM (TSyntax `term) := do
     let isTuple := match valueJson.getObjValAs? String "node_type" with
     | .ok "Tuple" => true
-    | _ => false
+    | _ =>
+      -- A `Name` that codegen has marked as a known pair-typed value (e.g. a lambda parameter
+      -- bound to `α × β` and used via `pair[0]`/`pair[1]`) is treated like a tuple literal so a
+      -- constant `0`/`1` index lowers to `Prod.fst`/`Prod.snd` rather than the generic
+      -- `pyGetItem` notation (which has no `PyGetItem` instance for heterogeneous products).
+      match valueJson.getObjValAs? Bool "_pyastlean_pair" with
+      | .ok true => true
+      | _ => false
     let isString := isStringConstant valueJson
 
     let sliceType := sliceJson.getObjValAs? String "node_type"

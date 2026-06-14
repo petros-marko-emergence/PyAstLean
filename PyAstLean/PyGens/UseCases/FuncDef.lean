@@ -31,7 +31,11 @@ partial def functionArgTypeSyntax? (annotationJson : Json) : PygenM (Option (TSy
       | "int" | "Int" => return some (mkIdent ``Int)
       | "bool" | "Bool" => return some (mkIdent ``Bool)
       | "str" | "String" => return some (mkIdent ``String)
-      | "float" | "Float" => return some (mkIdent ``Float)
+      -- `float` → exact `ℚ` (default) or `Float` (--approx).
+      | "float" | "Float" =>
+          match ← getNumericMode with
+          | .exact => return some (mkIdent ``Rat)
+          | .approx => return some (mkIdent ``Float)
       | "Any" => return none -- let Lean handle the type inference for now
       | _ => return none
   | "Subscript" =>
@@ -81,10 +85,48 @@ def functionBodyElems (json : Json) : PygenM (Array Json) := do
     s!"FuncDef node does not have a 'body' field or it is not a JSON value: {json}"
   return bodyElems
 
+/-- Whether the JSON references a library member that lowers to a `noncomputable` `ℝ`
+transcendental (`math.exp`, `math.sqrt`, …). Used to mark a generated `def` as `noncomputable`
+in exact mode — Lean rejects an unmarked `def` whose body transitively uses `Real.*`. -/
+partial def jsonUsesRealTranscendental (json : Json) : Bool :=
+  let directMatch :=
+    match json.getObjValAs? String "library_module", json.getObjValAs? String "library_member" with
+    | .ok m, .ok mem => (Libraries.pythonLibraryMapReal? m mem).isSome
+    | _, _ => false
+  if directMatch then true
+  else
+    match json with
+    | .arr elems => elems.toList.any jsonUsesRealTranscendental
+    | .obj fields => fields.toList.any (fun (_, value) => jsonUsesRealTranscendental value)
+    | _ => false
+
+/-- Whether any body statement uses an `ℝ` transcendental, but only in exact numeric mode
+(in `--approx` the transcendentals stay computable `Float`, so no `noncomputable` is needed). -/
+def bodyNeedsNoncomputable (bodyElems : Array Json) : PygenM Bool := do
+  if (← getNumericMode) == .exact then
+    return bodyElems.any jsonUsesRealTranscendental
+  else
+    return false
+
+/-- Whether a type annotation mentions `float` anywhere (`float`, `list[float]`, `dict[_,float]`). -/
+partial def annotationMentionsFloat (json : Json) : Bool :=
+  if json.getObjValAs? String "node_type" == .ok "Name" then
+    json.getObjValAs? String "id" == .ok "float" || json.getObjValAs? String "id" == .ok "Float"
+  else
+    (match (json.getObjVal? "slice").toOption with | some s => annotationMentionsFloat s | none => false)
+    || (match (json.getObjValAs? (Array Json) "elts").toOption with
+        | some es => es.any annotationMentionsFloat | none => false)
+
 /-- Read a Python function return annotation when it maps cleanly to a Lean runtime type. -/
 def functionReturnTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
   match jsonFieldOption json "returns" with
-  | some returnJson => functionArgTypeSyntax? returnJson
+  | some returnJson =>
+      -- In exact mode a `float`-involving return is left UNASCRIBED so Lean infers `ℚ` (a rational
+      -- function) or `ℝ` (a transcendental one); a fixed `ℚ` would clash with an `ℝ` body.
+      if (← getNumericMode) == .exact && annotationMentionsFloat returnJson then
+        pure none
+      else
+        functionArgTypeSyntax? returnJson
   | none => pure none
 
 /-- Check whether a JSON subtree references a given variable name. -/
@@ -261,24 +303,28 @@ def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
     PygenM (Option (TSyntax `command)) := do
   let bodyElems ← functionBodyElems json
   let returnTy? ← functionReturnTypeSyntax? json
-  if bodyNeedsIOMonad bodyElems then
+  -- Exceptions take precedence over `IO`: `PyExcept` already layers `ExceptT` over `IO`, so a body
+  -- that both prints and raises must be typed `PyExcept` (not `IO`), or the `try`/`catch` runs in
+  -- raw `IO` and the caught value is `IO.Error` instead of `PyException`. Mirrors the body-lowering
+  -- precedence in `functionDefSyntax`.
+  if bodyNeedsExceptionMonad bodyElems then
     match returnTy? with
     | none => return none
     | some retTy =>
-        let ioIdent := mkIdent ``IO
-        let codomain ← `($ioIdent $retTy)
+        let exceptIdent := mkIdent ``PyAstLean.PyExcept
+        let codomain ← `($exceptIdent $retTy)
         match ← functionArrowTypeSyntax? argInfos codomain with
         | some fullTy =>
             let valueStx ← functionMonadicValueNoCast argInfos bodyElems
             return some (← `(command| def $nameIdent : $fullTy := $valueStx))
         | none =>
             return none
-  else if bodyNeedsExceptionMonad bodyElems then
+  else if bodyNeedsIOMonad bodyElems then
     match returnTy? with
     | none => return none
     | some retTy =>
-        let exceptIdent := mkIdent ``PyAstLean.PyExcept
-        let codomain ← `($exceptIdent $retTy)
+        let ioIdent := mkIdent ``IO
+        let codomain ← `($ioIdent $retTy)
         match ← functionArrowTypeSyntax? argInfos codomain with
         | some fullTy =>
             let valueStx ← functionMonadicValueNoCast argInfos bodyElems
@@ -292,8 +338,15 @@ def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
 def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
     | `command, json => do
-        let .ok name := json.getObjValAs? String "name" | throwError
+        let .ok rawName := json.getObjValAs? String "name" | throwError
           s!"FuncDef node does not have a 'name' field or it is not a string: {json}"
+        -- Lean reserves the top-level name `main` for the program entry point and requires it to
+        -- have type `IO (UInt32 | Unit | PUnit)`. A Python function literally named `main` that is
+        -- NOT the `__main__` entry point would emit `def main := …` and be rejected. The Python
+        -- pre-pass already renames `main` → `main'` whenever a `__main__` guard exists (so the guard
+        -- owns the entry point); therefore any `FunctionDef` that still reaches here named `main`
+        -- is a plain helper with no guard, and must yield the reserved name to stay compilable.
+        let name := if rawName == "main" then "main'" else rawName
         let nameIdent := mkIdent name.toName
         let argInfos ← functionArgInfos json
         let cmd ← match ← functionCommandWithEffectSignature? nameIdent argInfos json with
@@ -301,14 +354,20 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
           | none =>
               let bodyElems ← functionBodyElems json
               let valueStx ← functionValueSyntax argInfos bodyElems
+              -- A body using an `ℝ` transcendental (exact mode) forces a `noncomputable def`.
+              let nc ← bodyNeedsNoncomputable bodyElems
               -- take care of recursion function Type
               if bodyElems.any (jsonReferencesName · name) then
-                match ← functionReturnTypeSyntax? json with
-                | some retTy =>
-                    match ← functionArrowTypeSyntax? argInfos retTy with
-                    | some fullTy => `(partial def $nameIdent : $fullTy := $valueStx)
-                    | none => `(partial def $nameIdent := $valueStx)
-                | none => `(partial def $nameIdent := $valueStx)
+                let fullTy? ← match ← functionReturnTypeSyntax? json with
+                  | some retTy => functionArrowTypeSyntax? argInfos retTy
+                  | none => pure none
+                match fullTy?, nc with
+                | some fullTy, true => `(noncomputable partial def $nameIdent : $fullTy := $valueStx)
+                | some fullTy, false => `(partial def $nameIdent : $fullTy := $valueStx)
+                | none, true => `(noncomputable partial def $nameIdent := $valueStx)
+                | none, false => `(partial def $nameIdent := $valueStx)
+              else if nc then
+                `(noncomputable def $nameIdent := $valueStx)
               else
                 `(def $nameIdent := $valueStx)
         -- Python's leading-underscore convention (`def _foo`) maps to a Lean `private def`.
