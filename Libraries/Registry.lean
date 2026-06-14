@@ -21,4 +21,18 @@ def pythonLibraryMap? (moduleName member : String) : Option Lean.Name :=
   | "scipy" => scipy.pythonScipyMemberMap? member
   | _ => none
 
+/--
+Exact-mode (`ℝ`, `noncomputable`) registry for transcendental library members.
+
+In the default numeric mode codegen consults this first; a hit lowers `math.exp` etc. to the
+`Real.*`-backed version (provable, not runnable). A miss falls back to `pythonLibraryMap?` (the
+regular, often `Float`-valued, mapping) — so non-transcendental members are unaffected.
+-/
+def pythonLibraryMapReal? (moduleName member : String) : Option Lean.Name :=
+  match moduleName with
+  | "math" => math.pythonMathMemberMapReal? member
+  | "numpy" => numpy.pythonNumpyMemberMapReal? member
+  | "scipy" => scipy.pythonScipyMemberMapReal? member
+  | _ => none
+
 end Libraries

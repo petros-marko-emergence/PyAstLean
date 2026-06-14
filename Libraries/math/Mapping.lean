@@ -51,4 +51,18 @@ def pythonMathMemberMap? (member : String) : Option Lean.Name :=
   | "perm" => some ``pyMathPerm
   | _ => none
 
+/-- Exact (`ℝ`) versions of the transcendental members, used in the default numeric mode.
+`none` for non-transcendental members (those keep their regular `pythonMathMemberMap?` mapping). -/
+def pythonMathMemberMapReal? (member : String) : Option Lean.Name :=
+  match member with
+  | "sqrt" => some ``pyMathSqrtR
+  | "exp" => some ``pyMathExpR
+  | "log" => some ``pyMathLogR
+  | "sin" => some ``pyMathSinR
+  | "cos" => some ``pyMathCosR
+  | "tan" => some ``pyMathTanR
+  | "pi" => some ``pyMathPiR
+  | "e" => some ``pyMathER
+  | _ => none
+
 end Libraries.math

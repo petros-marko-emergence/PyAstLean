@@ -28,4 +28,14 @@ def pythonScipyMemberMap? (member : String) : Option Lean.Name :=
   | "odeint" => some ``pyScipyOdeint
   | _ => none
 
+/-- Exact (`ℝ`) versions of scipy scalar members, used in the default numeric mode.
+`none` for everything else (those keep their regular `pythonScipyMemberMap?` mapping). -/
+def pythonScipyMemberMapReal? (member : String) : Option Lean.Name :=
+  match member with
+  | "pi" => some ``pyScipyPiR
+  | "gamma" => some ``pyScipyGammaR
+  | "gmean" => some ``pyScipyGmeanR
+  | "norm" => some ``pyScipyNormR
+  | _ => none
+
 end Libraries.scipy
