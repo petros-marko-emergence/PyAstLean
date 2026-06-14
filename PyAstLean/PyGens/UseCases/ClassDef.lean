@@ -73,7 +73,7 @@ def classSelfThreadingValue (argInfos : Array (TSyntax `ident × Option (TSyntax
 no value reading `self`), return the `(field, valueJson)` pairs in order — the case that lowers to
 a plain record literal (which honors structure field defaults for unassigned fields). `none`
 otherwise (then the constructor threads a mutable `self` from `default`). -/
-def initFieldAssignments? (bodyElems : Array Json) : Option (Array (String × Json)) := Id.run do
+def initFieldAssignments? (bodyElems : Array Json) : Option (Array (String × Json × Bool)) := Id.run do
   let mut out := #[]
   for s in bodyElems do
     if jsonNodeType? s != some "Assign" then return none
@@ -81,14 +81,16 @@ def initFieldAssignments? (bodyElems : Array Json) : Option (Array (String × Js
     let some attr := selfAttrTarget? target | return none
     let some value := (s.getObjVal? "value").toOption | return none
     if jsonReferencesName value "self" then return none
-    out := out.push (attr, value)
+    -- carry the per-field `_real` stamp so a real field's initial value is lowered in real-context
+    out := out.push (attr, value, s.getObjValAs? Bool "_real" == .ok true)
   return some out
 
 /-- The smart constructor `C.new` from `__init__`. A straight-line `__init__` becomes a record
 literal `{ field := … }` (so unassigned fields take their structure defaults); anything else threads
 a mutable `self` from `default`. Named `new` (not `mk`) to avoid clashing with the structure's
 auto-generated `C.mk` field constructor. -/
-def classInitConstructor (className : String) (initJson : Json) : PygenM (TSyntax `command) := do
+def classInitConstructor (className : String) (initJson : Json) (hasRealField : Bool) :
+    PygenM (TSyntax `command) := do
   let mkIdentC := mkIdent (Name.mkStr className.toName "new")
   let classTy : TSyntax `term := mkIdent className.toName
   let argInfos := (← functionArgInfos initJson).drop 1   -- drop the leading `self`
@@ -96,8 +98,9 @@ def classInitConstructor (className : String) (initJson : Json) : PygenM (TSynta
   let valueStx ← withFreshVariables do
     match initFieldAssignments? bodyElems with
     | some pairs =>
-        let fields ← pairs.mapM fun (attr, valJson) => do
-          let v ← getCode valJson `term
+        let fields ← pairs.mapM fun (attr, valJson, isReal) => do
+          -- a real field's initial value is lowered in real-context so it matches the `ℝ` field type
+          let v ← if isReal then withRealContext true (getCode valJson `term) else getCode valJson `term
           `(Lean.Parser.Term.structInstField| $(mkIdent attr.toName):ident := $v)
         let mut result : TSyntax `term ← `(({ $fields:structInstField,* } : $classTy))
         for (argIdent, ty?) in argInfos.toList.reverse do
@@ -108,9 +111,14 @@ def classInitConstructor (className : String) (initJson : Json) : PygenM (TSynta
     | none =>
         withCurrentClass className [] do
           classSelfThreadingValue argInfos classTy bodyElems (selfIsParam := false)
+  -- A constructor building a struct with `ℝ` fields is `noncomputable`.
+  let mkDef : TSyntax `term → PygenM (TSyntax `command) := fun ty =>
+    if hasRealField then `(command| noncomputable def $mkIdentC : $ty := $valueStx)
+    else `(command| def $mkIdentC : $ty := $valueStx)
   match ← functionArrowTypeSyntax? argInfos classTy with
-  | some fullTy => `(command| def $mkIdentC : $fullTy := $valueStx)
-  | none => `(command| def $mkIdentC := $valueStx)
+  | some fullTy => mkDef fullTy
+  | none => if hasRealField then `(command| noncomputable def $mkIdentC := $valueStx)
+            else `(command| def $mkIdentC := $valueStx)
 
 /-- One method `def C.method …`. A getter is a pure `functionValueSyntax`; a mutator returns the
 rebuilt `self`. Static/class methods drop the leading `self`/`cls`. -/
@@ -191,6 +199,10 @@ def classDefSyntax : (kind : SyntaxNodeKind) → Json → PygenM (TSyntax kind)
       registerClass name info
 
       let hasEq := methodNames.contains "__eq__"
+      -- A class with an `ℝ` field (exact mode) can't derive a COMPUTABLE `BEq` (`Real.decidableEq`
+      -- is noncomputable), and its constructor builds an `ℝ` struct → `noncomputable`.
+      let hasRealField := (← getNumericMode) == .exact
+        && fields.any (fun f => f.getObjValAs? Bool "_real" == .ok true)
       -- The structure, carrying the class docstring as its `/-- … -/` doc comment (when present)
       -- and `extends Base` for a single base. `BEq` is derived separately below unless the class
       -- supplies `__eq__` (which becomes a custom `BEq` instance).
@@ -225,7 +237,7 @@ def classDefSyntax : (kind : SyntaxNodeKind) → Json → PygenM (TSyntax kind)
                 $[$fieldBinders]* deriving Inhabited, Repr)
 
       let mut members : Array (TSyntax `command) := #[structCmd]
-      unless hasEq do
+      unless hasEq || hasRealField do
         members := members.push (← `(command| deriving instance BEq for $nameId:ident))
 
       -- Constructor (from `__init__`), operator/printable dunders, and the remaining methods.
@@ -235,7 +247,7 @@ def classDefSyntax : (kind : SyntaxNodeKind) → Json → PygenM (TSyntax kind)
           s!"Class method is missing a 'name': {m}"
         if mName == "__init__" then
           hasInit := true
-          members := members.push (← classInitConstructor name m)
+          members := members.push (← classInitConstructor name m hasRealField)
         else if mName == "__str__" || (mName == "__repr__" && !methodNames.contains "__str__") then
           -- Prefer `__str__` for `pyStringify` when both are defined (Python `str()`/`print`).
           members := members.push (← classPrintableInstance name m)

@@ -610,6 +610,27 @@ def annotate_real_flow(module_json):
                             ):
                                 real_names[callee].add(pname)
                                 changed = True
+                    # A list-mutating method `xs.append(v)` / `.extend(v)` / `.insert(i, v)` makes
+                    # the receiver hold `v`'s type — so a list built by appending real values is real.
+                    func = node.get("func")
+                    if (
+                        isinstance(func, dict)
+                        and func.get("node_type") == "Attribute"
+                        and func.get("attr") in ("append", "extend", "insert")
+                    ):
+                        args = node.get("args", [])
+                        if args and expr_is_real(args[-1], name):
+                            recv = func.get("value")
+                            if isinstance(recv, dict) and recv.get("node_type") == "Name":
+                                rn = recv.get("id")
+                                if rn and rn not in real_names[name]:
+                                    real_names[name].add(rn)
+                                    changed = True
+                            else:
+                                fld = _self_field_name(recv)
+                                if fld and fld not in real_fields:
+                                    real_fields.add(fld)
+                                    changed = True
                 elif node_type == "Return":
                     value = node.get("value")
                     if (
@@ -641,10 +662,31 @@ def annotate_real_flow(module_json):
                 # The function's return type is `ℝ`; lower every `return` value in real-context so a
                 # literal-only branch (e.g. `return -1.0, []`) matches an `ℝ`-valued branch.
                 node["_real"] = True
-        # `noncomputable` if the function produces OR merely handles any ℝ value (e.g. prints it).
-        handles_real = any(expr_is_real(stmt, name) for stmt in fn.get("body", []))
-        if reals or returns_real[name] or handles_real:
-            fn["_real_fn"] = True
+
+    # `_real_fn` (→ `noncomputable`) — a function is noncomputable if it produces or *handles* an ℝ
+    # value, OR calls a `_real_fn` function (cascade through void calls too, e.g. `main` → `train`).
+    real_fn = {
+        name
+        for name, fn in functions.items()
+        if real_names[name]
+        or returns_real[name]
+        or any(expr_is_real(stmt, name) for stmt in fn.get("body", []))
+    }
+    changed = True
+    while changed:
+        changed = False
+        for name, fn in functions.items():
+            if name in real_fn:
+                continue
+            for node in _func_own_body_nodes(fn):
+                if node.get("node_type") == "Call":
+                    callee, _ = _callee_name(node.get("func"))
+                    if callee in real_fn:
+                        real_fn.add(name)
+                        changed = True
+                        break
+    for name in real_fn:
+        functions[name]["_real_fn"] = True
 
     # Stamp `_real` on the structure-field declarations of real instance fields (so the Lean
     # `structure` types them `ℝ`), matching the real-context values written into them.
