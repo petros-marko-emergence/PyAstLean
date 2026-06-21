@@ -2,6 +2,27 @@ import Mathlib
 
 namespace Libraries.numpy
 
+/-- The numeric scalar an RK4/odeint integration and a `linspace` grid run over — `Float` (runnable)
+or `ℚ`/`ℝ` (provable). Bundles only the ops these use (NOT `Field`, which `Float` lacks). Lives here
+(numpy, the base library) so both `np.linspace` and `scipy.odeint` can share it. -/
+class PyOdeScalar (α : Type) where
+  add : α → α → α
+  sub : α → α → α
+  mul : α → α → α
+  div : α → α → α
+  ofNat : Nat → α
+
+instance : PyOdeScalar Float := ⟨(·+·), (·-·), (·*·), (·/·), Float.ofNat⟩
+instance : PyOdeScalar Rat := ⟨(·+·), (·-·), (·*·), (·/·), fun n => (n : ℚ)⟩
+noncomputable instance : PyOdeScalar ℝ := ⟨(·+·), (·-·), (·*·), (·/·), fun n => (n : ℝ)⟩
+
+namespace PyOdeScalar
+scoped infixl:65 " +ₒ " => PyOdeScalar.add
+scoped infixl:65 " -ₒ " => PyOdeScalar.sub
+scoped infixl:70 " *ₒ " => PyOdeScalar.mul
+scoped infixl:70 " /ₒ " => PyOdeScalar.div
+end PyOdeScalar
+
 /-- Types that can be treated as NumPy numeric entries by the runtime layer. -/
 class PyNumpyScalar (α : Type) where
   toFloat : α → Float

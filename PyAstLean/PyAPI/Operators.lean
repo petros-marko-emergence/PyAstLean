@@ -66,6 +66,11 @@ instance (priority := high) : PyHSub Nat Nat Int where
 instance (priority := high) : PyHSub Rat Int Rat where
   hSub := fun a b => (a : Rat) - (b : Int)
 
+-- Symmetric `Int - Rat` (e.g. `1 - g/k` in a logistic term where `g/k : ℚ`). Plain instance, NOT
+-- `@[default_instance]` (same rat-default-instance hazard note as above).
+instance (priority := high) : PyHSub Int Rat Rat where
+  hSub := fun a b => (a : Rat) - b
+
 class PyHMul (α β : Type) (γ : outParam Type) where
   hMul : α → β → γ
 
@@ -250,6 +255,7 @@ In exact mode a transcendental yields `ℝ` while the surrounding rational/integ
 e.g. `g *ₚ math.log (g +ₚ 1)` with `g : ℚ`. Lean has no heterogeneous `HMul ℚ ℝ`, so these promote
 the rational/integer operand into `ℝ` and produce `ℝ`. (`ℝ×ℝ` already works via the generic
 `[HMul α β γ]` instance.) `noncomputable`, since the `ℚ ↪ ℝ` / `ℤ ↪ ℝ` casts are. -/
+noncomputable instance (priority := high) : PyHMul Real Real Real where hMul a b := (a : ℝ) * b
 noncomputable instance (priority := high) : PyHMul Rat Real Real where hMul a b := (a : ℝ) * b
 noncomputable instance (priority := high) : PyHMul Real Rat Real where hMul a b := a * (b : ℝ)
 noncomputable instance (priority := high) : PyHMul Int Real Real where hMul a b := (a : ℝ) * b
@@ -257,6 +263,7 @@ noncomputable instance (priority := high) : PyHMul Real Int Real where hMul a b 
 noncomputable instance (priority := high) : PyHMul Nat Real Real where hMul a b := (a : ℝ) * b
 noncomputable instance (priority := high) : PyHMul Real Nat Real where hMul a b := a * (b : ℝ)
 
+noncomputable instance (priority := high) : PyHAdd Real Real Real where hAdd a b := (a : ℝ) + b
 noncomputable instance (priority := high) : PyHAdd Rat Real Real where hAdd a b := (a : ℝ) + b
 noncomputable instance (priority := high) : PyHAdd Real Rat Real where hAdd a b := a + (b : ℝ)
 noncomputable instance (priority := high) : PyHAdd Int Real Real where hAdd a b := (a : ℝ) + b
@@ -264,6 +271,7 @@ noncomputable instance (priority := high) : PyHAdd Real Int Real where hAdd a b 
 noncomputable instance (priority := high) : PyHAdd Nat Real Real where hAdd a b := (a : ℝ) + b
 noncomputable instance (priority := high) : PyHAdd Real Nat Real where hAdd a b := a + (b : ℝ)
 
+noncomputable instance (priority := high) : PyHSub Real Real Real where hSub a b := (a : ℝ) - b
 noncomputable instance (priority := high) : PyHSub Rat Real Real where hSub a b := (a : ℝ) - b
 noncomputable instance (priority := high) : PyHSub Real Rat Real where hSub a b := a - (b : ℝ)
 noncomputable instance (priority := high) : PyHSub Int Real Real where hSub a b := (a : ℝ) - b
@@ -271,6 +279,7 @@ noncomputable instance (priority := high) : PyHSub Real Int Real where hSub a b 
 noncomputable instance (priority := high) : PyHSub Nat Real Real where hSub a b := (a : ℝ) - b
 noncomputable instance (priority := high) : PyHSub Real Nat Real where hSub a b := a - (b : ℝ)
 
+noncomputable instance (priority := high) : PyHDiv Real Real Real where hDiv a b := (a : ℝ) / b
 noncomputable instance (priority := high) : PyHDiv Rat Real Real where hDiv a b := (a : ℝ) / b
 noncomputable instance (priority := high) : PyHDiv Real Rat Real where hDiv a b := a / (b : ℝ)
 noncomputable instance (priority := high) : PyHDiv Int Real Real where hDiv a b := (a : ℝ) / b

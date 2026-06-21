@@ -1,4 +1,5 @@
 import Mathlib
+import Libraries.numpy.NumpyDef
 
 namespace Libraries.scipy
 
@@ -217,38 +218,49 @@ def pyScipyDet {α γ} [PyScipyCompute α γ] [Add γ] [Mul γ] [Neg γ] [Zero �
 
 /-! ## scipy.integrate -/
 
-/-- Element-wise `a + s · b` on equal-length float vectors. -/
-private def vecAxpy (s : Float) (a b : List Float) : List Float :=
-  (a.zip b).map (fun (x, y) => x + s * y)
+open scoped Libraries.numpy.PyOdeScalar
+open Libraries.numpy (PyOdeScalar)
 
+open scoped Libraries.numpy.PyOdeScalar in
+/-- Element-wise `a + s · b` on equal-length vectors over any `PyOdeScalar`. -/
+private def vecAxpy {α} [PyOdeScalar α] (s : α) (a b : List α) : List α :=
+  (a.zip b).map (fun (x, y) => x +ₒ s *ₒ y)
+
+open scoped Libraries.numpy.PyOdeScalar in
 /-- One classical RK4 step of `y' = f(y, t)` over a step of size `dt`. -/
-private def rk4Step (f : List Float → Float → List Float) (y : List Float) (t dt : Float) :
-    List Float :=
+private def rk4Step {α} [PyOdeScalar α] (f : List α → α → List α) (y : List α) (t dt : α) :
+    List α :=
+  let two := PyOdeScalar.ofNat (α := α) 2
+  let half := dt /ₒ two
   let k1 := f y t
-  let k2 := f (vecAxpy (dt / 2.0) y k1) (t + dt / 2.0)
-  let k3 := f (vecAxpy (dt / 2.0) y k2) (t + dt / 2.0)
-  let k4 := f (vecAxpy dt y k3) (t + dt)
-  let incr := (k1.zip (k2.zip (k3.zip k4))).map (fun (a, b, c, d) => a + 2.0 * b + 2.0 * c + d)
-  vecAxpy (dt / 6.0) y incr
+  let k2 := f (vecAxpy half y k1) (t +ₒ half)
+  let k3 := f (vecAxpy half y k2) (t +ₒ half)
+  let k4 := f (vecAxpy dt y k3) (t +ₒ dt)
+  let incr := (k1.zip (k2.zip (k3.zip k4))).map (fun (a, b, c, d) => a +ₒ two *ₒ b +ₒ two *ₒ c +ₒ d)
+  vecAxpy (dt /ₒ PyOdeScalar.ofNat (α := α) 6) y incr
 
-/--
-`scipy.integrate.odeint(f, y0, t)` — integrate the system `y' = f(y, t)` from initial state `y0`,
-returning the state at every time in `t` (a row per time point, like SciPy).
-
-Uses one fixed classical-RK4 step per output interval. SciPy uses adaptive LSODA, so for smooth
-non-stiff systems the trajectories agree closely (not bit-for-bit). `f` takes `(state, t)` and
-returns the derivative vector — exactly the Python signature `f(y, t)`.
--/
-def pyScipyOdeint (f : List Float → Float → List Float) (y0 : List Float) (ts : List Float) :
-    List (List Float) :=
+open scoped Libraries.numpy.PyOdeScalar in
+/-- RK4 integrator (the runnable `@[implemented_by]` impl behind the opaque `pyScipyOdeint`). -/
+def pyScipyOdeintImpl {α} [PyOdeScalar α] (f : List α → α → List α) (y0 : List α) (ts : List α) :
+    List (List α) :=
   match ts with
   | [] => []
   | t0 :: rest =>
-    let stepFn := fun (st : List (List Float) × List Float × Float) (tcur : Float) =>
+    let stepFn := fun (st : List (List α) × List α × α) (tcur : α) =>
       let (acc, yprev, tprev) := st
-      let ynext := rk4Step f yprev tprev (tcur - tprev)
+      let ynext := rk4Step f yprev tprev (tcur -ₒ tprev)
       (acc ++ [ynext], ynext, tcur)
     let (states, _, _) := rest.foldl stepFn ([y0], y0, t0)
     states
+
+/-- `scipy.integrate.odeint` over any `PyOdeScalar` (`Float` to run, `ℚ`/`ℝ` to prove). Declared
+`opaque` (with the RK4 integrator as its `@[implemented_by]` impl) so the KERNEL/COMPILER never
+unfolds or evaluates it: a *closed* program (hardcoded params, no input) that later indexes the
+result — e.g. `solution[-1]` forces the list spine — would otherwise make Lean run the whole
+multi-thousand-step integration at elaboration time and hang. Opaque blocks that while still running
+normally via the impl (a program that reads its params from `input()` is never closed anyway). -/
+@[implemented_by pyScipyOdeintImpl]
+opaque pyScipyOdeint {α} [PyOdeScalar α] (f : List α → α → List α) (y0 : List α) (ts : List α) :
+    List (List α)
 
 end Libraries.scipy
