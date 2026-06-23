@@ -1,7 +1,7 @@
 import Mathlib
 import PastaLean.PyAPI.Operators
 
-open Lean Elab Tactic Meta Meta.Tactic.TryThis
+open Lean Elab Tactic Meta Meta.Tactic.TryThis Term
 
 -- The `taste_ingr` simp set is registered in `PastaLean.PyAPI.Operators` (imported above) so the
 -- operator rewrite lemmas can join it; the code generator also tags every pure prove-version
@@ -28,32 +28,37 @@ def assertCandidates : TacticM (Array (TSyntax `tactic)) := do
     ← `(tactic| simp_all [taste_ingr]),
     ← `(tactic| grind +locals +suggestions),
     ← `(tactic| try?),
-    ← `(tactic| sorry),
   ]
 
 syntax (name := assertProveStx) "taste?" : tactic
 
+/--
+Check if the tactics works or not
+-/
+def checkTactic (target : Expr) (tac : Syntax) : TermElabM (Option Nat) :=
+  withoutModifyingState do
+    try
+      let goal ← mkFreshExprMVar target
+      let (goals, _) ← withoutErrToSorry do
+        Lean.Elab.runTactic goal.mvarId! tac
+      return some goals.length
+    catch _ =>
+      return none
+
 @[tactic assertProveStx]
 def evalAssertProve : Tactic := fun stx => do
   let candidates ← assertCandidates
-  for tac in candidates do
-    let saved ← saveState
-    -- Try the candidate; success = it ran without error AND left no open goals.
-    let closed ←
-      try
-        evalTactic tac
-        pure (← getUnsolvedGoals).isEmpty
-      catch _ =>
-        pure false
-    if closed then
-      -- Keep this proof: suggest replacing `taste?` with the winning tactic.
-      addSuggestion stx tac (origSpan? := stx)
-      return
-    else
-      saved.restore
-  -- Nothing worked — leave a `sorry` (and suggest it, so the search call is still replaced).
+  let target ← getMainTarget
   let sry ← `(tactic| sorry)
-  addSuggestion stx sry (origSpan? := stx)
-  evalTactic sry
+  for tac in candidates do
+    let res ← checkTactic target tac
+    match res with
+    | some k =>
+        addSuggestion stx tac (origSpan? := stx) -- "Try this: <tac>"
+        evalTactic tac
+        return
+    | none =>
+      addSuggestion stx sry (origSpan? := stx)
+      evalTactic sry
 
 end PastaLean
