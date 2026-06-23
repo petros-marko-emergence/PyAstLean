@@ -1,6 +1,4 @@
 import Mathlib
--- `taste_ingr` (the targeted simp set `taste?` uses) is registered in its own module so the
--- operator rewrite lemmas below can be tagged with it; see `TasteIngr`.
 import PastaLean.PyAPI.TasteIngr
 
 namespace PastaLean
