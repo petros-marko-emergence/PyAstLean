@@ -111,14 +111,14 @@ theorem mass_balance :
                   depot_rate ka depot +ₚ central_rate ka ke k12 k21 depot central periph +ₚ
                       periph_rate k12 k21 central periph =
                     -ke *ₚ central :=
-  by (simp_all only [depot_rate, pyMul_rat, neg_mul, central_rate, pySub_rat, pyAdd_rat, periph_rate]; grind only)
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
 theorem distribution_conserves :
     ∀ (k12 : Rat),
       ∀ (k21 : Rat),
         ∀ (central : Rat),
           ∀ (periph : Rat), -k12 *ₚ central +ₚ k21 *ₚ periph +ₚ (k12 *ₚ central -ₚ k21 *ₚ periph) = (0 : Int) :=
-  by simp_all only [pyMul_rat, neg_mul, pyAdd_rat, pySub_rat, add_add_sub_cancel, neg_add_cancel, Int.cast_zero, implies_true]
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]
 
 theorem conserved_without_elimination :
     ∀ (ka : Rat),
@@ -130,7 +130,7 @@ theorem conserved_without_elimination :
                 depot_rate ka depot +ₚ central_rate ka (0 : Int) k12 k21 depot central periph +ₚ
                     periph_rate k12 k21 central periph =
                   (0 : Int) :=
-  by (simp_all only [depot_rate, pyMul_rat, neg_mul, central_rate, Int.cast_zero, zero_mul, pySub_rat, sub_zero, pyAdd_rat, periph_rate]; grind only)
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
 def step_mass_balance := fun (ka : Rat) ↦ fun (ke : Rat) ↦ fun (k12 : Rat) ↦ fun (k21 : Rat) ↦ fun (depot : Rat) ↦
   fun (central : Rat) ↦ fun (periph : Rat) ↦ fun (dt : Rat) ↦
@@ -140,7 +140,7 @@ def step_mass_balance := fun (ka : Rat) ↦ fun (ke : Rat) ↦ fun (k12 : Rat) �
   let new_depot := depot +ₚ depot_rate ka depot *ₚ dt
   let new_central := central +ₚ central_rate ka ke k12 k21 depot central periph *ₚ dt
   let new_periph := periph +ₚ periph_rate k12 k21 central periph *ₚ dt
-  have ht_1 : new_depot +ₚ new_central +ₚ new_periph = depot +ₚ central +ₚ periph -ₚ ke *ₚ central *ₚ dt := by (simp_all only [pyAdd_rat, pyMul_rat, pySub_rat]; simp_all? (config := { zetaDelta := true }) [taste_ingr]; grind only)
+  have ht_1 : new_depot +ₚ new_central +ₚ new_periph = depot +ₚ central +ₚ periph -ₚ ke *ₚ central *ₚ dt := by simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
   ()
 
 attribute [simp] step_mass_balance
@@ -156,7 +156,22 @@ def step_mass_balance'rn := fun (ka : Float) ↦ fun (ke : Float) ↦ fun (k12 :
   ()
 
 theorem depot_nonincreasing :
-    ∀ (ka : Rat), ∀ (depot : Rat), ka ≥ (0 : Int) → depot ≥ (0 : Int) → depot_rate ka depot ≤ (0 : Int) := by simp_all only [Int.cast_zero, ge_iff_le, depot_rate, pyMul_rat, neg_mul, Left.neg_nonpos_iff, mul_nonneg, implies_true]
+    ∀ (ka : Rat), ∀ (depot : Rat), ka ≥ (0 : Int) → depot ≥ (0 : Int) → depot_rate ka depot ≤ (0 : Int) := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]
+
+theorem total_nonincreasing :
+    ∀ (ka : Rat),
+      ∀ (ke : Rat),
+        ∀ (k12 : Rat),
+          ∀ (k21 : Rat),
+            ∀ (depot : Rat),
+              ∀ (central : Rat),
+                ∀ (periph : Rat),
+                  ke ≥ (0 : Int) →
+                    central ≥ (0 : Int) →
+                      depot_rate ka depot +ₚ central_rate ka ke k12 k21 depot central periph +ₚ
+                          periph_rate k12 k21 central periph ≤
+                        (0 : Int) :=
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; nlinarith
 
 noncomputable def main' :=
   ((do
@@ -178,8 +193,8 @@ noncomputable def main' :=
       let mut dose_num := (0 : Int)
       for step in (PastaLean.pyRange nsteps)do
         -- Administer a dose into the gut depot when one is due.
-        if h_1 : step %ₚ dose_step = (0 : Int) then
-          if h_2 : dose_num < ndoses then
+        if h_1 : step %ₚ dose_step = (0 : Int) then 
+          if h_2 : dose_num < ndoses then 
             depot := depot +ₚ dose
             dose_num := dose_num +ₚ (1 : Int)
           else
@@ -194,7 +209,7 @@ noncomputable def main' :=
         central := central +ₚ d_central *ₚ dt
         periph := periph +ₚ d_periph *ₚ dt
         t := t +ₚ dt
-        if h_2 : step %ₚ every = (0 : Int) then
+        if h_2 : step %ₚ every = (0 : Int) then 
           let _ ←
             pyPrintNoop
                 [pyPrintArg "S", pyPrintArg step, pyPrintArg t, pyPrintArg (concentration central vol),
@@ -225,8 +240,8 @@ def main''rn :=
       let mut dose_num := (0 : Int)
       for step in (PastaLean.pyRange nsteps)do
         -- Administer a dose into the gut depot when one is due.
-        if h_1 : step %ₚ dose_step == (0 : Int) then
-          if h_2 : dose_num < ndoses then
+        if h_1 : step %ₚ dose_step == (0 : Int) then 
+          if h_2 : dose_num < ndoses then 
             depot := depot +ₚ dose
             dose_num := dose_num +ₚ (1 : Int)
           else
@@ -241,7 +256,7 @@ def main''rn :=
         central := central +ₚ d_central *ₚ dt
         periph := periph +ₚ d_periph *ₚ dt
         t := t +ₚ dt
-        if h_2 : step %ₚ every == (0 : Int) then
+        if h_2 : step %ₚ every == (0 : Int) then 
           let _ ←
             pyPrintIO
                 [pyPrintArg "S", pyPrintArg step, pyPrintArg t, pyPrintArg (concentration'rn central vol),
