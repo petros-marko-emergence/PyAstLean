@@ -1704,12 +1704,13 @@ def main(argv=None):
              "(e.g. `main'rn`, `sigmoid'rn`).",
     )
     parser.add_argument(
-        "--leave-taste",
-        dest="leave_taste",
-        action="store_true",
-        help="Leave each assert proof obligation as `:= by taste?` instead of running the "
-             "prove-and-replace pass (elaborate in the warm backend, splice the concrete winning "
-             "tactic — or `sorry` — over each `:= by taste?`). Default: prove and replace.",
+        "--prove-asserts",
+        dest="prove_asserts",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run the prove-and-replace pass on each assert: elaborate in the warm backend and "
+             "splice the concrete winning tactic — or `sorry` — over each `:= by taste?`. Default: "
+             "on. Use --no-prove-asserts to leave the obligations as `:= by taste?`.",
     )
     args = parser.parse_args(argv)
     configure_logging(args.verbose)
@@ -1720,7 +1721,7 @@ def main(argv=None):
 
     source_code = Path(file_path).read_text(encoding="utf-8")
     result = translate_to_lean(source_code, args.target, file_path, best_effort=not args.strict,
-                               mode=args.mode, prove_asserts=not args.leave_taste)
+                               mode=args.mode, prove_asserts=args.prove_asserts)
 
     if isinstance(result, dict):
         if result.get("result") is False:
