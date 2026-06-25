@@ -257,11 +257,14 @@ lowered as a **`Prop`**, not a `Bool`: `==` becomes `=`, `<` / `≤` become real
 (comments/docstrings aside) becomes a top-level `theorem`: the parameters are the
 universally-quantified variables, the assert's test is the proposition.
 
-**1b. Pure `let`-bindings then one `assert` → a named `theorem` (with the lets in the statement).**
+**1b. Pure `let`-bindings then one obligation → a named `theorem` (with the lets in the statement).**
 A body that is some plain `let`-bindings (fresh names, no reassignment) followed by a *single*
-`assert` also promotes — the bindings thread into the statement as `∀ …, let x := …; P`, keeping the
-intermediate names. (This is `step_mass_balance` in `pk_model.py`.) It fires *only* on a pure body:
-any IO/`raise`/`try`, loop, mutation, or early return makes the function monadic and it stays a `def`.
+obligation — a lone `assert C` **or** an `if H: assert C` — also promotes. The bindings thread into
+the statement as `∀ …, let x := …; (H → )C`, keeping the intermediate names, and the guard (if any)
+becomes the hypotheses just as in shape 2. (This is `step_mass_balance` in `pk_model.py`.) It fires
+*only* on a pure body: any IO/`raise`/`try`, loop, mutation, or early return makes the function
+monadic and it stays a `def`. So shapes 1, 1b, and 2 are one rule: *optional pure `let`-prefix + one
+obligation (`assert` or `if`-guarded `assert`)*.
 
 ```python
 def scale_preserves_total(xs: list[float], c: float):

@@ -346,21 +346,42 @@ def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
   else
     return none
 
-/-- Is the body a pure `let`-chain ending in exactly one `assert` (and nothing else)? Returns the
-`let` `Assign` statements (in order) and the assert's `test`, or `none`. Conservative — requires no
-IO/exception effect, and every pre-assert statement an `Assign` to a distinct fresh simple `Name`
-(no reassignment, no parameter mutation, no loops/control flow). That is exactly the shape that
-lowers to a pure term, so a `while`/`raise`/`print` body can never match — those carry an IO/except
-effect or a non-`Assign` statement. A *single* assert only: two or more stay an in-body-`have` `def`. -/
-def pureLetChainAssert? (paramNames : Array String) (body : Array Json) (substantive : Array Json) :
-    Option (Array Json × Json) := Id.run do
-  if substantive.size < 2 then return none
-  let last := substantive[substantive.size - 1]!
-  if jsonNodeType? last != some "Assert" then return none
-  let .ok test := last.getObjValAs? Json "test" | return none
-  let lets := substantive.pop
-  if lets.any (fun s => jsonNodeType? s == some "Assert") then return none
+/-- A single theorem-shaped obligation → `(hypotheses, conclusion-test)`. A bare `assert C` gives
+`(#[], C)`; `if H: assert C` (no `else`, body a lone assert) gives the guard's conjuncts and `C` (a
+conjunction `H1 and H2` splits into separate hypotheses, so the prover gets named hyps). `none`
+otherwise. This is the per-statement half of `theoremShape?`; add new obligation forms here. -/
+def obligationShape? (stmt : Json) : Option (Array Json × Json) :=
+  match jsonNodeType? stmt with
+  | some "Assert" => (stmt.getObjValAs? Json "test").toOption.map (fun t => (#[], t))
+  | some "If" =>
+      let isSubst := fun (s : Json) =>
+        jsonNodeType? s != some "Comment" && jsonNodeType? s != some "DocString"
+      let body := ((stmt.getObjValAs? (Array Json) "body").toOption.getD #[]).filter isSubst
+      let orelse := (stmt.getObjValAs? (Array Json) "orelse").toOption.getD #[]
+      if orelse.isEmpty && body.size == 1 && jsonNodeType? body[0]! == some "Assert" then
+        match stmt.getObjValAs? Json "test", body[0]!.getObjValAs? Json "test" with
+        | .ok hyp, .ok concl =>
+            let hyps :=
+              if jsonNodeType? hyp == some "BoolOp" && hyp.getObjValAs? String "op" == .ok "and" then
+                (hyp.getObjValAs? (Array Json) "values").toOption.getD #[hyp]
+              else #[hyp]
+            some (hyps, concl)
+        | _, _ => none
+      else none
+  | _ => none
+
+/-- The promotable theorem shape of a *pure* function body: zero or more pure `let`-bindings (fresh
+distinct simple names — no reassignment or parameter mutation) followed by exactly ONE obligation
+(`obligationShape?`). Returns `(lets, hypotheses, conclusion)`, or `none` when the body is monadic
+(IO / `raise` / `try`), has a loop / mutation / early return, or isn't `let`s-then-one-obligation.
+Single source of truth for assert→theorem promotion: monadic bodies can never match, since they
+carry an IO/except effect or a non-`Assign` statement before the obligation. -/
+def theoremShape? (paramNames : Array String) (body : Array Json) (substantive : Array Json) :
+    Option (Array Json × Array Json × Json) := Id.run do
+  if substantive.isEmpty then return none
   if bodyNeedsIOMonad body || bodyNeedsExceptionMonad body then return none
+  let lets := substantive.pop
+  let last := substantive[substantive.size - 1]!
   let mut seen : Array String := #[]
   for s in lets do
     if jsonNodeType? s != some "Assign" then return none
@@ -369,7 +390,9 @@ def pureLetChainAssert? (paramNames : Array String) (body : Array Json) (substan
     let .ok tname := target.getObjValAs? String "id" | return none
     if paramNames.contains tname || seen.contains tname then return none
     seen := seen.push tname
-  return some (lets, test)
+  match obligationShape? last with
+  | some (hyps, concl) => return some (lets, hyps, concl)
+  | none => return none
 
 @[pygen "FunctionDef"]
 def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
@@ -388,79 +411,35 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         -- `baseName` (unsuffixed) is still used to scan the JSON body for self-reference (recursion).
         let name ← withRunSuffix baseName
         let nameIdent := mkIdent name.toName
-        -- A function whose ENTIRE body is a single proof obligation becomes a top-level `theorem`
-        -- (params → `∀`-binders; the proposition is lowered as a `Prop` via `withPropCondition`, so a
-        -- `==` is `=` and a `<`/`≤` is a real order relation — no `decide`, no `= true`). Two shapes:
-        --   • a lone `assert C`             → `theorem … : ∀ …, C`
-        --   • `if H: assert C` (no `else`)  → `theorem … : ∀ …, H → C` — the guard is the hypothesis,
-        --       and a conjunction `H1 and H2` is curried into `H1 → H2 → C` (named hyps for the prover).
-        -- Anything else (multiple asserts, statements + assert) keeps each assert as a `have` inside a
-        -- normal `def` — still non-monadic (see `Head_Assert`) and provable (`@[simp]` callees). The
-        -- run twin (`approx`) drops these obligations.
+        -- A *pure* body that is some `let`-bindings followed by ONE obligation (`assert C`, or
+        -- `if H: assert C`) becomes a named, reusable `@[taste_ingr] theorem`. `theoremShape?` is the
+        -- single source of truth — it returns `(lets, hyps, conclusion)` and matches only pure bodies,
+        -- so monadic/loop/mutation bodies never reach here. The statement is built outside-in:
+        -- `∀ params, let x := …; H1 → … → C`, lowered as a `Prop` (so `==`→`=`, `<`/`≤`→real order).
+        -- The run twin (`approx`) drops the obligation. Anything else (≥2 asserts, non-`let` statements)
+        -- stays a `def` with anonymous `have`s (see `Head_Assert`).
         let bodyArr := (json.getObjValAs? (Array Json) "body").toOption.getD #[]
-        let isSubstantive := fun (s : Json) =>
+        let substantive := bodyArr.filter fun (s : Json) =>
           jsonNodeType? s != some "Comment" && jsonNodeType? s != some "DocString"
-        let substantive := bodyArr.filter isSubstantive
-        -- Structural check (no codegen): is the body a single theorem-shaped statement? Returns the
-        -- guard conjuncts (empty for a lone assert) paired with the conclusion's `test` JSON.
-        let thmShape? : Option (Array Json × Json) :=
-          if substantive.size != 1 then none
-          else
-            let stmt := substantive[0]!
-            match jsonNodeType? stmt with
-            | some "Assert" => (stmt.getObjValAs? Json "test").toOption.map (fun t => (#[], t))
-            | some "If" =>
-                let body := (stmt.getObjValAs? (Array Json) "body").toOption.getD #[]
-                let orelse := (stmt.getObjValAs? (Array Json) "orelse").toOption.getD #[]
-                let bodySubst := body.filter isSubstantive
-                if orelse.isEmpty && bodySubst.size == 1
-                    && jsonNodeType? bodySubst[0]! == some "Assert" then
-                  match stmt.getObjValAs? Json "test", bodySubst[0]!.getObjValAs? Json "test" with
-                  | .ok hyp, .ok concl =>
-                      let hyps :=
-                        if jsonNodeType? hyp == some "BoolOp"
-                            && hyp.getObjValAs? String "op" == .ok "and" then
-                          (hyp.getObjValAs? (Array Json) "values").toOption.getD #[hyp]
-                        else #[hyp]
-                      some (hyps, concl)
-                  | _, _ => none
-                else none
-            | _ => none
-        if let some (hypJsons, conclJson) := thmShape? then
-          if (← getNumericMode) == .approx then return ⟨mkNullNode #[]⟩
-          let argInfos ← functionArgInfos json
-          let mut propTy ← withPropCondition true (getCode conclJson `term)
-          for hypJson in hypJsons.reverse do
-            let hyp ← withPropCondition true (getCode hypJson `term)
-            propTy ← `($hyp → $propTy)
-          for (argIdent, ty?) in argInfos.reverse do
-            propTy ← match ty? with
-              | some ty => `(∀ ($argIdent : $ty), $propTy)
-              | none => `(∀ $argIdent, $propTy)
-          -- `@[taste_ingr]` adds the proved theorem to the simp set, so later `taste?`s can reuse it.
-          return ⟨mkNullNode #[(← `(command| @[taste_ingr] theorem $nameIdent : $propTy := by taste?)).raw]⟩
-        -- A pure `let`-chain ending in a single assert (e.g. `step_mass_balance`) becomes a named,
-        -- reusable theorem too: the `let`s thread into the `∀ …, let … ; P` statement, keeping the
-        -- intermediate names. `pureLetChainAssert?` only matches pure bodies, so a monadic body never
-        -- reaches here. Two or more asserts still stay a `def` with in-body `have`s.
         let paramNames := (← functionArgInfos json).map (fun (id, _) => id.getId.toString)
-        if let some (letJsons, conclJson) := pureLetChainAssert? paramNames bodyArr substantive then
+        if let some (letJsons, hypJsons, conclJson) := theoremShape? paramNames bodyArr substantive then
           if (← getNumericMode) == .approx then return ⟨mkNullNode #[]⟩
           let argInfos ← functionArgInfos json
           let thmCmd ← withFreshVariables do
+            -- register the `let`-bound names so they lower as locals inside the proposition
             for letJson in letJsons do
-              if let .ok target := letJson.getObjVal? "target" then
-                if let .ok tname := target.getObjValAs? String "id" then
-                  addVar tname.toName
+              if let .ok tname := (letJson.getObjVal? "target").bind (·.getObjValAs? String "id") then
+                addVar tname.toName
+            -- build outside-in: conclusion, then hypothesis arrows, then `let`-binders, then `∀`s
             let mut propTy ← withPropCondition true (getCode conclJson `term)
+            for hypJson in hypJsons.reverse do
+              propTy ← `($(← withPropCondition true (getCode hypJson `term)) → $propTy)
             for letJson in letJsons.reverse do
               let .ok target := letJson.getObjVal? "target" |
-                throwError "let-chain assert: Assign without target"
+                throwError "theoremShape: Assign without target"
               let .ok value := letJson.getObjVal? "value" |
-                throwError "let-chain assert: Assign without value"
-              let targetIdent ← getCode target `ident
-              let valueStx ← getCode value `term
-              propTy ← `(let $targetIdent := $valueStx
+                throwError "theoremShape: Assign without value"
+              propTy ← `(let $(← getCode target `ident) := $(← getCode value `term)
                          $propTy)
             for (argIdent, ty?) in argInfos.reverse do
               propTy ← match ty? with
