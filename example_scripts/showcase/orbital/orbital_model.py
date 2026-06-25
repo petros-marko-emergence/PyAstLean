@@ -162,7 +162,19 @@ def spring_energy_nonneg(k: float, dx: float, dy: float, dz: float):
 
 
 def cauchy_schwarz(ax: float, ay: float, az: float, bx: float, by: float, bz: float):
-    """Cauchy-Schwarz: (a . b)^2 <= |a|^2 |b|^2 (the inequality behind Lagrange's identity)."""
+    """Cauchy-Schwarz: (a . b)^2 <= |a|^2 |b|^2, built from two helper facts that land in scope as
+    local hypotheses (so `linarith` composes them) -- the SOS certificate bare `nlinarith` can't find:
+      1. Lagrange's identity   |a x b|^2 + (a . b)^2 = |a|^2 |b|^2, and
+      2. the cross norm is non-negative   |a x b|^2 >= 0,
+    whence (a . b)^2 = |a|^2 |b|^2 - |a x b|^2 <= |a|^2 |b|^2."""
+    assert (norm_sq(cross_x(ax, ay, az, bx, by, bz),
+                    cross_y(ax, ay, az, bx, by, bz),
+                    cross_z(ax, ay, az, bx, by, bz))
+            + dot(ax, ay, az, bx, by, bz) * dot(ax, ay, az, bx, by, bz)
+            == norm_sq(ax, ay, az) * norm_sq(bx, by, bz))
+    assert norm_sq(cross_x(ax, ay, az, bx, by, bz),
+                   cross_y(ax, ay, az, bx, by, bz),
+                   cross_z(ax, ay, az, bx, by, bz)) >= 0
     assert (dot(ax, ay, az, bx, by, bz) * dot(ax, ay, az, bx, by, bz)
             <= norm_sq(ax, ay, az) * norm_sq(bx, by, bz))
 

@@ -115,7 +115,18 @@ def runPastafolio (p : Profile) (stx : Syntax) : TacticM Unit := do
     | n => n
   let budget := p.budget raw
   withTheReader Core.Context (fun c => { c with maxHeartbeats := 0 }) do
+    let entry ← saveState
     let used ← search budget p.fuel p [] #[]
+    -- Fallback: if the simplify-then-close search stalled, try the closers once on the *original*
+    -- goal. Simplifiers unfold the `[simp]` leaves, which erases the E-match patterns the
+    -- `@[taste_ingr]` sibling lemmas need, so `grind` can only compose them on the un-simplified goal.
+    let used ←
+      if (← getGoals).isEmpty then pure used
+      else do
+        entry.restore
+        match ← raceClosers budget (← p.closers) with
+        | some r => pure #[r]
+        | none   => pure used
     let closed := (← getGoals).isEmpty
     -- `;`-sequence the committed tactics. No surrounding parens: a `by t1; t2; t3` block parses
     -- fine both as a top-level `theorem … := by …` and as an in-body `have … := by …`.

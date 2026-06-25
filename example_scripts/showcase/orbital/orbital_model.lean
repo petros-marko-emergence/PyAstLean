@@ -138,12 +138,14 @@ def spring_energy'rn := fun (k : Float) ↦ fun (dx : Float) ↦ fun (dy : Float
 -- ----------------------------------------------------------------------------------------------
 -- Provable invariants: vector identities  (lone `assert` -> named `theorem`, closed by `ring`)
 -- ----------------------------------------------------------------------------------------------
+@[taste_ingr]
 theorem dot_commutes :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
         ∀ (az : Rat), ∀ (bx : Rat), ∀ («by» : Rat), ∀ (bz : Rat), dot ax ay az bx «by» bz = dot bx «by» bz ax ay az :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem dot_additive :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
@@ -158,6 +160,7 @@ theorem dot_additive :
                         dot ax ay az bx «by» bz +ₚ dot cx cy cz bx «by» bz :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem dot_homogeneous :
     ∀ (s : Rat),
       ∀ (ax : Rat),
@@ -168,6 +171,7 @@ theorem dot_homogeneous :
                 ∀ (bz : Rat), dot (s *ₚ ax) (s *ₚ ay) (s *ₚ az) bx «by» bz = s *ₚ dot ax ay az bx «by» bz :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem cross_antisymmetric :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
@@ -175,8 +179,10 @@ theorem cross_antisymmetric :
           ∀ (bx : Rat), ∀ («by» : Rat), ∀ (bz : Rat), cross_x ax ay az bx «by» bz = -cross_x bx «by» bz ax ay az :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem cross_self_zero : ∀ (ax : Rat), ∀ (ay : Rat), ∀ (az : Rat), cross_x ax ay az ax ay az = (0 : Int) := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem cross_perp_first :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
@@ -188,6 +194,7 @@ theorem cross_perp_first :
                   (0 : Int) :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem cross_perp_second :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
@@ -200,6 +207,7 @@ theorem cross_perp_second :
                   (0 : Int) :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem lagrange_identity :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
@@ -212,6 +220,7 @@ theorem lagrange_identity :
                   norm_sq ax ay az *ₚ norm_sq bx «by» bz :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem parallelogram_identity :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
@@ -223,6 +232,7 @@ theorem parallelogram_identity :
                   (2.0 : Rat) *ₚ norm_sq ax ay az +ₚ (2.0 : Rat) *ₚ norm_sq bx «by» bz :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; linarith
 
+@[taste_ingr]
 theorem polarization_identity :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
@@ -234,6 +244,7 @@ theorem polarization_identity :
                   norm_sq (ax +ₚ bx) (ay +ₚ «by») (az +ₚ bz) -ₚ norm_sq ax ay az -ₚ norm_sq bx «by» bz :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; linarith
 
+@[taste_ingr]
 theorem bac_cab_rule :
     ∀ (ax : Rat),
       ∀ (ay : Rat),
@@ -252,38 +263,67 @@ theorem bac_cab_rule :
 -- ----------------------------------------------------------------------------------------------
 -- Provable invariants: non-negativity & bounds  (`if`-guard -> hypotheses; nlinarith / positivity)
 -- ----------------------------------------------------------------------------------------------
+@[taste_ingr]
 theorem norm_sq_nonneg : ∀ (ax : Rat), ∀ (ay : Rat), ∀ (az : Rat), norm_sq ax ay az ≥ (0 : Int) := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; nlinarith
 
+@[taste_ingr]
 theorem kinetic_nonneg :
     ∀ (m : Rat), ∀ (vx : Rat), ∀ (vy : Rat), ∀ (vz : Rat), m ≥ (0 : Int) → kinetic m vx vy vz ≥ (0 : Int) := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; nlinarith
 
+@[taste_ingr]
 theorem spring_energy_nonneg :
     ∀ (k : Rat), ∀ (dx : Rat), ∀ (dy : Rat), ∀ (dz : Rat), k ≥ (0 : Int) → spring_energy k dx dy dz ≥ (0 : Int) := by
   intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; nlinarith
 
-theorem cauchy_schwarz :
-    ∀ (ax : Rat),
-      ∀ (ay : Rat),
-        ∀ (az : Rat),
-          ∀ (bx : Rat),
-            ∀ («by» : Rat),
-              ∀ (bz : Rat),
-                dot ax ay az bx «by» bz *ₚ dot ax ay az bx «by» bz ≤ norm_sq ax ay az *ₚ norm_sq bx «by» bz :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; sorry
+def cauchy_schwarz := fun (ax : Rat) ↦ fun (ay : Rat) ↦ fun (az : Rat) ↦ fun (bx : Rat) ↦ fun («by» : Rat) ↦
+  fun (bz : Rat) ↦
+  /-
+  Cauchy-Schwarz: (a . b)^2 <= |a|^2 |b|^2, built from two helper facts that land in scope as
+      local hypotheses (so `linarith` composes them) -- the SOS certificate bare `nlinarith` can't find:
+        1. Lagrange's identity   |a x b|^2 + (a . b)^2 = |a|^2 |b|^2, and
+        2. the cross norm is non-negative   |a x b|^2 >= 0,
+      whence (a . b)^2 = |a|^2 |b|^2 - |a x b|^2 <= |a|^2 |b|^2.
+  -/
+  have ht_1 :
+    norm_sq (cross_x ax ay az bx «by» bz) (cross_y ax ay az bx «by» bz) (cross_z ax ay az bx «by» bz) +ₚ
+        dot ax ay az bx «by» bz *ₚ dot ax ay az bx «by» bz =
+      norm_sq ax ay az *ₚ norm_sq bx «by» bz :=
+    by simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  have ht_2 :
+    norm_sq (cross_x ax ay az bx «by» bz) (cross_y ax ay az bx «by» bz) (cross_z ax ay az bx «by» bz) ≥ (0 : Int) := by
+    simp_all (config := { zetaDelta := true }) [taste_ingr]; nlinarith
+  have ht_3 : dot ax ay az bx «by» bz *ₚ dot ax ay az bx «by» bz ≤ norm_sq ax ay az *ₚ norm_sq bx «by» bz := by simp_all (config := { zetaDelta := true }) [taste_ingr]; linarith
+  ()
+
+attribute [simp] cauchy_schwarz
+
+def cauchy_schwarz'rn := fun (ax : Float) ↦ fun (ay : Float) ↦ fun (az : Float) ↦ fun (bx : Float) ↦
+  fun («by» : Float) ↦ fun (bz : Float) ↦
+  /-
+  Cauchy-Schwarz: (a . b)^2 <= |a|^2 |b|^2, built from two helper facts that land in scope as
+      local hypotheses (so `linarith` composes them) -- the SOS certificate bare `nlinarith` can't find:
+        1. Lagrange's identity   |a x b|^2 + (a . b)^2 = |a|^2 |b|^2, and
+        2. the cross norm is non-negative   |a x b|^2 >= 0,
+      whence (a . b)^2 = |a|^2 |b|^2 - |a x b|^2 <= |a|^2 |b|^2.
+  -/
+  ()
 
 -- ----------------------------------------------------------------------------------------------
 -- Provable invariants: physical conservation laws
 -- ----------------------------------------------------------------------------------------------
+@[taste_ingr]
 theorem central_force_no_torque :
     ∀ (rx : Rat),
       ∀ (ry : Rat), ∀ (rz : Rat), ∀ (lam : Rat), cross_x rx ry rz (lam *ₚ rx) (lam *ₚ ry) (lam *ₚ rz) = (0 : Int) :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem momentum_conserved :
     ∀ (m1 : Rat),
       ∀ (v1 : Rat), ∀ (m2 : Rat), ∀ (v2 : Rat), ∀ (j : Rat), m1 *ₚ v1 +ₚ j +ₚ (m2 *ₚ v2 -ₚ j) = m1 *ₚ v1 +ₚ m2 *ₚ v2 :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]
 
+@[taste_ingr]
 theorem angular_momentum_is_moment :
     ∀ (m : Rat),
       ∀ (rx : Rat),
@@ -294,6 +334,7 @@ theorem angular_momentum_is_moment :
                 ∀ (vz : Rat), cross_x rx ry rz (m *ₚ vx) (m *ₚ vy) (m *ₚ vz) = m *ₚ cross_x rx ry rz vx vy vz :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem spring_force_is_central :
     ∀ (k : Rat),
       ∀ (dx : Rat), ∀ (dy : Rat), ∀ (dz : Rat), cross_x dx dy dz (-k *ₚ dx) (-k *ₚ dy) (-k *ₚ dz) = (0 : Int) :=

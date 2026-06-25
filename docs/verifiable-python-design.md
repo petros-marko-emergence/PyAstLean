@@ -297,6 +297,16 @@ def step_conserves(x: float, v: float, dt: float):
 → a pure `let x_next := …; have ht : … := by taste?` (no `Id.run do`). Lean still checks it, but it's
 an anonymous `have`, not an externally-referenceable named lemma.
 
+**Helper asserts for hard proofs.** Sequential `have`s thread top-to-bottom, so **each assert sees the
+earlier ones as local hypotheses** — and `taste?`'s closers (`linarith`, `grind +locals`, …) use local
+hypotheses. So when one obligation is too hard for `taste?` alone (it needs a certificate the closers
+can't synthesize — e.g. a degree-4 sum-of-squares), precede it with **helper asserts** stating the
+intermediate facts; the final assert then composes them cheaply. Cauchy–Schwarz `(a·b)² ≤ |a|²|b|²` is
+out of reach of bare `nlinarith`, but stating Lagrange's identity (`|a×b|² + (a·b)² = |a|²|b|²`) and
+`|a×b|² ≥ 0` as two helper asserts first leaves a one-line `linarith` for the conclusion (see
+`example_scripts/showcase/orbital/orbital_model.py`). This is more reliable than exposing siblings as
+lemmas, since local hypotheses skip the term-instantiation guessing that `grind` would otherwise need.
+
 **Rule of thumb.** Want a named, reusable theorem → make the property its **own** function with a
 single `assert` (use `if H: assert C` when it needs preconditions). Want an inline check over
 intermediates → put the `assert` **inside** the function and accept an anonymous `have`. `assert`

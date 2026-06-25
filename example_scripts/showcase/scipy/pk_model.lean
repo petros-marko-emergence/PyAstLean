@@ -100,6 +100,7 @@ def body_load'rn := fun (depot : Float) ↦ fun (central : Float) ↦ fun (perip
 -- Each function's parameters are the universally-quantified variables; the `assert` is the property.
 -- These are proof obligations: in the prove (ℚ) version they become `have/theorem ... := by taste?`;
 -- the runnable version drops them.
+@[taste_ingr]
 theorem mass_balance :
     ∀ (ka : Rat),
       ∀ (ke : Rat),
@@ -113,6 +114,7 @@ theorem mass_balance :
                     -ke *ₚ central :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
 
+@[taste_ingr]
 theorem distribution_conserves :
     ∀ (k12 : Rat),
       ∀ (k21 : Rat),
@@ -120,6 +122,7 @@ theorem distribution_conserves :
           ∀ (periph : Rat), -k12 *ₚ central +ₚ k21 *ₚ periph +ₚ (k12 *ₚ central -ₚ k21 *ₚ periph) = (0 : Int) :=
   by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]
 
+@[taste_ingr]
 theorem conserved_without_elimination :
     ∀ (ka : Rat),
       ∀ (k12 : Rat),
@@ -155,9 +158,11 @@ def step_mass_balance'rn := fun (ka : Float) ↦ fun (ke : Float) ↦ fun (k12 :
   let new_periph := periph +ₚ periph_rate'rn k12 k21 central periph *ₚ dt
   ()
 
+@[taste_ingr]
 theorem depot_nonincreasing :
     ∀ (ka : Rat), ∀ (depot : Rat), ka ≥ (0 : Int) → depot ≥ (0 : Int) → depot_rate ka depot ≤ (0 : Int) := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]
 
+@[taste_ingr]
 theorem total_nonincreasing :
     ∀ (ka : Rat),
       ∀ (ke : Rat),

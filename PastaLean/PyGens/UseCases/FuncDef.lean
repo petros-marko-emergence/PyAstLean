@@ -412,7 +412,8 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
             propTy ← match ty? with
               | some ty => `(∀ ($argIdent : $ty), $propTy)
               | none => `(∀ $argIdent, $propTy)
-          return ⟨mkNullNode #[(← `(command| theorem $nameIdent : $propTy := by taste?)).raw]⟩
+          -- `@[taste_ingr]` adds the proved theorem to the simp set, so later `taste?`s can reuse it.
+          return ⟨mkNullNode #[(← `(command| @[taste_ingr] theorem $nameIdent : $propTy := by taste?)).raw]⟩
         -- `_real_fn` (set by the Python per-variable pass) means the function produces or handles an
         -- `ℝ` value → it must be `noncomputable` in exact mode. This is now DECOUPLED from which
         -- floats are `ℝ`: real params carry a per-`arg` `_real` stamp (read in `functionArgInfos`)

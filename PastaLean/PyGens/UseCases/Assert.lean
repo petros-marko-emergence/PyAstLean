@@ -33,7 +33,9 @@ def assertSyntax : (kind : SyntaxNodeKind) → Json →
           s!"Assert node does not have a 'test' field or it is not a JSON value: {json}"
         let testTerm ← withPropCondition true (getCode testJson `term)
         let hName := mkIdent (← freshName `assert_stmt)
-        `(command| theorem $hName : $testTerm := by
+        -- `@[taste_ingr]` adds the proved theorem to the simp set + best-effort grind, so later
+        -- `taste?`s reuse it (leaf-first composition).
+        `(command| @[taste_ingr] theorem $hName : $testTerm := by
             taste?
           )
     | _, _ => throwError s!"Unsupported syntax category for Assert node"
@@ -49,14 +51,16 @@ def assertHeadSyntax : (kind : SyntaxNodeKind) → Json →
     | `term, json => do
         let .ok rest := json.getObjValAs? (List Json) "rest" | throwError
           s!"Assert node does not have a 'rest' field or it is not a JSON value: {json}"
-        -- The continuation: the remaining statements as a term, or `()` if the assert is last.
-        let tailCode ← if rest.isEmpty then `(()) else withoutCheck do getCode (← splitList rest) `term
+        -- Run twin drops the obligation and continues with the rest.
         if (← getNumericMode) == .approx then
-          return tailCode
+          return ← (if rest.isEmpty then `(()) else withoutCheck do getCode (← splitList rest) `term)
         let .ok testJson := json.getObjValAs? Json "test" | throwError
           s!"Assert node does not have a 'test' field or it is not a JSON value: {json}"
-        let testTerm ← withPropCondition true (getCode testJson `term)
+        -- Allocate this assert's `ht` name BEFORE lowering the rest, so the names ascend in body
+        -- order (`ht_1; ht_2; …`); lowering the rest first would number them in reverse.
         let hName := mkIdent (← freshName `ht)
+        let testTerm ← withPropCondition true (getCode testJson `term)
+        let tailCode ← if rest.isEmpty then `(()) else withoutCheck do getCode (← splitList rest) `term
         `(have $hName : $testTerm := by taste?
           $tailCode)
     | _, _ => throwError s!"Unsupported syntax category for Head_Assert node"
