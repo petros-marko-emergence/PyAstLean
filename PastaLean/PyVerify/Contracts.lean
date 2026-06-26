@@ -214,12 +214,16 @@ def buildMonadicSpec (thmName fnName : TSyntax `ident) (paramIdents : Array (TSy
   let preProps ← info.requires.mapM (fun r => withPropCondition true (getCode r `term))
   let pre ← conjoin preProps
   let bullets ← info.loops.mapM buildBullet
-  let fnT : TSyntax `term := ⟨fnName.raw⟩
-  let fnLemma ← `(Lean.Parser.Tactic.simpLemma| $fnT:term)
+  -- mvcgen lemma set: the function (to unfold) plus `pyRange_forIn`, which rewrites a
+  -- `for i in pyRange n` loop to the native `List.range` loop so mvcgen recovers "element = index"
+  -- and index-style invariants close (harmless on non-`pyRange` loops). `taste_ingr` can't be passed
+  -- here (mvcgen's `[…]` takes spec theorems, not simp sets) — it's applied by the `with taste?` closer.
+  let lemmas ← #[(⟨fnName.raw⟩ : TSyntax `term), mkIdent ``PastaLean.pyRange_forIn].mapM
+    (fun t => `(Lean.Parser.Tactic.simpLemma| $t:term))
   let tac ← if bullets.isEmpty then
-      `(tacticSeq| mvcgen [$fnLemma] with taste?)
+      `(tacticSeq| mvcgen [$lemmas,*] with taste?)
     else
-      `(tacticSeq| mvcgen [$fnLemma] invariants $[· $bullets:term]* with taste?)
+      `(tacticSeq| mvcgen [$lemmas,*] invariants $[· $bullets:term]* with taste?)
   `(command| theorem $thmName :
       ⦃⌜$pre⌝⦄ $fnName $paramIdents* ⦃⇓ _ => ⌜True⌝⦄ := by $tac)
 
