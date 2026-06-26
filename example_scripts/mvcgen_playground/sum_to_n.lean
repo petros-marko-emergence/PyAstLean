@@ -1,20 +1,41 @@
+import PastaLean
+import Libraries
 import Std.Tactic.Do
+
+open PastaLean
+open Libraries
 open Std.Do
 
-def sum_to_n : Int → Id Int := fun n ↦
-  (do
-      let mut total := (0 : Int)
-      let mut i := (1 : Int)
-      while i <= n do
-        total := total + i
-        i := i + (1 : Int)
-      return total)
+set_option linter.all false
+set_option mvcgen.warning false
 
--- Proof using while loop variant and invariant
-def sum_to_n_correct : ⦃⌜ n ≥ 0 ⌝⦄ sum_to_n n ⦃⇓ r => ⌜ r = n * (n + 1) / 2 ⌝⦄ := by
-  mvcgen [sum_to_n] invariants
-    · fun ⟨i, total⟩ => .up (Int.toNat (n - i + 1))
-    · ⇓ state => match state with
-      | Sum.inl ⟨i, total⟩ => ⌜total = (i - 1) * i / 2 ∧ 1 ≤ i ∧ i ≤ n + 1⌝
-      | Sum.inr ⟨i, total⟩ => ⌜total = n * (n + 1) / 2⌝
-  with grind
+set_option maxHeartbeats 800000
+
+-- Closed-form accumulator: total = 0+1+...+n = n(n+1)/2.
+-- Index-style invariant (references the loop counter), so it exercises element=index + division.
+def sum_to_n := fun (n : Int) ↦
+  (do
+    let mut total := (0 : Int)
+    for i in (PastaLean.pyRange (n +ₚ (1 : Int)))do
+      let _ := Libraries.passta.pyPassInvariant ((2 : Int) *ₚ total == i *ₚ (i -ₚ (1 : Int)))
+      total := total +ₚ i
+    let _ := Libraries.passta.pyPassEnsures ((2 : Int) *ₚ total == n *ₚ (n +ₚ (1 : Int)))
+    return total : Id _)
+
+theorem sum_to_n_spec : ⦃⌜n ≥ (0 : Int)⌝⦄ sum_to_n n ⦃⇓_ => ⌜True⌝⦄ := by
+  mvcgen [sum_to_n, PastaLean.pyRange_forIn, PastaLean.pyRange_forIn_start] invariants
+  · ⇓⟨cur, total⟩ =>
+    ⌜let i := (cur.prefix.length : Int);
+      (2 : Int) *ₚ total = i *ₚ (i -ₚ (1 : Int))⌝with
+    simp_all (config := { zetaDelta := true }) [taste_ingr]; grind +locals +suggestions
+
+def sum_to_n'rn := fun (n : Int) ↦
+  Id.run
+    (do
+      let _ := Libraries.passta.pyPassRequires (decide (n ≥ (0 : Int)))
+      let mut total := (0 : Int)
+      for i in (PastaLean.pyRange (n +ₚ (1 : Int)))do
+        let _ := Libraries.passta.pyPassInvariant ((2 : Int) *ₚ total == i *ₚ (i -ₚ (1 : Int)))
+        total := total +ₚ i
+      let _ := Libraries.passta.pyPassEnsures ((2 : Int) *ₚ total == n *ₚ (n +ₚ (1 : Int)))
+      return total)
