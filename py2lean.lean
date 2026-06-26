@@ -57,7 +57,7 @@ def runTranslateTask (jsonTask : Json) (ctx : Core.Context) (env : Environment) 
 boot, so the `proveFile` pass elaborates only the *commands* (opens, set_options, defs, theorems). -/
 def stripImports (code : String) : String :=
   String.intercalate "\n" <|
-    (code.splitOn "\n").filter (fun l => ¬ l.trim.startsWith "import ")
+    (code.splitOn "\n").filter (fun l => ¬ l.trimAscii.startsWith "import ")
 
 /-- Elaborate an already-generated program (with `:= by taste?` proof obligations) into the warm
 boot `env`, letting the `taste?` tactic search each assert and record its winning tactic string into

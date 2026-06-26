@@ -30,7 +30,6 @@ def sum_upto(n: int) -> int:
         Invariant(s == i * (i - 1) // 2)
         Decreases(n - i)
         s += i
-        Invariant(s == i * (i + 1) // 2)
         i += 1
     Ensures(s == n * (n - 1) // 2)
     return s

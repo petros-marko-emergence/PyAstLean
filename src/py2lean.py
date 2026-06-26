@@ -915,6 +915,104 @@ def _sanitize_hole_identifiers(ast_tree):
             n.arg = safe
 
 
+def _is_name(node, name=None):
+    return (isinstance(node, dict) and node.get("node_type") == "Name"
+            and (name is None or node.get("id") == name))
+
+
+def _name_referenced(nodes, name):
+    """Does `name` appear as a `Name` load anywhere within `nodes`?"""
+    stack = list(nodes)
+    while stack:
+        n = stack.pop()
+        if isinstance(n, dict):
+            if n.get("node_type") == "Name" and n.get("id") == name:
+                return True
+            stack.extend(n.values())
+        elif isinstance(n, list):
+            stack.extend(n)
+    return False
+
+
+def _counting_while_match(stmt):
+    """`(loop_var, bound)` for a canonical `while i < bound: …; i += 1`, else `None`."""
+    if not (isinstance(stmt, dict) and stmt.get("node_type") == "While"):
+        return None
+    test = stmt.get("test")
+    if not (isinstance(test, dict) and test.get("node_type") == "Compare" and test.get("op") == "lt"):
+        return None
+    if not _is_name(test.get("left")):
+        return None
+    loop_var = test["left"]["id"]
+    body = stmt.get("body", [])
+    if not body:
+        return None
+    last = body[-1]
+    if not (isinstance(last, dict) and last.get("node_type") == "AugAssign"
+            and _is_name(last.get("target"), loop_var) and last.get("op") == "add"
+            and isinstance(last.get("value"), dict) and last["value"].get("node_type") == "Constant"
+            and last["value"].get("value") == 1):
+        return None
+    return loop_var, test["right"]
+
+
+def _normalize_counting_loops_in_block(body):
+    """Rewrite a canonical counting `while i < bound: …; i += 1` (with a preceding `i = 0` in the
+    same block, and `i` unused after the loop) into `for i in range(bound): …`, so the verification
+    path handles it via the well-supported `for`/`forIn` machinery rather than mvcgen's fragile
+    `while`. Recurses into nested blocks first. Semantics-preserving only under those guards (a `for`
+    leaves `i = bound-1`, a `while` leaves `i = bound`), so we bail if any guard fails."""
+    for stmt in body:
+        if not isinstance(stmt, dict):
+            continue
+        for key in ("body", "orelse", "finalbody"):
+            if isinstance(stmt.get(key), list):
+                _normalize_counting_loops_in_block(stmt[key])
+        for handler in stmt.get("handlers", []) or []:
+            if isinstance(handler, dict):
+                _normalize_counting_loops_in_block(handler.get("body", []))
+        for method in stmt.get("methods", []) or []:
+            if isinstance(method, dict):
+                _normalize_counting_loops_in_block(method.get("body", []))
+    i = 0
+    while i < len(body):
+        match = _counting_while_match(body[i])
+        if match:
+            loop_var, bound = match
+            init_idx = None
+            for j in range(i - 1, -1, -1):
+                s = body[j]
+                if not isinstance(s, dict):
+                    continue
+                if (s.get("node_type") == "Assign" and _is_name(s.get("target"), loop_var)
+                        and isinstance(s.get("value"), dict) and s["value"].get("node_type") == "Constant"
+                        and s["value"].get("value") == 0):
+                    init_idx = j
+                    break
+                if s.get("node_type") in ("Assign", "AugAssign") and _is_name(s.get("target"), loop_var):
+                    break  # `i` re-bound to something else first → not the canonical pattern
+            if init_idx is not None and not _name_referenced(body[i + 1:], loop_var):
+                stmt = body[i]
+                new_body = stmt["body"][:-1]  # drop the `i += 1`
+                stmt.clear()
+                stmt.update({
+                    "node_type": "For",
+                    "target": {"node_type": "Name", "id": loop_var},
+                    "iter": {"node_type": "Range", "func": {"node_type": "Name", "id": "range"},
+                             "args": [bound], "keywords": {}},
+                    "body": new_body,
+                    "orelse": [],
+                })
+                del body[init_idx]
+                i -= 1
+        i += 1
+
+
+def normalize_counting_loops(module_json):
+    if isinstance(module_json, dict) and isinstance(module_json.get("body"), list):
+        _normalize_counting_loops_in_block(module_json["body"])
+
+
 def translate_to_json(source_code, filepath=None, best_effort=False):
     """
     Parses Python source code and translates it to a JSON IR.
@@ -958,6 +1056,7 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
         )
         for src in translator.unsupported_log:
             logger.warning("  unsupported: %s", src)
+    normalize_counting_loops(data)
     annotate_library_imports(data)
     annotate_exception_effects(data)
     annotate_io_effects(data)
@@ -1631,10 +1730,12 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                 preamble_lines = [
                     "import PastaLean",
                     "import Libraries",
+                    "import Std.Tactic.Do",
                     *crossfile_imports,
                     "",
                     "open PastaLean",
                     "open Libraries",
+                    "open Std.Do",
                     "",
                     "set_option linter.all false", # shut up warnings which annoyingly popup in output
                     "set_option mvcgen.warning false",
