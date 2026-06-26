@@ -439,6 +439,26 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
           let thmCmd ← buildSpecTheorem thmName argInfos letJsons hypJsons conclJson
           let attrCmd ← `(command| attribute [simp] $nameIdent)
           return ⟨mkNullNode #[finalDef.raw, attrCmd.raw, thmCmd.raw]⟩
+        -- Track M: a monadic contracted function (a `for` loop with `Invariant(...)`). Emit the
+        -- function `Id`-typed (so `mvcgen` sees the `do`) with `Requires`/`Assume` stripped to the
+        -- precondition, plus a `<fn>_spec` Hoare-triple theorem driven by `mvcgen … with taste?`.
+        -- Exact mode only; the runnable `'rn` twin (approx) falls through to normal emission.
+        if (← getNumericMode) == .exact then
+          if let some info := monadicContractInfo? substantive then
+            let argInfos ← functionArgInfos json
+            let valueStx ← withFreshVariables do
+              let bodyStxArray ← monadicFunctionBodySyntax info.cleanBody
+              let doStx ← `(do $[$bodyStxArray:doElem]*)
+              let mut v ← `(($doStx : Id _))
+              for (argIdent, ty?) in argInfos.reverse do
+                v ← match ty? with
+                  | some ty => `(fun ($argIdent : $ty) ↦ $v)
+                  | none => `(fun $argIdent ↦ $v)
+              pure v
+            let finalDef ← applyPrivacy name (← `(command| def $nameIdent := $valueStx))
+            let thmCmd ← buildMonadicSpec (mkIdent (name ++ "_spec").toName) nameIdent
+              (argInfos.map (·.1)) info
+            return ⟨mkNullNode #[finalDef.raw, thmCmd.raw]⟩
         -- `_real_fn` (set by the Python per-variable pass) means the function produces or handles an
         -- `ℝ` value → it must be `noncomputable` in exact mode. This is now DECOUPLED from which
         -- floats are `ℝ`: real params carry a per-`arg` `_real` stamp (read in `functionArgInfos`)

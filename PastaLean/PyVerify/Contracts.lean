@@ -1,5 +1,6 @@
 import PastaLean.PyGens.Core.Utils
 import PastaLean.PyVerify.AssertTactic
+import Std.Tactic.Do
 
 /-!
 # PASSTA contract codegen (Track P)
@@ -15,6 +16,7 @@ this file holds the reusable, codegen-coupled pieces.
 
 open Lean Meta Elab Term Qq Std
 open Lean.Parser.Term
+open Std.Do
 
 namespace PastaLean
 
@@ -103,5 +105,122 @@ def contractShape? (paramNames : Array String) (body substantive : Array Json) :
   let concl := if concls.size == 1 then concls[0]!
     else Json.mkObj [("node_type", Json.str "BoolOp"), ("op", Json.str "and"), ("values", Json.arr concls)]
   return some (clean, lets, hyps, concl)
+
+/-! ## Track M — monadic (loop) contracts -/
+
+/-- Does any `Assign`/`AugAssign` inside `stmt` (recursing into nested bodies) target `name`? Used
+to find which mutable variables a loop threads (its mvcgen state). -/
+partial def jsonAssignsName (stmt : Json) (name : String) : Bool :=
+  match jsonNodeType? stmt with
+  | some "Assign" | some "AugAssign" =>
+    ((stmt.getObjVal? "target").bind (·.getObjValAs? String "id")) == .ok name
+  | _ => Id.run do
+    for key in ["body", "orelse", "finalbody"] do
+      if let .ok (arr : Array Json) := stmt.getObjValAs? (Array Json) key then
+        for s in arr do
+          if jsonAssignsName s name then return true
+    return false
+
+/-- Mutable-variable declaration order: top-level `Assign` targets, first occurrence first. This is
+the order mvcgen threads them as the loop state tuple. -/
+def declaredMutOrder (body : Array Json) : Array String := Id.run do
+  let mut acc : Array String := #[]
+  for s in body do
+    if jsonNodeType? s == some "Assign" then
+      if let .ok name := (s.getObjVal? "target").bind (·.getObjValAs? String "id") then
+        if !acc.contains name then acc := acc.push name
+  return acc
+
+/-- Per-loop invariant data: the loop variable, whether the iterable is a `range(...)`, the threaded
+accumulators (in declaration order), and the conjuncts of its `Invariant(...)` markers. -/
+structure LoopInv where
+  loopVar : String
+  isRange : Bool
+  accumulators : Array String
+  invariants : Array Json
+
+/-- All proof data for a monadic contracted function. -/
+structure MonadicContract where
+  cleanBody : Array Json   -- def body with `Requires`/`Assume` stripped (other markers kept)
+  requires : Array Json    -- `Requires`/`Assume` predicate args → precondition
+  loops : Array LoopInv
+
+def loopInvOf (declaredOrder : Array String) (forNode : Json) : Option LoopInv :=
+  match (forNode.getObjVal? "target").bind (·.getObjValAs? String "id"),
+        (forNode.getObjVal? "iter").toOption with
+  | .ok loopVar, some iter =>
+    let isRange := jsonNodeType? iter == some "Range"
+    let loopBody := (forNode.getObjValAs? (Array Json) "body").toOption.getD #[]
+    let invariants := loopBody.filterMap fun s =>
+      match contractArg? s with
+      | some ("Invariant", arg) => some arg
+      | _ => none
+    let accumulators := declaredOrder.filter fun v => loopBody.any (jsonAssignsName · v)
+    some { loopVar, isRange, accumulators, invariants }
+  | _, _ => none
+
+/-- Track M: a *monadic* contracted function (has a `for` loop with `Invariant(...)`, or effects).
+Strips `Requires`/`Assume` (→ precondition), keeps everything else (so `Ensures` stay as in-body
+checkpoints and `Invariant` markers stay as provable checkpoints), and records per-loop invariant
+data. `none` when there is no contract marker. -/
+def monadicContractInfo? (body : Array Json) : Option MonadicContract := Id.run do
+  let declared := declaredMutOrder body
+  let mut requires : Array Json := #[]
+  let mut clean : Array Json := #[]
+  let mut loops : Array LoopInv := #[]
+  let mut sawContract := false
+  for s in body do
+    match contractArg? s with
+    | some (member, _arg) =>
+      sawContract := true
+      match member with
+      | "Requires" | "Assume" => requires := requires.push _arg
+      | _ => clean := clean.push s
+    | none =>
+      if jsonNodeType? s == some "For" then
+        if let some li := loopInvOf declared s then
+          sawContract := sawContract || !li.invariants.isEmpty
+          loops := loops.push li
+      clean := clean.push s
+  if !sawContract then return none
+  return some { cleanBody := clean, requires, loops }
+
+/-- Conjoin a list of `Prop` terms (empty → `True`). -/
+private def conjoin (ps : Array (TSyntax `term)) : PygenM (TSyntax `term) :=
+  match ps.toList with
+  | [] => `(True)
+  | p :: rest => rest.foldlM (fun acc q => `($acc ∧ $q)) p
+
+/-- One `· ⇓⟨cur, accs…⟩ => ⌜let i := (cur.prefix.length : Int); <invariants>⌝` bullet for a loop.
+Non-`range` loops (where the loop variable isn't the index) get a trivial `⌜True⌝` bullet for now. -/
+def buildBullet (li : LoopInv) : PygenM (TSyntax `term) := do
+  for a in li.accumulators do addVar a.toName
+  addVar li.loopVar.toName
+  let accIdents := li.accumulators.map (fun s => mkIdent s.toName)
+  let cur := mkIdent `cur
+  if li.isRange && !li.invariants.isEmpty then
+    let invProps ← li.invariants.mapM (fun inv => withPropCondition true (getCode inv `term))
+    let body ← conjoin invProps
+    let loopVarId := mkIdent li.loopVar.toName
+    `(⇓⟨$cur, $accIdents,*⟩ => ⌜let $loopVarId := ($(cur).prefix.length : Int); $body⌝)
+  else
+    `(⇓⟨$cur, $accIdents,*⟩ => ⌜True⌝)
+
+/-- Build the monadic spec theorem:
+`theorem <thm> : ⦃⌜<requires>⌝⦄ <fn> <params> ⦃⇓ _ => ⌜True⌝⦄ := by mvcgen [<fn>] invariants … with taste?` -/
+def buildMonadicSpec (thmName fnName : TSyntax `ident) (paramIdents : Array (TSyntax `ident))
+    (info : MonadicContract) : PygenM (TSyntax `command) := withFreshVariables do
+  for p in paramIdents do addVar p.getId
+  let preProps ← info.requires.mapM (fun r => withPropCondition true (getCode r `term))
+  let pre ← conjoin preProps
+  let bullets ← info.loops.mapM buildBullet
+  let fnT : TSyntax `term := ⟨fnName.raw⟩
+  let fnLemma ← `(Lean.Parser.Tactic.simpLemma| $fnT:term)
+  let tac ← if bullets.isEmpty then
+      `(tacticSeq| mvcgen [$fnLemma] with taste?)
+    else
+      `(tacticSeq| mvcgen [$fnLemma] invariants $[· $bullets:term]* with taste?)
+  `(command| theorem $thmName :
+      ⦃⌜$pre⌝⦄ $fnName $paramIdents* ⦃⇓ _ => ⌜True⌝⦄ := by $tac)
 
 end PastaLean
