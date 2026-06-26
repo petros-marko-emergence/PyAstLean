@@ -18,6 +18,7 @@ from toplevel_state import (
     annotate_toplevel_state,
     annotate_if_assigned_names,
 )
+from contract_passta import CONTRACT_FUNCS as PASSTA_STAR_MEMBERS
 
 HOMEDIR = Path.absolute(Path(__name__).parent.parent)
 SRC_DIR = HOMEDIR / "src"
@@ -33,6 +34,13 @@ def get_supported_libraries():
     return {f.name for f in libraries_path.iterdir() if f.is_dir()}
 
 SUPPORTED_LIBRARY_IMPORTS = get_supported_libraries()
+
+# Backwards-compatible Python module names for the PASSTA contract shim. The Lean library lives
+# under `Libraries/passta`, while Python examples may import `contracts` or `contract_passta`.
+LIBRARY_IMPORT_ALIASES = {
+    "contracts": "passta",
+    "contract_passta": "passta",
+}
 
 # Type-only / compile-time modules: they contribute nothing at runtime (their names live in
 # annotations, which `annotate_python.py` normalises to builtin generics). They are neither
@@ -62,6 +70,7 @@ def _supported_library_root(module_name):
     if not isinstance(module_name, str) or not module_name:
         return None
     root = module_name.split(".")[0]
+    root = LIBRARY_IMPORT_ALIASES.get(root, root)
     return root if root in SUPPORTED_LIBRARY_IMPORTS else None
 
 COMMENT_PLACEHOLDER_RE = re.compile(
@@ -824,6 +833,14 @@ def _annotate_library_imports_in_scope(body, inherited_env=None):
                         continue
                     member_name = alias_node.get("name")
                     local_name = _imported_alias_name(alias_node)
+                    if root == "passta" and member_name == "*":
+                        for contract_member in PASSTA_STAR_MEMBERS:
+                            env[contract_member] = {
+                                "kind": "member",
+                                "module": root,
+                                "member": contract_member,
+                            }
+                        continue
                     if isinstance(member_name, str) and isinstance(local_name, str):
                         # `from scipy import special` binds a submodule namespace; `from
                         # scipy.special import factorial` (and `from math import exp`) bind members.
@@ -1619,8 +1636,9 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                     "open PastaLean",
                     "open Libraries",
                     "",
-                    "set_option linter.all false",  # shut up warnings which annoyingly popup in output
-                    # Give `taste?`'s proof search some room beyond the default 200000 heartbeats.
+                    "set_option linter.all false", # shut up warnings which annoyingly popup in output
+                    "set_option mvcgen.warning false",
+                    ""
                     "set_option maxHeartbeats 800000",
                     "\n",
                 ]
