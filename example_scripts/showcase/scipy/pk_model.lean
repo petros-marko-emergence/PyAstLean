@@ -1,10 +1,14 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
+
 set_option maxHeartbeats 800000
 
 /-
@@ -80,7 +84,7 @@ def concentration'rn := fun (amount : Float) ↦ fun (vol : Float) ↦
   /-
   Convert a compartment amount (mg) to a concentration (mg/L).
   -/
-  amount /ₚ vol
+  PastaLean.pyFloat amount /ₚ vol
 
 noncomputable def body_load := fun (depot : Rat) ↦ fun (central : Rat) ↦ fun (periph : Rat) ↦
   /-

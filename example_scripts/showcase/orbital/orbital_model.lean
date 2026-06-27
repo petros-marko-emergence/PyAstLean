@@ -1,10 +1,14 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
+
 set_option maxHeartbeats 800000
 
 /-
@@ -432,12 +436,12 @@ def main''rn :=
         let mut dx := r1x -ₚ r2x
         let mut dy := r1y -ₚ r2y
         let mut dz := r1z -ₚ r2z
-        let mut a1x := -k *ₚ dx /ₚ m1
-        let mut a1y := -k *ₚ dy /ₚ m1
-        let mut a1z := -k *ₚ dz /ₚ m1
-        let mut a2x := k *ₚ dx /ₚ m2
-        let mut a2y := k *ₚ dy /ₚ m2
-        let mut a2z := k *ₚ dz /ₚ m2
+        let mut a1x := PastaLean.pyFloat (-k *ₚ dx) /ₚ m1
+        let mut a1y := PastaLean.pyFloat (-k *ₚ dy) /ₚ m1
+        let mut a1z := PastaLean.pyFloat (-k *ₚ dz) /ₚ m1
+        let mut a2x := PastaLean.pyFloat (k *ₚ dx) /ₚ m2
+        let mut a2y := PastaLean.pyFloat (k *ₚ dy) /ₚ m2
+        let mut a2z := PastaLean.pyFloat (k *ₚ dz) /ₚ m2
         -- Velocity-Verlet (here the force is linear, so a half/full kick step is exact enough).
         v1x := v1x +ₚ a1x *ₚ dt
         v1y := v1y +ₚ a1y *ₚ dt

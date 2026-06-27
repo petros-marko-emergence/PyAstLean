@@ -1,10 +1,14 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
+
 set_option maxHeartbeats 800000
 
 noncomputable def euclidean_distance := fun (p1 : List Int) ↦ fun (p2 : List Int) ↦
@@ -46,27 +50,23 @@ def euclidean_distance'rn : List Int → List Int → PastaLean.PyExcept Float :
 noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (dataset : List (List Int)) ↦
   ((do
       try
-        let __py_try_val_1 ←
-          PastaLean.PyExcept.captureIOErrors
-              (do
-                -- Calculate distances using list comprehension
-                let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance target point)
-                -- Find the minimum distance
-                let mut min_dist := PastaLean.pyMin distances
-                -- Find the index of the minimum distance
-                -- Using a loop since index() might not be supported based on tests
-                let mut min_index := -(1 : Int)
-                for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
-                  let i := Prod.fst _pair_1
-                  let d := Prod.snd _pair_1
-                  if h_1 : d = min_dist then 
-                    min_index := i
-                    break
-                  else
-                    let _ := ()
-                let __py_ret_1 := (min_dist, dataset⦋min_index⦌)
-                return __py_ret_1)
-        return __py_try_val_1
+        -- Calculate distances using list comprehension
+        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance target point)
+        -- Find the minimum distance
+        let mut min_dist := PastaLean.pyMin distances
+        -- Find the index of the minimum distance
+        -- Using a loop since index() might not be supported based on tests
+        let mut min_index := -(1 : Int)
+        for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
+          let i := Prod.fst _pair_1
+          let d := Prod.snd _pair_1
+          if h_1 : d = min_dist then 
+            min_index := i
+            break
+          else
+            let _ := ()
+        let __py_ret_1 := (min_dist, dataset⦋min_index⦌)
+        return __py_ret_1
       catch caught =>
         if (caught).OfKind == "ValueError" then 
           let e := caught
@@ -82,27 +82,23 @@ attribute [simp] find_nearest_neighbor
 def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List (List Int)) ↦
   ((do
       try
-        let __py_try_val_1 ←
-          PastaLean.PyExcept.captureIOErrors
-              (do
-                -- Calculate distances using list comprehension
-                let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance'rn target point)
-                -- Find the minimum distance
-                let mut min_dist := PastaLean.pyMin distances
-                -- Find the index of the minimum distance
-                -- Using a loop since index() might not be supported based on tests
-                let mut min_index := -(1 : Int)
-                for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
-                  let i := Prod.fst _pair_1
-                  let d := Prod.snd _pair_1
-                  if h_1 : d == min_dist then 
-                    min_index := i
-                    break
-                  else
-                    let _ := ()
-                let __py_ret_1 := (min_dist, dataset⦋min_index⦌)
-                return __py_ret_1)
-        return __py_try_val_1
+        -- Calculate distances using list comprehension
+        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance'rn target point)
+        -- Find the minimum distance
+        let mut min_dist := PastaLean.pyMin distances
+        -- Find the index of the minimum distance
+        -- Using a loop since index() might not be supported based on tests
+        let mut min_index := -(1 : Int)
+        for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
+          let i := Prod.fst _pair_1
+          let d := Prod.snd _pair_1
+          if h_1 : d == min_dist then 
+            min_index := i
+            break
+          else
+            let _ := ()
+        let __py_ret_1 := (min_dist, dataset⦋min_index⦌)
+        return __py_ret_1
       catch caught =>
         if (caught).OfKind == "ValueError" then 
           let e := caught
