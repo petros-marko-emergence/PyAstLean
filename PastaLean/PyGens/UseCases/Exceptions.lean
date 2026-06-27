@@ -196,42 +196,30 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
   let .ok finalbodyElems := json.getObjValAs? (Array Json) "finalbody" | throwError
     s!"Try node does not have a 'finalbody' field or it is not a JSON array: {json}"
   let bodyAndElse ← tryBranchBodySyntax (bodyElems ++ orelseElems)
-  -- Splice the body statements straight into the `captureIOErrors (do …)` block — don't pre-wrap
-  -- them in a `do` (which would nest `do (do …)`).
   let noopElem ← noopDoElemSyntax
   let innerBodyElems := if bodyAndElse.isEmpty then #[noopElem] else bodyAndElse
   let catchIdent := mkIdent `caught
   let catchBody ← exceptHandlersDoElemSyntax catchIdent handlersElems.toList
   let exceptIdent := mkIdent ``PastaLean.PyExcept
-  -- Wrap the body in `captureIOErrors` so an `IO` error (e.g. `EOFError` from `input()` at end of
-  -- input) becomes a catchable `PyException`. The real `try … catch` is kept (so `break`/`continue`
-  -- in the handler still target the enclosing loop), matching Python's catch-all `except:`.
-  let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
-  let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
-  -- If the try-body (or its `else`) can `return` a value, that value is the result of the whole
-  -- `try` expression and must be propagated out; binding-and-discarding with `let _ ←` would pin
-  -- the try-branch to `Unit` and clash with a value-returning `catch`. When the body is purely
-  -- effectful we keep `let _ ←` so the try-branch stays `Unit` (e.g. inside a loop body, where an
-  -- unconditional `return` would wrongly exit the enclosing function).
-  -- The whole `try` expression yields a value if the body (or `else`) can `return` one, OR if any
-  -- `except` handler can — in the latter case the `catch` branch produces a value, so the `try`
-  -- branch must produce the same type. We bind the body's result to a fresh name and `return` it
-  -- (rather than emitting a bare `return (← …)`, which mis-pretty-prints into an illegal
-  -- mid-sequence `return`). When the body only raises, `wrappedBody` is polymorphic and unifies
-  -- with the handler's value type.
+  -- The try-branch statements. By default we splice them straight into `try` so a `let mut` in the
+  -- body mutates the *enclosing* scope (wrapping them in a nested `do`, as `captureIOErrors (do …)`
+  -- does, makes those vars read-only and breaks the mutation). The wrapper is only needed when the
+  -- body performs IO — there an IO error (e.g. `EOFError` from `input()` at end of input) must be
+  -- turned into a catchable `PyException`; that case keeps the wrapper (and binds/returns the value).
   let bodyYieldsValue :=
     statementListMayYieldValue (bodyElems ++ orelseElems)
       || handlersListMayYieldValue handlersElems
-  -- Emit the try-branch statements directly into the `try` block (spliced, not wrapped in a `do`).
   let tryBranchElems : Array (TSyntax `doElem) ←
-    if bodyYieldsValue then do
-      let tryValName := mkIdent (← freshName `__py_try_val)
-      let bindElem ← `(doElem| let $tryValName ← $wrappedBody:term)
-      let retElem ← `(doElem| return $tryValName)
-      pure #[bindElem, retElem]
-    else do
-      let discardElem ← `(doElem| let _ ← $wrappedBody:term)
-      pure #[discardElem]
+    if bodyNeedsIOMonad (bodyElems ++ orelseElems) then do
+      let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
+      let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
+      if bodyYieldsValue then do
+        let tryValName := mkIdent (← freshName `__py_try_val)
+        pure #[← `(doElem| let $tryValName ← $wrappedBody:term), ← `(doElem| return $tryValName)]
+      else
+        pure #[← `(doElem| let _ ← $wrappedBody:term)]
+    else
+      pure innerBodyElems
   if finalbodyElems.isEmpty then
     `(((do
           try
@@ -280,26 +268,23 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
         let innerBodyElems := if bodyAndElse.isEmpty then #[noopElem] else bodyAndElse
         let catchIdent := mkIdent `caught
         let catchBody ← exceptHandlersDoElemSyntax catchIdent handlersElems.toList
-        -- Wrap the body in `captureIOErrors` so an `IO` error (e.g. `EOFError` from `input()`)
-        -- becomes a catchable `PyException`, while keeping the real `try … catch` so the handler's
-        -- `break`/`continue` still target the enclosing loop. Matches Python's catch-all `except:`.
-        let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
-        let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
-        -- See `tryExceptTerm`: propagate the body's value out of the `try` when it (or any handler)
-        -- can `return` one, binding it to a fresh name and returning it; otherwise keep the
-        -- effectful `let _ ←` form. Splice the statements directly into `try` (no wrapping `do`).
+        -- Splice the body straight into `try` so a `let mut` in it mutates the enclosing scope; only
+        -- wrap in `captureIOErrors` when the body does IO (to turn an `EOFError` etc. into a catchable
+        -- `PyException`). See `tryExceptTerm` for the full rationale.
         let bodyYieldsValue :=
           statementListMayYieldValue (bodyElems ++ orelseElems)
             || handlersListMayYieldValue handlersElems
         let tryBranchElems : Array (TSyntax `doElem) ←
-          if bodyYieldsValue then do
-            let tryValName := mkIdent (← freshName `__py_try_val)
-            let bindElem ← `(doElem| let $tryValName ← $wrappedBody:term)
-            let retElem ← `(doElem| return $tryValName)
-            pure #[bindElem, retElem]
-          else do
-            let discardElem ← `(doElem| let _ ← $wrappedBody:term)
-            pure #[discardElem]
+          if bodyNeedsIOMonad (bodyElems ++ orelseElems) then do
+            let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
+            let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
+            if bodyYieldsValue then do
+              let tryValName := mkIdent (← freshName `__py_try_val)
+              pure #[← `(doElem| let $tryValName ← $wrappedBody:term), ← `(doElem| return $tryValName)]
+            else
+              pure #[← `(doElem| let _ ← $wrappedBody:term)]
+          else
+            pure innerBodyElems
         if finalbodyElems.isEmpty then
           `(doElem| try
               $[$tryBranchElems:doElem]*

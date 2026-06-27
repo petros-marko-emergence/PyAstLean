@@ -446,16 +446,26 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         if (← getNumericMode) == .exact then
           if let some info := monadicContractInfo? substantive then
             let argInfos ← functionArgInfos json
+            -- Pick the monad mvcgen sees. A `try`/`raise` body needs a *pure* exception monad
+            -- (`Except PyException`) — `Id` has no `MonadExcept`, so `throw`/`caught.OfKind` fail to
+            -- elaborate; `PyExcept` would drag in `IO` (no mvcgen specs). A pure body stays `Id _`.
+            let usesExc := bodyNeedsExceptionMonad info.cleanBody
             let valueStx ← withFreshVariables do
               let bodyStxArray ← monadicFunctionBodySyntax info.cleanBody
               let doStx ← `(do $[$bodyStxArray:doElem]*)
-              let mut v ← `(($doStx : Id _))
+              let monadTy ← if usesExc then `(Except PastaLean.PyException _) else `(Id _)
+              let mut v ← `(($doStx : $monadTy))
               for (argIdent, ty?) in argInfos.reverse do
                 v ← match ty? with
                   | some ty => `(fun ($argIdent : $ty) ↦ $v)
                   | none => `(fun $argIdent ↦ $v)
               pure v
-            let finalDef ← applyPrivacy name (← `(command| def $nameIdent := $valueStx))
+            -- A body doing `ℝ` arithmetic (e.g. `math.sqrt`) is noncomputable in exact mode; the
+            -- verification def only needs to *elaborate* for `mvcgen`, so mark it as such.
+            let nc ← bodyNeedsNoncomputable info.cleanBody
+            let defCmd ← if nc then `(command| noncomputable def $nameIdent := $valueStx)
+              else `(command| def $nameIdent := $valueStx)
+            let finalDef ← applyPrivacy name defCmd
             let thmCmd ← buildMonadicSpec (mkIdent (name ++ "_spec").toName) nameIdent
               (argInfos.map (·.1)) info
             return ⟨mkNullNode #[finalDef.raw, thmCmd.raw]⟩
