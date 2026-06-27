@@ -3,15 +3,9 @@ import PastaLean.PyVerify.AssertTactic
 import Std.Tactic.Do
 
 /-!
-# PASSTA contract codegen (Track P)
+# PASSTA contract codege
 
-Detection and theorem-building for the `Libraries.passta` contract markers (`Requires`/`Ensures`/
-`Assert`/`Assume`/`Invariant`/`Decreases`). This is the *pure, non-monadic* track: a straight-line
-function carrying contracts emits its ordinary runnable `def` (contracts stripped) plus a named
-`<fn>_spec` theorem `∀ params, Requires → (let …; Ensures)` discharged by `taste?`.
-
-The emission hook itself lives in `PyGens/UseCases/FuncDef.lean` (it needs `functionValueSyntax`);
-this file holds the reusable, codegen-coupled pieces.
+Detection and theorem-building for the `Libraries.passta` contract markers (`Requires`/`Ensures`/ `Assert`/`Assume`/`Invariant`/`Decreases`).
 -/
 
 open Lean Meta Elab Term Qq Std
@@ -20,9 +14,8 @@ open Std.Do
 
 namespace PastaLean
 
-/-- A PASSTA contract `Expr`-statement `pyPass<Member> (arg)` → `(member, arg)`, where `member` is
-`"Requires"`/`"Ensures"`/`"Assert"`/`"Assume"`/`"Invariant"`/`"Decreases"` (the Python
-`library_member` tag, preserved on the call's `func`). `none` for any non-contract statement. -/
+/-- `contractArg?` extracts contract metadata from a Python AST node. Verifies the function is from the "passta" library. Extracts the contract type (library member:
+"Requires" /"Ensures" /"Assert" /"Assume" /"Invariant"/"Decreases") and Returns the contract type paired with its argument, or none if it's not a contract statement -/
 def contractArg? (stmt : Json) : Option (String × Json) :=
   match jsonNodeType? stmt with
   | some "Expr" =>
@@ -66,10 +59,10 @@ def buildSpecTheorem (thmName : TSyntax `ident)
         | none => `(∀ $argIdent, $propTy)
     `(command| @[taste_ingr] theorem $thmName : $propTy := by taste?)
 
-/-- Track P: a *pure, straight-line* contracted function (`Requires`/`Ensures`, `let`s, `return` —
+/-- A *pure, straight-line* contracted function (`Requires`/`Ensures`, `let`s, `return` —
 no loops, IO, or `raise`). Splits the body into the runnable statements (contracts stripped) and the
 proof data. Returns `(cleanBody, lets, hyps, concl)`. `none` if monadic, if any statement isn't a
-fresh `let`/`return`/contract, if an `Invariant`/`Decreases` appears (those imply a loop ⇒ Track M),
+fresh `let`/`return`/contract, if an `Invariant`/`Decreases` appears (those imply a loop)
 or if there's no `Ensures`/`Assert` to prove. Multiple `Ensures` conjoin into one conclusion. -/
 def contractShape? (paramNames : Array String) (body substantive : Array Json) :
     Option (Array Json × Array Json × Array Json × Json) := Id.run do
@@ -105,8 +98,6 @@ def contractShape? (paramNames : Array String) (body substantive : Array Json) :
   let concl := if concls.size == 1 then concls[0]!
     else Json.mkObj [("node_type", Json.str "BoolOp"), ("op", Json.str "and"), ("values", Json.arr concls)]
   return some (clean, lets, hyps, concl)
-
-/-! ## Track M — monadic (loop) contracts -/
 
 /-- Does any `Assign`/`AugAssign` inside `stmt` (recursing into nested bodies) target `name`? Used
 to find which mutable variables a loop threads (its mvcgen state). -/
@@ -200,7 +191,7 @@ def loopInvOf (declaredOrder : Array String) (forNode : Json) : Option LoopInv :
     some { loopVar, isRange, accumulators, invariants, accMutations, hasEarlyExit }
   | _, _ => none
 
-/-- Track M: a *monadic* contracted function (has a `for` loop with `Invariant(...)`, or effects).
+/-- A *monadic* contracted function (has a `for` loop with `Invariant(...)`, or effects).
 Strips `Requires`/`Assume` (→ precondition), keeps everything else (so `Ensures` stay as in-body
 checkpoints and `Invariant` markers stay as provable checkpoints), and records per-loop invariant
 data. `none` when there is no contract marker. -/
@@ -265,7 +256,9 @@ def buildBullet (li : LoopInv) : PygenM (TSyntax `term) := do
   if li.accumulators.isEmpty then
     `(⇓ $cur => ⌜$body⌝)
   else
-    let accIdents := li.accumulators.map (fun s => mkIdent s.toName)
+    -- mvcgen threads the loop state as a right-nested `MProd` whose `.fst` is the *last*-declared
+    -- mutable variable, i.e. the tuple is in **reverse** declaration order.
+    let accIdents := li.accumulators.reverse.map (fun s => mkIdent s.toName)
     `(⇓⟨$cur, $accIdents,*⟩ => ⌜$body⌝)
 
 /-- Build the monadic spec theorem:
@@ -276,13 +269,13 @@ def buildMonadicSpec (thmName fnName : TSyntax `ident) (paramIdents : Array (TSy
   let preProps ← info.requires.mapM (fun r => withPropCondition true (getCode r `term))
   let pre ← conjoin preProps
   let bullets ← info.loops.mapM buildBullet
-  -- mvcgen lemma set: the function (to unfold) plus `pyRange_forIn`, which rewrites a
-  -- `for i in pyRange n` loop to the native `List.range` loop so mvcgen recovers "element = index"
-  -- and index-style invariants close (harmless on non-`pyRange` loops). `taste_ingr` can't be passed
-  -- here (mvcgen's `[…]` takes spec theorems, not simp sets) — it's applied by the `with taste?` closer.
+  -- mvcgen lemma set is added here
   let lemmas ← #[(⟨fnName.raw⟩ : TSyntax `term), mkIdent ``PastaLean.pyRange_forIn,
       mkIdent ``PastaLean.pyRange_forIn_start].mapM
     (fun t => `(Lean.Parser.Tactic.simpLemma| $t:term))
+  -- `mvcgen`'s `with` runs one closer over *all* the (heterogeneous) verification conditions; `taste?`
+  -- portfolios each one. It records one winner per VC, which `runPastafolio` merges (by source span)
+  -- into a single `first | …` so the prove-and-replace splice maps the lone `taste?` token back faithfully.
   let tac ← if bullets.isEmpty then
       `(tacticSeq| mvcgen [$lemmas,*] with taste?)
     else

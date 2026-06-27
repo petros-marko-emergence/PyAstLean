@@ -1373,12 +1373,54 @@ def _splice_taste_winners(code, winners):
         if code.startswith("taste?", i):
             # Replace with the recorded winner, or `sorry` if none (a `taste?` left in the file would
             # re-run the search every compile and can time out — `sorry` keeps the file compiling).
-            out.append(winners[wi] if wi < len(winners) else "sorry")
+            out.append(_prettify_with_closer(winners[wi]) if wi < len(winners) else "sorry")
             wi += 1
             i += len("taste?")
             continue
         out.append(c); i += 1
     return "".join(out)
+
+# Matches `winnerAltSep` in PastaLean/PyVerify/Pastafolio/Search.lean — joins the per-VC proofs an
+# `mvcgen … with taste?` closer records (one per verification condition).
+_WINNER_ALT_SEP = "\x01"
+
+def _prettify_with_closer(winner):
+    """An `mvcgen … with taste?` records one proof per verification condition, separator-joined. The
+    closer runs once per goal, and they share the same simplifier prefix (the profile's `simp_all
+    [taste_ingr]` etc.), differing only in the closer. Factor that common `;`-prefix out and offer the
+    distinct closers as `pre; first | c₁ | c₂` (a goal the prefix already closed takes the `done`
+    branch) instead of repeating the whole prefix in every `first` alternative. A single VC (no
+    separator) is returned untouched."""
+    if _WINNER_ALT_SEP not in winner:
+        return winner
+    proofs = winner.split(_WINNER_ALT_SEP)
+    steps = [p.split("; ") for p in proofs]
+    # longest common leading run of identical steps (the shared simplifiers)
+    common = []
+    for col in zip(*steps):
+        if all(s == col[0] for s in col):
+            common.append(col[0])
+        else:
+            break
+    # the remaining per-goal closer; "" (prefix already closed the goal) → `done`. Dedupe, keep order.
+    branches = []
+    for sl in steps:
+        suffix = "; ".join(sl[len(common):]) or "done"
+        # a multi-step suffix may end in a non-closing step, so guard it with `; done` (and parens, to
+        # bind inside `first`); a lone closer (`positivity`, `omega`, `done`) is already terminal.
+        branch = suffix if "; " not in suffix else f"({suffix}; done)"
+        if branch not in branches:
+            branches.append(branch)
+    body = branches[0] if len(branches) == 1 else "first | " + " | ".join(branches)
+    return f"{'; '.join(common)}; {body}" if common else body
+
+def _newline_before_mvcgen_with(code):
+    """Put a contract spec's `mvcgen … invariants` closer on its own line: the pretty-printer glues
+    `with <closer>` straight onto the last `⌜…⌝` invariant bullet (rendering `…⌝with taste?`), which
+    reads poorly. Break before `with` and align it under `mvcgen` (two spaces). Only the spec
+    theorems emit `⌝` immediately followed by `with`, so this can't touch anything else."""
+    return re.sub(r"⌝[^\S\n]*with\b", "⌝\n  with", code)
+
 
 def _references_name(node, target):
     """Recursively check whether a JSON subtree references a `Name` with id `target`."""
@@ -1766,6 +1808,9 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                 full_code = "\n".join(preamble_lines) + body_code
             else:
                 full_code = body_code
+            # Lay an `mvcgen … invariants` spec's `with` closer on its own line (cosmetic), for both
+            # the spliced and the `--leave-taste` forms.
+            full_code = _newline_before_mvcgen_with(full_code)
             # Prove-and-replace pass: elaborate the assembled file in the warm backend so `taste?`
             # searches each assert, then splice the concrete winning tactic (or `sorry`) over each
             # `taste?`. Non-destructive — on any failure we leave the `taste?` obligations in place.

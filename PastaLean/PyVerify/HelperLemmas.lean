@@ -1,5 +1,6 @@
 import Mathlib
 import PastaLean.PyAPI.Core
+import PastaLean.PyAPI.Operators
 import PastaLean.PyAPI.TasteIngr
 
 /-!
@@ -52,5 +53,11 @@ with the element `start + index` in the body, so mvcgen knows `i ≥ start`. -/
     forIn (pyRange stop start) init f
       = forIn (List.range (stop - start).toNat) init (fun (k : Nat) => f (start + Int.ofNat k)) := by
   rw [pyRange_eq_start, List.forIn_map]
+
+/-- Python `x ** 2` lowers to `x ^ₚ (2 : Int)` (the `PyHPow Int Int Int` instance). `taste?`'s
+closers (`positivity`/`nlinarith`) don't see through the `^ₚ` notation, so normalise it to the plain
+`x ^ 2` monoid power — then `positivity` recognises the even power as nonnegative. Squares dominate
+the contract goals (sum-of-squares, variance); higher powers can get their own reductions as needed. -/
+@[taste_ingr] theorem pyHPow_two (a : Int) : a ^ₚ (2 : Int) = a ^ 2 := rfl
 
 end PastaLean

@@ -124,6 +124,21 @@ partial def search (budget : Nat) (fuel : Nat) (p : Profile) (visited : List (Li
     let closeSeq := if closeSeq.size > 1 && closeSeq.all (· == "sorry") then #["all_goals sorry"] else closeSeq
     return acc ++ closeSeq
 
+/-- Source span of the most-recently recorded winner (see `runPastafolio`). `mvcgen … with taste?`
+invokes the closer once *per verification condition*, all at the same source span; tracking the last
+span lets us merge those consecutive proofs into one winner. Self-resets when the winners array is
+emptied (every `proveFile` run starts by clearing it), so spans never leak across runs. -/
+initialize lastWinnerSpanRef : IO.Ref (Option (Option Nat × Option Nat)) ← IO.mkRef none
+
+/-- Separator joining the per-goal proofs accumulated for one `mvcgen … with taste?` span (its closer
+runs once per verification condition). Kept raw here and deduplicated; the py2lean splicer factors
+their shared prefix into the pretty `pre; first | c₁ | c₂` closer. A control char never in tactics. -/
+def winnerAltSep : String := String.singleton (Char.ofNat 1)
+
+/-- Accumulate another per-goal proof for the same span, skipping duplicates. -/
+def mergeWinner (prev new : String) : String :=
+  if (prev.splitOn winnerAltSep).contains new then prev else s!"{prev}{winnerAltSep}{new}"
+
 /-- Drive a portfolio `p` on the current goal(s): search, build the proof string from the committed
 candidates (or a `…; sorry` prefix when only partial progress was made), record it in
 `p.winnersRef?`, offer it as a "Try this" at `stx`, and discharge any residual with `sorry` so the
@@ -149,9 +164,22 @@ def runPastafolio (p : Profile) (stx : Syntax) : TacticM Unit := do
     -- both as a top-level `theorem … := by …` and as an in-body `have … := by …`.
     let proof := String.intercalate "; " used.toList
     if let some ref := p.winnersRef? then
-      ref.modify (·.push proof)
-    match Lean.Parser.runParserCategory (← getEnv) `tactic proof with
-    | .ok s => addSuggestion stx (⟨s⟩ : TSyntax `tactic) (origSpan? := stx)
-    | .error _ => pure ()
+      -- Record the winner — but `mvcgen … with taste?` runs this closer once per verification
+      -- condition, all sharing one source span. Merge those consecutive same-span proofs into a single
+      -- `first | (p₁) | (p₂) | …` entry so the winners list stays 1:1 with the `taste?` *tokens*: the
+      -- single-token prove-and-replace splice then maps it back faithfully, and `mvcgen` (applying the
+      -- closer per goal) picks whichever alternative discharges each VC. A lone single-goal `taste?`
+      -- records just `proof`, unwrapped.
+      let key := (stx.getPos?.map (·.byteIdx), stx.getTailPos?.map (·.byteIdx))
+      let ws ← ref.get
+      if ws.isEmpty then lastWinnerSpanRef.set none
+      if (← lastWinnerSpanRef.get) == some key && !ws.isEmpty then
+        ref.set (ws.pop.push (mergeWinner ws.back! proof))
+      else
+        ref.set (ws.push proof)
+      lastWinnerSpanRef.set (some key)
+      match Lean.Parser.runParserCategory (← getEnv) `tactic proof with
+      | .ok s => addSuggestion stx (⟨s⟩ : TSyntax `tactic) (origSpan? := stx)
+      | .error _ => pure ()
 
 end PastaLean.Pastafolio
