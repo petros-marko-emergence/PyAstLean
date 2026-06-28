@@ -27,7 +27,8 @@ def running_max := fun (xs : List Int) ↦
 
 theorem running_max_spec : ⦃⌜PastaLean.pyLen xs > (0 : Int)⌝⦄ running_max xs ⦃⇓_ => ⌜True⌝⦄ := by
   mvcgen [running_max, PastaLean.pyRange_forIn, PastaLean.pyRange_forIn_start] invariants
-  · ⇓⟨cur, m⟩ => ⌜m ≥ xs⦋(0 : Int)⦌⌝with simp_all (config := { zetaDelta := true }) [taste_ingr]; omega
+  · ⇓⟨cur, m⟩ => ⌜m ≥ xs⦋(0 : Int)⦌⌝
+  with simp_all (config := { zetaDelta := true }) [taste_ingr]; omega
 
 def running_max'rn := fun (xs : List Int) ↦
   Id.run

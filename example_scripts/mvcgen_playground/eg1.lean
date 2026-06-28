@@ -7,6 +7,9 @@ open PastaLean
 open Libraries
 open Std.Do
 
+set_option mvcgen.warning false
+set_option linter.unusedVariables false
+
 abbrev PyExceptId (α : Type) := ExceptT PyException Id α
 
 def massert (_p : Prop) : PyExceptId Unit := pure ()
@@ -56,7 +59,7 @@ theorem euclidean_distance_asserts : ⦃⌜ True ⌝⦄ euclidean_distance l1 l2
   mvcgen [euclidean_distance] with grind
 
 theorem euclidean_distance_same_len_no_throw : ⦃⌜ pyLen l1 = pyLen l2 ⌝⦄ euclidean_distance l1 l2 ⦃post⟨fun _ => ⌜ True ⌝, fun _ => ⌜ False ⌝⟩⦄ := by
-  mvcgen [euclidean_distance] with grind
+  mvcgen [euclidean_distance]
 
 noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (dataset : List (List Int)) ↦
   ((do
@@ -89,7 +92,7 @@ noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (data
 @[grind .]
 theorem pyMin_le_all : ∀ x ∈ (xs : List ℝ), PastaLean.pyMin xs ≤ x ∧ PastaLean.pyMin xs ∈ xs := by
   simp [PastaLean.pyMin, PastaLean.pyIter]
-  sorry
+  taste?
 
 
 -- New theorems about euclidean_distance
@@ -100,7 +103,6 @@ theorem euclidean_distance_nonneg :
   euclidean_distance p1 p2
   ⦃⇓ d => ⌜ d ≥ 0 ⌝⦄ := by
   sorry
-
 
 -- Euclidean distance is zero iff points are equal
 theorem euclidean_distance_zero_iff_equal :

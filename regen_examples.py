@@ -29,7 +29,7 @@ PY2LEAN = REPO / "src/py2lean.py"
 GROUPS: list[tuple[str, Path, bool]] = [
     ("showcase", REPO / "example_scripts/showcase", True),
     ("Random", REPO / "PastaLeanTest/Random", True),
-    ("mvcgen_playgrond", REPO / "example_scripts/mvcgen_playgrond", True),
+    ("mvcgen_playgrond", REPO / "example_scripts/mvcgen_playground", True),
     ("General", REPO / "PastaLeanTest/PastaLeanCheck/General", False),
 ]
 

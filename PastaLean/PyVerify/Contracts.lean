@@ -34,31 +34,6 @@ def contractArg? (stmt : Json) : Option (String × Json) :=
     | none => none
   | _ => none
 
-/-- Build `@[taste_ingr] theorem <thmName> : ∀ params, <hyps> → (let-binders; <concl>) := by taste?`
-from extracted proof data. Shared by the lone-assert promotion (`theoremShape?`) and the contract
-(`_spec`) path. Built outside-in: conclusion, hypothesis arrows, `let`-binders, then `∀`s; everything
-lowered as a `Prop` (so `==`→`=`, `<`/`≤`→the real order). -/
-def buildSpecTheorem (thmName : TSyntax `ident)
-    (argInfos : Array (TSyntax `ident × Option (TSyntax `term)))
-    (letJsons hypJsons : Array Json) (conclJson : Json) : PygenM (TSyntax `command) :=
-  withFreshVariables do
-    for letJson in letJsons do
-      if let .ok tname := (letJson.getObjVal? "target").bind (·.getObjValAs? String "id") then
-        addVar tname.toName
-    let mut propTy ← withPropCondition true (getCode conclJson `term)
-    for hypJson in hypJsons.reverse do
-      propTy ← `($(← withPropCondition true (getCode hypJson `term)) → $propTy)
-    for letJson in letJsons.reverse do
-      let .ok target := letJson.getObjVal? "target" | throwError "buildSpecTheorem: Assign without target"
-      let .ok value := letJson.getObjVal? "value" | throwError "buildSpecTheorem: Assign without value"
-      propTy ← `(let $(← getCode target `ident) := $(← getCode value `term)
-                 $propTy)
-    for (argIdent, ty?) in argInfos.reverse do
-      propTy ← match ty? with
-        | some ty => `(∀ ($argIdent : $ty), $propTy)
-        | none => `(∀ $argIdent, $propTy)
-    `(command| @[taste_ingr] theorem $thmName : $propTy := by taste?)
-
 /-- A *pure, straight-line* contracted function (`Requires`/`Ensures`, `let`s, `return` —
 no loops, IO, or `raise`). Splits the body into the runnable statements (contracts stripped) and the
 proof data. Returns `(cleanBody, lets, hyps, concl)`. `none` if monadic, if any statement isn't a
@@ -98,6 +73,30 @@ def contractShape? (paramNames : Array String) (body substantive : Array Json) :
   let concl := if concls.size == 1 then concls[0]!
     else Json.mkObj [("node_type", Json.str "BoolOp"), ("op", Json.str "and"), ("values", Json.arr concls)]
   return some (clean, lets, hyps, concl)
+
+/-- Build `@[taste_ingr] theorem <thmName> : ∀ params, <hyps> → (let-binders; <concl>) := by taste?`
+from extracted proof data. Shared by the lone-assert promotion (`theoremShape?`) and the contract
+(`_spec`) path.  -/
+def buildSpecTheorem (thmName : TSyntax `ident)
+    (argInfos : Array (TSyntax `ident × Option (TSyntax `term)))
+    (letJsons hypJsons : Array Json) (conclJson : Json) : PygenM (TSyntax `command) :=
+  withFreshVariables do
+    for letJson in letJsons do
+      if let .ok tname := (letJson.getObjVal? "target").bind (·.getObjValAs? String "id") then
+        addVar tname.toName
+    let mut propTy ← withPropCondition true (getCode conclJson `term)
+    for hypJson in hypJsons.reverse do
+      propTy ← `($(← withPropCondition true (getCode hypJson `term)) → $propTy)
+    for letJson in letJsons.reverse do
+      let .ok target := letJson.getObjVal? "target" | throwError "buildSpecTheorem: Assign without target"
+      let .ok value := letJson.getObjVal? "value" | throwError "buildSpecTheorem: Assign without value"
+      propTy ← `(let $(← getCode target `ident) := $(← getCode value `term)
+                 $propTy)
+    for (argIdent, ty?) in argInfos.reverse do
+      propTy ← match ty? with
+        | some ty => `(∀ ($argIdent : $ty), $propTy)
+        | none => `(∀ $argIdent, $propTy)
+    `(command| @[taste_ingr] theorem $thmName : $propTy := by taste?)
 
 /-- Does any `Assign`/`AugAssign` inside `stmt` (recursing into nested bodies) target `name`? Used
 to find which mutable variables a loop threads (its mvcgen state). -/
@@ -174,6 +173,7 @@ structure MonadicContract where
   requires : Array Json    -- `Requires`/`Assume` predicate args → precondition
   loops : Array LoopInv
 
+/-- Builds a LoopInv from one For node. Returns none only if the For lacks a target/iter. -/
 def loopInvOf (declaredOrder : Array String) (forNode : Json) : Option LoopInv :=
   match (forNode.getObjVal? "target").bind (·.getObjValAs? String "id"),
         (forNode.getObjVal? "iter").toOption with

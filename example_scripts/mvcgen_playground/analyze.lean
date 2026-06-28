@@ -45,13 +45,14 @@ noncomputable def analyze := fun (xs : List Int) ↦ fun (threshold : Int) ↦
       spread := (0.0 : Real)
     let mut result := avg +ₚ spread
     let _ := Libraries.passta.pyPassEnsures (decide (result ≥ (0.0 : Rat)))
-    return result : Except PastaLean.PyException _)
+    return result : ExceptT PastaLean.PyException Id _)
 
-theorem analyze_spec : ⦃⌜PastaLean.pyLen xs > (0 : Int)⌝⦄ analyze xs threshold ⦃⇓_ => ⌜True⌝⦄ := by
+theorem analyze_spec : ⦃⌜PastaLean.pyLen xs > (0 : Int)⌝⦄ analyze xs threshold ⦃⇓_ => ⌜True⌝⦄ :=
+  by
   mvcgen [analyze, PastaLean.pyRange_forIn, PastaLean.pyRange_forIn_start] invariants
   · ⇓⟨cur, count, total⟩ => ⌜count ≥ (0 : Int)⌝
   · ⇓⟨cur, ss⟩ => ⌜ss ≥ (0 : Int)⌝
-  with simp_all (config := { zetaDelta := true }) [taste_ingr]; first | done | positivity
+  simp_all (config := { zetaDelta := true }) [taste_ingr]; simp_all (config := { zetaDelta := true }) [taste_ingr]; positivity
 
 def analyze'rn : List Int → Int → PastaLean.PyExcept Float := fun (xs : List Int) ↦ fun (threshold : Int) ↦ do
   let _ := Libraries.passta.pyPassRequires (decide (PastaLean.pyLen xs > (0 : Int)))

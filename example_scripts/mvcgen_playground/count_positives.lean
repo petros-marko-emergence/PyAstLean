@@ -28,7 +28,8 @@ def count_positives := fun (xs : List Int) ↦
 
 theorem count_positives_spec : ⦃⌜True⌝⦄ count_positives xs ⦃⇓_ => ⌜True⌝⦄ := by
   mvcgen [count_positives, PastaLean.pyRange_forIn, PastaLean.pyRange_forIn_start] invariants
-  · ⇓⟨cur, cnt⟩ => ⌜cnt ≥ (0 : Int)⌝with simp_all (config := { zetaDelta := true }) [taste_ingr]
+  · ⇓⟨cur, cnt⟩ => ⌜cnt ≥ (0 : Int)⌝
+  with simp_all (config := { zetaDelta := true }) [taste_ingr]
 
 def count_positives'rn := fun (xs : List Int) ↦
   Id.run
