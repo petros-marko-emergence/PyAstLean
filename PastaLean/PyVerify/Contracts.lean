@@ -364,7 +364,8 @@ def whileContractShape? (paramNames : Array String) (substantive : Array Json) :
     | some ("Decreases", arg) => decreases? := some arg
     | some _ => return none                           -- other markers inside the loop: bail
     | none =>
-      if jsonNodeType? s != some "Assign" then return none  -- nested if/break/etc.: not the MVP shape
+      let nt := jsonNodeType? s
+      if nt != some "Assign" && nt != some "AugAssign" then return none  -- nested if/break/etc.: bail
       let .ok target := s.getObjVal? "target" | return none
       if jsonNodeType? target != some "Name" then return none
       let .ok tname := target.getObjValAs? String "id" | return none
