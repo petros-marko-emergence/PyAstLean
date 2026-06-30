@@ -34,6 +34,58 @@ def contractArg? (stmt : Json) : Option (String × Json) :=
     | none => none
   | _ => none
 
+/-- A JSON `Name` node with the given identifier. -/
+def nameJson (id : String) : Json := Json.mkObj [("node_type", Json.str "Name"), ("id", Json.str id)]
+
+/-- If `j` is a call to the `passta` result marker `Result()` / `ResultT(v)`, the member name; else
+`none`. `Result()` denotes the function's return value, only meaningful in a postcondition. -/
+def resultCallMember? (j : Json) : Option String :=
+  if jsonNodeType? j == some "Call" then
+    match (j.getObjVal? "func").toOption with
+    | some func =>
+      match func.getObjValAs? String "library_module", func.getObjValAs? String "library_member" with
+      | .ok "passta", .ok m => if m == "Result" || m == "ResultT" then some m else none
+      | _, _ => none
+    | none => none
+  else none
+
+/-- Does `j` (recursively) reference `Result()`/`ResultT(...)`? Such an `Ensures`/`Assert` is a
+statement about the return value, so it must become the spec's *postcondition* rather than an in-body
+checkpoint (where the return value does not yet exist). -/
+partial def jsonMentionsResult (j : Json) : Bool :=
+  match resultCallMember? j with
+  | some _ => true
+  | none =>
+    match j with
+    | .arr a => a.any jsonMentionsResult
+    | .obj kvs => kvs.toList.any (fun (_, v) => jsonMentionsResult v)
+    | _ => false
+
+/-- Replace every `Result()`/`ResultT(...)` call in `j` with `repl`. The replacement is a `Name` node
+(the postcondition's return binder, monadic path) or the returned expression itself (pure path). -/
+partial def substResultWith (repl : Json) (j : Json) : Json :=
+  match resultCallMember? j with
+  | some _ => repl
+  | none =>
+    match j with
+    | .arr a => Json.arr (a.map (substResultWith repl))
+    | .obj kvs => Json.mkObj (kvs.toList.map (fun (k, v) => (k, substResultWith repl v)))
+    | other => other
+
+/-- Replace `Result()`/`ResultT(...)` with a `Name` referencing `retId`, so an `Ensures(Result() >= 1)`
+lowers as `retId >= 1`. -/
+def substResult (retId : String) (j : Json) : Json := substResultWith (nameJson retId) j
+
+/-- Drop `Ensures`/`Assert` markers whose predicate mentions `Result()` from a body. Such a marker is
+verification-only: its content becomes the spec postcondition and `Result()` has NO runtime lowering,
+so it must not appear in ANY emitted runnable body — including the `'rn` twin, which keeps the other
+markers (`Requires`/`Invariant`/…) as runtime no-ops but would crash on `passta.Result`. -/
+def stripResultMarkers (body : Array Json) : Array Json :=
+  body.filter fun s =>
+    match contractArg? s with
+    | some (m, arg) => !((m == "Ensures" || m == "Assert") && jsonMentionsResult arg)
+    | none => true
+
 /-- A *pure, straight-line* contracted function (`Requires`/`Ensures`, `let`s, `return` —
 no loops, IO, or `raise`). Splits the body into the runnable statements (contracts stripped) and the
 proof data. Returns `(cleanBody, lets, hyps, concl)`. `none` if monadic, if any statement isn't a
@@ -49,6 +101,7 @@ def contractShape? (paramNames : Array String) (body substantive : Array Json) :
   let mut seen : Array String := #[]
   let mut sawContract := false
   let mut sawReturn := false
+  let mut retExpr : Option Json := none
   for s in substantive do
     match contractArg? s with
     | some (member, arg) =>
@@ -59,7 +112,10 @@ def contractShape? (paramNames : Array String) (body substantive : Array Json) :
       | _ => return none
     | none =>
       match jsonNodeType? s with
-      | some "Return" => sawReturn := true; clean := clean.push s
+      | some "Return" =>
+        sawReturn := true
+        retExpr := (s.getObjVal? "value").toOption  -- the returned expression, for `Result()`
+        clean := clean.push s
       | some "Assign" =>
         let .ok target := s.getObjVal? "target" | return none
         if jsonNodeType? target != some "Name" then return none
@@ -70,8 +126,13 @@ def contractShape? (paramNames : Array String) (body substantive : Array Json) :
         clean := clean.push s
       | _ => return none
   if !sawContract || concls.isEmpty || !sawReturn then return none
-  let concl := if concls.size == 1 then concls[0]!
+  let concl0 := if concls.size == 1 then concls[0]!
     else Json.mkObj [("node_type", Json.str "BoolOp"), ("op", Json.str "and"), ("values", Json.arr concls)]
+  -- A pure function has no return *binder*; `Result()` in an `Ensures` denotes the returned
+  -- expression, so substitute it in (e.g. `Ensures(Result() == 2*x)` with `return 2*x` ⇒ `2*x = 2*x`).
+  let concl := match retExpr with
+    | some e => substResultWith e concl0
+    | none => concl0
   return some (clean, lets, hyps, concl)
 
 /-- Build `@[taste_ingr] theorem <thmName> : ∀ params, <hyps> → (let-binders; <concl>) := by taste?`
@@ -169,8 +230,10 @@ structure LoopInv where
 
 /-- All proof data for a monadic contracted function. -/
 structure MonadicContract where
-  cleanBody : Array Json   -- def body with `Requires`/`Assume` stripped (other markers kept)
+  cleanBody : Array Json   -- def body with `Requires`/`Assume` and `Result`-bearing `Ensures` stripped
   requires : Array Json    -- `Requires`/`Assume` predicate args → precondition
+  ensures : Array Json     -- `Ensures`/`Assert` args mentioning `Result()` → postcondition
+  retName : Option String  -- name of the returned variable (`return x`), used to bind the post result
   loops : Array LoopInv
 
 /-- Builds a LoopInv from one For node. Returns none only if the For lacks a target/iter. -/
@@ -198,24 +261,37 @@ data. `none` when there is no contract marker. -/
 def monadicContractInfo? (body : Array Json) : Option MonadicContract := Id.run do
   let declared := declaredMutOrder body
   let mut requires : Array Json := #[]
+  let mut ensures : Array Json := #[]
   let mut clean : Array Json := #[]
   let mut loops : Array LoopInv := #[]
+  let mut retName : Option String := none
   let mut sawContract := false
   for s in body do
     match contractArg? s with
-    | some (member, _arg) =>
+    | some (member, arg) =>
       sawContract := true
       match member with
-      | "Requires" | "Assume" => requires := requires.push _arg
+      | "Requires" | "Assume" => requires := requires.push arg
+      -- `Ensures`/`Assert` are treated identically. One mentioning `Result()` is a statement about
+      -- the return value, so it becomes the spec *postcondition* (stripped from the body, where the
+      -- return value doesn't exist yet); otherwise it stays an in-body checkpoint as before.
+      | "Ensures" | "Assert" =>
+        if jsonMentionsResult arg then ensures := ensures.push arg
+        else clean := clean.push s
       | _ => clean := clean.push s
     | none =>
       if jsonNodeType? s == some "For" then
         if let some li := loopInvOf declared s then
           sawContract := sawContract || !li.invariants.isEmpty
           loops := loops.push li
+      -- Record a `return <name>` so the postcondition can bind that variable as its result.
+      if jsonNodeType? s == some "Return" then
+        if let .ok v := s.getObjVal? "value" then
+          if jsonNodeType? v == some "Name" then
+            if let .ok rid := v.getObjValAs? String "id" then retName := some rid
       clean := clean.push s
   if !sawContract then return none
-  return some { cleanBody := clean, requires, loops }
+  return some { cleanBody := clean, requires, ensures, retName, loops }
 
 /-- Conjoin a list of `Prop` terms (empty → `True`). -/
 private def conjoin (ps : Array (TSyntax `term)) : PygenM (TSyntax `term) :=
@@ -285,23 +361,27 @@ def buildMonadicSpec (thmName fnName : TSyntax `ident) (paramIdents : Array (TSy
     else
       `(tactic| mvcgen [$lemmas,*] invariants $[· $bullets:term]*)
 
-  -- POSTCONDITION (currently the postcondition is `True`, `Ensures` is proved as an
-  -- in-body checkpoint instead). To lift `Ensures` into the spec *statement* (Nagini-style, modular
-  -- `@[spec]` reuse): collect the `Ensures` args into `info.ensures` and the returned variable name
-  -- into `info.retName` (see git history), then build the postcondition by binding that variable so an
-  -- `Ensures(result …)` reads as a fact about the result, and tag the theorem `@[spec]`:
-  --
-  --   let retBinder := (info.retName.map (mkIdent ·.toName)).getD (mkIdent `x)
-  --   if let some r := info.retName then addVar r.toName
-  --   let postProps ← info.ensures.mapM (fun e => withPropCondition true (getCode e `term))
-  --   let post ← conjoin postProps        -- empty ⇒ `True`
-  --   `(command| @[spec] theorem $thmName :
-  --       ⦃⌜$pre⌝⦄ $fnName $paramIdents* ⦃⇓ $retBinder => ⌜$post⌝⦄ := by $mv:tactic
-  -- taste?)
-  --
-  `(command| theorem $thmName :
-      ⦃⌜$pre⌝⦄ $fnName $paramIdents* ⦃⇓ _ => ⌜True⌝⦄ := by
-        $mv:tactic
-        taste?)
+  -- POSTCONDITION. With no `Result()`-bearing `Ensures` the postcondition stays `True` (any plain
+  -- `Ensures`/`Assert` is proved as an in-body checkpoint instead). When the user wrote an
+  -- `Ensures(Result() …)`, those args are collected into `info.ensures` (a statement about the return
+  -- value), so we lift them into the spec *statement* (Nagini-style, modular `@[spec]` reuse): bind the
+  -- returned variable as the result, lower each `Ensures` with `Result()` rewritten to that binder, and
+  -- tag the theorem `@[spec]`.
+  if info.ensures.isEmpty then
+    `(command| theorem $thmName :
+        ⦃⌜$pre⌝⦄ $fnName $paramIdents* ⦃⇓ _ => ⌜True⌝⦄ := by
+          $mv:tactic
+          taste?)
+  else
+    let retId := info.retName.getD "result"
+    let retBinder := mkIdent retId.toName
+    addVar retId.toName  -- so `Result()` (rewritten to the `retId` `Name`) lowers to the binder
+    let postProps ← info.ensures.mapM
+      (fun e => withPropCondition true (getCode (substResult retId e) `term))
+    let post ← conjoin postProps
+    `(command| @[spec] theorem $thmName :
+        ⦃⌜$pre⌝⦄ $fnName $paramIdents* ⦃⇓ $retBinder => ⌜$post⌝⦄ := by
+          $mv:tactic
+          taste?)
 
 end PastaLean

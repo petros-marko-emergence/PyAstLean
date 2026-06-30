@@ -483,7 +483,10 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         let isReal := (← getNumericMode) == .exact && json.getObjValAs? Bool "_real_fn" == .ok true
         let argInfos ← functionArgInfos json
         let effectCmd? ← functionCommandWithEffectSignature? nameIdent argInfos json isReal
-        let bodyElems ← functionBodyElems json
+        -- Drop any `Ensures(Result() …)`/`Assert(Result() …)` markers: they are verification-only
+        -- (lifted to the spec postcondition) and `Result()` has no runtime lowering, so they must not
+        -- leak into a runnable body — notably the `'rn` twin, which reaches this generic path.
+        let bodyElems := stripResultMarkers (← functionBodyElems json)
         let isRecursive := bodyElems.any (jsonReferencesName · baseName)
         -- A real-valued body (transcendental, directly or via a callee) forces `noncomputable`.
         let nc := isReal || (← bodyNeedsNoncomputable bodyElems)

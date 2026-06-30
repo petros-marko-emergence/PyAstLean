@@ -99,7 +99,9 @@ def sum_upto(n: int) -> int:
     return s
 ```
 
-Annotated output (index-style invariant gives the closed form, division-free):
+Annotated output. THE POINT of this function is "the result is the closed-form sum n(n-1)/2", so that
+is the `Ensures`. Everything else exists only to make that one fact provable — the index-style
+invariant is what carries it through the loop; nothing mechanical (like `i == n`) is asserted:
 
 ```python
 from contracts import *
@@ -107,20 +109,26 @@ from contracts import *
 
 def sum_upto(n: int) -> int:
     Requires(n >= 0)
-    Ensures(2 * Result() == n * (n - 1))
+    Ensures(2 * Result() == n * (n - 1))    # ← the point: the closed-form result
     s = 0
     for i in range(n):
-        # i counts completed iterations; the running sum is fixed by it.
+        # USEFUL: ties the running sum to the counter, so at exit it becomes the Ensures.
         Invariant(0 <= i)
         Invariant(i <= n)
         Invariant(2 * s == i * (i - 1))
         s = s + i
-    # At exit i == n, so the invariant is exactly the postcondition.
+    # USEFUL bridge: the result-level fact (== the postcondition), one step from Ensures.
+    # (Do NOT add `Assert(i == n)` — that is mechanical bookkeeping, not the idea being proved.)
     Assert(2 * s == n * (n - 1))
     return s
 ```
 
 ### Structural postcondition → accumulator/bound invariants + bridged guard
+
+THE POINT of `find_nearest_neighbor` is "the returned distance is genuinely one of the computed
+distances", so that membership is the meaningful `Assert`; the loop invariant is only the bound needed
+to index safely. `euclidean_distance`'s one meaningful contract is the dimension-match its math
+depends on — bridged from the guard. No filler contracts are added:
 
 ```python
 from contracts import *
@@ -131,7 +139,7 @@ def euclidean_distance(p1: list[int], p2: list[int]) -> float:
     Requires(len(p1) == len(p2))
     if len(p1) != len(p2):
         raise ValueError("Points must have the same number of dimensions")
-    Assert(len(p1) == len(p2))            # bridges the guard onto the fall-through path
+    Assert(len(p1) == len(p2))            # USEFUL: bridges the guard so the math below is well-defined
     sq_diffs = [math.pow(a - b, 2) for a, b in zip(p1, p2)]
     return math.sqrt(sum(sq_diffs))
 
@@ -140,10 +148,10 @@ def find_nearest_neighbor(target: list[int], dataset: list[list[int]]):
     Requires(len(dataset) > 0)
     distances = [euclidean_distance(target, point) for point in dataset]
     min_dist = min(distances)
-    Assert(min_dist in distances)         # unblocks the membership VC
+    Assert(min_dist in distances)         # ← the point: the result is one of the inputs
     min_index = -1
     for i, d in enumerate(distances):
-        Invariant(min_index < len(distances))   # bound invariant
+        Invariant(min_index < len(distances))   # USEFUL: the only bound the indexing needs
         if d == min_dist:
             min_index = i
             break

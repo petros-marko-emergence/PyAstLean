@@ -145,13 +145,15 @@ def extract_python(code: str):
         code = code[:-len("```")]
     return code.strip()
 
-def contract_code(code: str, provider = "gemini", model=None):
+def contract_code(code: str, provider = "gemini", model=None, goal=None):
     """
     Insert formal-method contracts (Requires/Ensures/Invariant/Assert/…) into a Python snippet.
     Args:
         code (str): The input Python code snippet.
         provider (str): The provider to use for the model (e.g., "openai", "gemini", "openrouter", "deepinfra").
         model (str): The model to use; defaults to the provider's default chat model.
+        goal (str): Optional natural-language statement of what the user wants to be able to prove.
+            When given, it is passed to the model so the inserted contracts/asserts are tailored to it.
     """
     model = model or default_model_for(provider)
     with open(CONTRACT_PROMPT_SYSTEM, 'r') as f:
@@ -160,6 +162,12 @@ def contract_code(code: str, provider = "gemini", model=None):
     # The system prompt carries all the instructions and worked examples; the user turn is just the
     # program to annotate, fenced so the model returns the same shape.
     user_prompt = f"```python\n{code}\n```"
+    if goal:
+        user_prompt += (
+            "\n\nThe user wants to be able to PROVE the following about this code. Tailor the contracts "
+            "— especially the Ensures (the postcondition) and any bridging Asserts and loop invariants — "
+            f"so that this goal becomes provable, and treat it as the function's intent:\n{goal}"
+        )
 
     response = model_response_gen(user_prompt, task=system_prompt, provider=provider, model=model)
     if response is None:

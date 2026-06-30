@@ -1076,7 +1076,10 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
         )
         for src in translator.unsupported_log:
             logger.warning("  unsupported: %s", src)
-    normalize_counting_loops(data)
+    # Loops are emitted as written (`while` stays `while`, `for` stays `for`). Re-enable the line
+    # below to rewrite canonical counting `while i < bound: …; i += 1` into `for i in range(bound)`
+    # (needed for mvcgen to verify such loops, but it rewrites the user's loop shape).
+    # normalize_counting_loops(data)
     annotate_library_imports(data)
     annotate_exception_effects(data)
     annotate_io_effects(data)
@@ -1865,7 +1868,8 @@ def _run_llm_prepasses(file_path, source_code, args):
         applied.append("redesign")
     if args.contracts:
         logger.info("LLM contracts pre-pass (provider=%s)…", args.llm_provider)
-        source_code = llm.contract_code(source_code, provider=args.llm_provider, model=args.llm_model)
+        source_code = llm.contract_code(source_code, provider=args.llm_provider, model=args.llm_model,
+                                        goal=getattr(args, "user_prompt", None))
         applied.append("contracts")
 
     orig = Path(file_path)
@@ -1915,6 +1919,7 @@ def main(argv=None):
              "(e.g. `main'rn`, `sigmoid'rn`).",
     )
     parser.add_argument(
+        "-p",
         "--prove-asserts",
         dest="prove_asserts",
         action=argparse.BooleanOptionalAction,
@@ -1924,6 +1929,7 @@ def main(argv=None):
              "on. Use --no-prove-asserts to leave the obligations as `:= by taste?`.",
     )
     parser.add_argument(
+        "-r",
         "--redesign",
         action="store_true",
         help="LLM pre-pass: restructure the Python to maximise its provable surface (pure "
@@ -1931,6 +1937,7 @@ def main(argv=None):
              "BEFORE translating. Runs before --contracts when both are given.",
     )
     parser.add_argument(
+        "-c",
         "--contracts",
         action="store_true",
         help="LLM pre-pass: insert formal contracts (Requires/Ensures/Invariant/Assert/…) into the "
@@ -1946,6 +1953,15 @@ def main(argv=None):
         "--llm-model",
         default=None,
         help="LLM model for --contracts/--redesign. Default: the provider's default chat model.",
+    )
+    parser.add_argument(
+        "-u",
+        "--user-prompt",
+        dest="user_prompt",
+        default=None,
+        help="Optional natural-language goal for --contracts: what you want to be able to prove "
+             "(e.g. -p \"I want to prove the result equals n!\"). Passed to the LLM so the inserted "
+             "contracts/asserts are tailored to it.",
     )
     args = parser.parse_args(argv)
     configure_logging(args.verbose)
