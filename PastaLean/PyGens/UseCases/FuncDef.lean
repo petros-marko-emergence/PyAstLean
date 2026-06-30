@@ -8,6 +8,7 @@ import PastaLean.PyGens.UseCases.ListComp
 import PastaLean.PyGens.UseCases.Match
 import PastaLean.PyGens.UseCases.Exceptions
 import PastaLean.PyVerify.AssertTactic
+import PastaLean.PyVerify.Contracts
 
 open Lean Meta Elab Term Qq Std
 
@@ -424,29 +425,56 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         let paramNames := (← functionArgInfos json).map (fun (id, _) => id.getId.toString)
         if let some (letJsons, hypJsons, conclJson) := theoremShape? paramNames bodyArr substantive then
           if (← getNumericMode) == .approx then return ⟨mkNullNode #[]⟩
-          let argInfos ← functionArgInfos json
-          let thmCmd ← withFreshVariables do
-            -- register the `let`-bound names so they lower as locals inside the proposition
-            for letJson in letJsons do
-              if let .ok tname := (letJson.getObjVal? "target").bind (·.getObjValAs? String "id") then
-                addVar tname.toName
-            -- build outside-in: conclusion, then hypothesis arrows, then `let`-binders, then `∀`s
-            let mut propTy ← withPropCondition true (getCode conclJson `term)
-            for hypJson in hypJsons.reverse do
-              propTy ← `($(← withPropCondition true (getCode hypJson `term)) → $propTy)
-            for letJson in letJsons.reverse do
-              let .ok target := letJson.getObjVal? "target" |
-                throwError "theoremShape: Assign without target"
-              let .ok value := letJson.getObjVal? "value" |
-                throwError "theoremShape: Assign without value"
-              propTy ← `(let $(← getCode target `ident) := $(← getCode value `term)
-                         $propTy)
-            for (argIdent, ty?) in argInfos.reverse do
-              propTy ← match ty? with
-                | some ty => `(∀ ($argIdent : $ty), $propTy)
-                | none => `(∀ $argIdent, $propTy)
-            `(command| @[taste_ingr] theorem $nameIdent : $propTy := by taste?)
+          let thmCmd ← buildSpecTheorem nameIdent (← functionArgInfos json) letJsons hypJsons conclJson
           return ⟨mkNullNode #[thmCmd.raw]⟩
+        -- Track P: a pure, straight-line contracted function (`Requires`/`Ensures` + `let`s +
+        -- `return`) emits its ordinary runnable `def` (contracts stripped) plus a `<fn>_spec` theorem.
+        if let some (cleanBody, letJsons, hypJsons, conclJson) := contractShape? paramNames bodyArr substantive then
+          let argInfos ← functionArgInfos json
+          let valueStx ← functionValueSyntax argInfos cleanBody
+          let finalDef ← applyPrivacy name (← `(command| def $nameIdent := $valueStx))
+          if (← getNumericMode) == .approx then
+            return ⟨mkNullNode #[finalDef.raw]⟩
+          let thmName := mkIdent (name ++ "_spec").toName
+          let thmCmd ← buildSpecTheorem thmName argInfos letJsons hypJsons conclJson
+          let attrCmd ← `(command| attribute [simp] $nameIdent)
+          return ⟨mkNullNode #[finalDef.raw, attrCmd.raw, thmCmd.raw]⟩
+        -- Track M: a monadic contracted function (a `for` loop with `Invariant(...)`). Emit the
+        -- function `Id`-typed (so `mvcgen` sees the `do`) with `Requires`/`Assume` stripped to the
+        -- precondition, plus a `<fn>_spec` Hoare-triple theorem driven by `mvcgen … with taste?`.
+        -- Exact mode only; the runnable `'rn` twin (approx) falls through to normal emission.
+        if (← getNumericMode) == .exact then
+          if let some info := monadicContractInfo? substantive then
+            let argInfos ← functionArgInfos json
+            -- Pick the monad mvcgen sees. A `try`/`raise` body needs a *pure* exception monad with
+            -- mvcgen `throw`/`try` specs: `ExceptT PyException Id`. `Id` has no `MonadExcept`, so
+            -- `throw`/`caught.OfKind` won't elaborate; bare `Except PyException` leaves universe
+            -- metavariables in `Spec.throw_Except` for an *uncaught* `throw`; `PyExcept` drags in `IO`
+            -- (no mvcgen specs). `ExceptT … Id` avoids all three. A pure body stays `Id _`.
+            let usesExc := bodyNeedsExceptionMonad info.cleanBody
+            let valueStx ← withFreshVariables do
+              let bodyStxArray ← monadicFunctionBodySyntax info.cleanBody
+              let doStx ← `(do $[$bodyStxArray:doElem]*)
+              let monadTy ← if usesExc then `(ExceptT PastaLean.PyException Id _) else `(Id _)
+              let mut v ← `(($doStx : $monadTy))
+              for (argIdent, ty?) in argInfos.reverse do
+                v ← match ty? with
+                  | some ty => `(fun ($argIdent : $ty) ↦ $v)
+                  | none => `(fun $argIdent ↦ $v)
+              pure v
+            -- A body that touches `ℝ` is noncomputable in exact mode; the verification def only needs
+            -- to *elaborate* for `mvcgen`, so mark it as such. `bodyNeedsNoncomputable` catches a direct
+            -- transcendental (`math.sqrt`); the `_real_fn` stamp (set by the Python per-variable pass)
+            -- additionally catches *transitive* ℝ — e.g. a function whose value comes from calling
+            -- another ℝ-returning function (`euclidean_distance`), which the body scan can't see.
+            let nc ← (pure (json.getObjValAs? Bool "_real_fn" == .ok true)) <||>
+              bodyNeedsNoncomputable info.cleanBody
+            let defCmd ← if nc then `(command| noncomputable def $nameIdent := $valueStx)
+              else `(command| def $nameIdent := $valueStx)
+            let finalDef ← applyPrivacy name defCmd
+            let thmCmd ← buildMonadicSpec (mkIdent (name ++ "_spec").toName) nameIdent
+              (argInfos.map (·.1)) info
+            return ⟨mkNullNode #[finalDef.raw, thmCmd.raw]⟩
         -- `_real_fn` (set by the Python per-variable pass) means the function produces or handles an
         -- `ℝ` value → it must be `noncomputable` in exact mode. This is now DECOUPLED from which
         -- floats are `ℝ`: real params carry a per-`arg` `_real` stamp (read in `functionArgInfos`)

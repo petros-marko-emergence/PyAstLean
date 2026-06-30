@@ -1,10 +1,14 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
+
 set_option maxHeartbeats 800000
 
 noncomputable def main' :=
@@ -101,7 +105,7 @@ def main''rn :=
         let r_pop := __py_unpack1⦋(1 : Int)⦌
         let w := __py_unpack1⦋(2 : Int)⦌
         -- grass dynamics: logistic growth minus eaten by rabbits
-        let dgdt := r *ₚ g *ₚ ((1 : Int) -ₚ g /ₚ k) -ₚ a *ₚ g *ₚ r_pop
+        let dgdt := r *ₚ g *ₚ ((1 : Int) -ₚ PastaLean.pyFloat g /ₚ k) -ₚ a *ₚ g *ₚ r_pop
         -- rabbit dynamics: birth from grass minus death minus eaten by wolves
         let drdt := b *ₚ g *ₚ r_pop -ₚ d *ₚ r_pop -ₚ c *ₚ r_pop *ₚ w
         -- wolf dynamics: birth from rabbits minus death
@@ -122,7 +126,7 @@ def main''rn :=
       let _ ← pyPrintIO [pyPrintArg "Time | Grass | Rabbits | Wolves"]
       for i in (PastaLean.pyRange (5000 : Int) (0 : Int) (100 : Int))do
         -- bunching up printing and math
-        let mut avg := (grass⦋i⦌ +ₚ rabbits⦋i⦌ +ₚ wolves⦋i⦌) /ₚ (3.0 : Float)
+        let mut avg := PastaLean.pyFloat (grass⦋i⦌ +ₚ rabbits⦋i⦌ +ₚ wolves⦋i⦌) /ₚ (3.0 : Float)
         let mut entropy :=
           -(grass⦋i⦌ *ₚ Libraries.math.pyMathLog (grass⦋i⦌ +ₚ (1 : Int)) +ₚ
                 rabbits⦋i⦌ *ₚ Libraries.math.pyMathLog (rabbits⦋i⦌ +ₚ (1 : Int)) +ₚ

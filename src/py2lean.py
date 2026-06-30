@@ -18,6 +18,7 @@ from toplevel_state import (
     annotate_toplevel_state,
     annotate_if_assigned_names,
 )
+from contract_passta import CONTRACT_FUNCS as PASSTA_STAR_MEMBERS
 
 HOMEDIR = Path.absolute(Path(__name__).parent.parent)
 SRC_DIR = HOMEDIR / "src"
@@ -33,6 +34,13 @@ def get_supported_libraries():
     return {f.name for f in libraries_path.iterdir() if f.is_dir()}
 
 SUPPORTED_LIBRARY_IMPORTS = get_supported_libraries()
+
+# Backwards-compatible Python module names for the PASSTA contract shim. The Lean library lives
+# under `Libraries/passta`, while Python examples may import `contracts` or `contract_passta`.
+LIBRARY_IMPORT_ALIASES = {
+    "contracts": "passta",
+    "contract_passta": "passta",
+}
 
 # Type-only / compile-time modules: they contribute nothing at runtime (their names live in
 # annotations, which `annotate_python.py` normalises to builtin generics). They are neither
@@ -62,6 +70,7 @@ def _supported_library_root(module_name):
     if not isinstance(module_name, str) or not module_name:
         return None
     root = module_name.split(".")[0]
+    root = LIBRARY_IMPORT_ALIASES.get(root, root)
     return root if root in SUPPORTED_LIBRARY_IMPORTS else None
 
 COMMENT_PLACEHOLDER_RE = re.compile(
@@ -824,6 +833,14 @@ def _annotate_library_imports_in_scope(body, inherited_env=None):
                         continue
                     member_name = alias_node.get("name")
                     local_name = _imported_alias_name(alias_node)
+                    if root == "passta" and member_name == "*":
+                        for contract_member in PASSTA_STAR_MEMBERS:
+                            env[contract_member] = {
+                                "kind": "member",
+                                "module": root,
+                                "member": contract_member,
+                            }
+                        continue
                     if isinstance(member_name, str) and isinstance(local_name, str):
                         # `from scipy import special` binds a submodule namespace; `from
                         # scipy.special import factorial` (and `from math import exp`) bind members.
@@ -898,6 +915,124 @@ def _sanitize_hole_identifiers(ast_tree):
             n.arg = safe
 
 
+def _is_name(node, name=None):
+    return (isinstance(node, dict) and node.get("node_type") == "Name"
+            and (name is None or node.get("id") == name))
+
+
+def _name_referenced(nodes, name):
+    """Does `name` appear as a `Name` load anywhere within `nodes`?"""
+    stack = list(nodes)
+    while stack:
+        n = stack.pop()
+        if isinstance(n, dict):
+            if n.get("node_type") == "Name" and n.get("id") == name:
+                return True
+            stack.extend(n.values())
+        elif isinstance(n, list):
+            stack.extend(n)
+    return False
+
+
+def _is_const_one(node):
+    return isinstance(node, dict) and node.get("node_type") == "Constant" and node.get("value") == 1
+
+
+def _is_incr_by_one(stmt, var):
+    """True if `stmt` increments `var` by 1, as `var += 1` or `var = var + 1`."""
+    if not isinstance(stmt, dict):
+        return False
+    if stmt.get("node_type") == "AugAssign":
+        return (_is_name(stmt.get("target"), var) and stmt.get("op") == "add"
+                and _is_const_one(stmt.get("value")))
+    if stmt.get("node_type") == "Assign" and _is_name(stmt.get("target"), var):
+        v = stmt.get("value")
+        if isinstance(v, dict) and v.get("node_type") == "BinOp" and v.get("op") == "add":
+            l, r = v.get("left"), v.get("right")
+            return (_is_name(l, var) and _is_const_one(r)) or (_is_const_one(l) and _is_name(r, var))
+    return False
+
+
+def _counting_while_match(stmt):
+    """`(loop_var, stop_node)` for a canonical `while i < bound: …; i += 1` (or `i <= bound`, or
+    `i = i + 1`), else `None`. For `<=`, the `range` stop is `bound + 1`."""
+    if not (isinstance(stmt, dict) and stmt.get("node_type") == "While"):
+        return None
+    test = stmt.get("test")
+    if not (isinstance(test, dict) and test.get("node_type") == "Compare" and test.get("op") in ("lt", "le")):
+        return None
+    if not _is_name(test.get("left")):
+        return None
+    loop_var = test["left"]["id"]
+    body = stmt.get("body", [])
+    if not body or not _is_incr_by_one(body[-1], loop_var):
+        return None
+    bound = test["right"]
+    if test["op"] == "le":
+        bound = {"node_type": "BinOp", "op": "add", "left": bound,
+                 "right": {"node_type": "Constant", "value": 1}}
+    return loop_var, bound
+
+
+def _normalize_counting_loops_in_block(body):
+    """Rewrite a canonical counting `while i < bound: …; i += 1` (with a preceding `i = 0` in the
+    same block, and `i` unused after the loop) into `for i in range(bound): …`, so the verification
+    path handles it via the well-supported `for`/`forIn` machinery rather than mvcgen's fragile
+    `while`. Recurses into nested blocks first. Semantics-preserving only under those guards (a `for`
+    leaves `i = bound-1`, a `while` leaves `i = bound`), so we bail if any guard fails."""
+    for stmt in body:
+        if not isinstance(stmt, dict):
+            continue
+        for key in ("body", "orelse", "finalbody"):
+            if isinstance(stmt.get(key), list):
+                _normalize_counting_loops_in_block(stmt[key])
+        for handler in stmt.get("handlers", []) or []:
+            if isinstance(handler, dict):
+                _normalize_counting_loops_in_block(handler.get("body", []))
+        for method in stmt.get("methods", []) or []:
+            if isinstance(method, dict):
+                _normalize_counting_loops_in_block(method.get("body", []))
+    i = 0
+    while i < len(body):
+        match = _counting_while_match(body[i])
+        if match:
+            loop_var, bound = match
+            init_idx, start_node = None, None
+            for j in range(i - 1, -1, -1):
+                s = body[j]
+                if not isinstance(s, dict):
+                    continue
+                if (s.get("node_type") == "Assign" and _is_name(s.get("target"), loop_var)
+                        and isinstance(s.get("value"), dict) and s["value"].get("node_type") == "Constant"
+                        and isinstance(s["value"].get("value"), int)):
+                    init_idx, start_node = j, s["value"]
+                    break
+                if s.get("node_type") in ("Assign", "AugAssign") and _is_name(s.get("target"), loop_var):
+                    break  # `i` re-bound to something else first → not the canonical pattern
+            if init_idx is not None and not _name_referenced(body[i + 1:], loop_var):
+                stmt = body[i]
+                new_body = stmt["body"][:-1]  # drop the `i += 1`
+                # `range(stop)` when the counter starts at 0, else `range(start, stop)`.
+                args = [bound] if start_node.get("value") == 0 else [start_node, bound]
+                stmt.clear()
+                stmt.update({
+                    "node_type": "For",
+                    "target": {"node_type": "Name", "id": loop_var},
+                    "iter": {"node_type": "Range", "func": {"node_type": "Name", "id": "range"},
+                             "args": args, "keywords": {}},
+                    "body": new_body,
+                    "orelse": [],
+                })
+                del body[init_idx]
+                i -= 1
+        i += 1
+
+
+def normalize_counting_loops(module_json):
+    if isinstance(module_json, dict) and isinstance(module_json.get("body"), list):
+        _normalize_counting_loops_in_block(module_json["body"])
+
+
 def translate_to_json(source_code, filepath=None, best_effort=False):
     """
     Parses Python source code and translates it to a JSON IR.
@@ -929,7 +1064,7 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
     translator = ASTToJsonLeanVisitor(
         source_code,
         best_effort=best_effort,
-        supported_modules=SUPPORTED_LIBRARY_IMPORTS,
+        supported_modules=set(SUPPORTED_LIBRARY_IMPORTS) | set(LIBRARY_IMPORT_ALIASES),
         type_only_modules=TYPE_ONLY_IMPORTS,
         module_dir=module_dir,
     )
@@ -941,6 +1076,7 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
         )
         for src in translator.unsupported_log:
             logger.warning("  unsupported: %s", src)
+    normalize_counting_loops(data)
     annotate_library_imports(data)
     annotate_exception_effects(data)
     annotate_io_effects(data)
@@ -1194,16 +1330,20 @@ def invoke_lean_backend(ast_json, target, check=True, client=None):
 
 
 def _splice_taste_winners(code, winners):
-    """Replace each `taste?` proof obligation in `code`, in order, with its winning tactic string
-    from `winners` (or `sorry` if the list is short).
+    """Replace each `taste?` proof obligation in `code` with its winning tactic, matched by *byte
+    offset*: `winners` is a list of ``{"pos": <byte offset into code>, "proof": <tactic>}``. Matching
+    by position (not append order) is essential — a `mvcgen … with taste?` whose VCs `mvcgen` itself
+    discharged records NO winner, so order-based zipping would shift every later token onto the wrong
+    proof. A token with a matching winner gets it (prettified); a `with taste?` with no winner is a
+    self-closed `mvcgen` → drop the dead `with` clause; any other unmatched `taste?` → `sorry`.
 
-    Comment/string aware: `taste?` ALSO shows up inside user docstrings/comments (e.g. a docstring
-    that mentions ``:= by taste?``), which are not elaborated and so produce no winner. Replacing
-    those would corrupt the comment AND consume a winner meant for a real assert, misaligning the
-    rest. So we only substitute `taste?` occurring in actual code — outside `--` line comments,
-    `/- -/` (nestable) block comments, and `"..."` string literals."""
+    Comment/string aware: `taste?` ALSO shows up inside docstrings/comments (e.g. ``:= by taste?`` in
+    prose), which aren't elaborated and have no winner. Those never match a `pos`, so they're left
+    untouched — we only substitute `taste?` in actual code (outside `--` line comments, nestable
+    `/- -/` block comments, and `"..."` string literals)."""
+    by_pos = {w["pos"]: w["proof"] for w in winners if isinstance(w, dict) and "pos" in w}
     out = []
-    i, n, wi = 0, len(code), 0
+    i, n = 0, len(code)
     in_line_comment = False
     block_depth = 0
     in_string = False
@@ -1235,14 +1375,33 @@ def _splice_taste_winners(code, winners):
         if c == '"':
             in_string = True; out.append(c); i += 1; continue
         if code.startswith("taste?", i):
-            # Replace with the recorded winner, or `sorry` if none (a `taste?` left in the file would
-            # re-run the search every compile and can time out — `sorry` keeps the file compiling).
-            out.append(winners[wi] if wi < len(winners) else "sorry")
-            wi += 1
+            # Byte offset of this token into `code` (the winners' `pos` is byte-based, UTF-8).
+            off = len(code[:i].encode("utf-8"))
+            if off in by_pos:
+                proof = by_pos[off]
+                if proof.strip():
+                    # The recorded `c₁; c₂; …` sequence — drop it in verbatim (no `first`, no merge).
+                    out.append(proof)
+                else:
+                    # Empty proof: `mvcgen` discharged every VC, so the trailing `taste?` ran on no
+                    # goals. Prune the dangling `taste?` line for a clean `mvcgen [...]`.
+                    while out and out[-1].strip() == "":
+                        out.pop()
+            else:
+                # Unmatched `taste?` (e.g. inside prose, or no recorded proof) → keep it compiling.
+                out.append("sorry")
             i += len("taste?")
             continue
         out.append(c); i += 1
     return "".join(out)
+
+def _newline_before_mvcgen_with(code):
+    """Put a contract spec's `mvcgen … invariants` closer on its own line: the pretty-printer glues
+    `with <closer>` straight onto the last `⌜…⌝` invariant bullet (rendering `…⌝with taste?`), which
+    reads poorly. Break before `with` and align it under `mvcgen` (two spaces). Only the spec
+    theorems emit `⌝` immediately followed by `with`, so this can't touch anything else."""
+    return re.sub(r"⌝[^\S\n]*with\b", "⌝\n  with", code)
+
 
 def _references_name(node, target):
     """Recursively check whether a JSON subtree references a `Name` with id `target`."""
@@ -1614,19 +1773,25 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                 preamble_lines = [
                     "import PastaLean",
                     "import Libraries",
+                    "import Std.Tactic.Do",
                     *crossfile_imports,
                     "",
                     "open PastaLean",
                     "open Libraries",
+                    "open Std.Do",
                     "",
-                    "set_option linter.all false",  # shut up warnings which annoyingly popup in output
-                    # Give `taste?`'s proof search some room beyond the default 200000 heartbeats.
+                    "set_option linter.all false", # shut up warnings which annoyingly popup in output
+                    "set_option mvcgen.warning false",
+                    "\n"
                     "set_option maxHeartbeats 800000",
                     "\n",
                 ]
                 full_code = "\n".join(preamble_lines) + body_code
             else:
                 full_code = body_code
+            # Lay an `mvcgen … invariants` spec's `with` closer on its own line (cosmetic), for both
+            # the spliced and the `--leave-taste` forms.
+            full_code = _newline_before_mvcgen_with(full_code)
             # Prove-and-replace pass: elaborate the assembled file in the warm backend so `taste?`
             # searches each assert, then splice the concrete winning tactic (or `sorry`) over each
             # `taste?`. Non-destructive — on any failure we leave the `taste?` obligations in place.
@@ -1681,8 +1846,8 @@ def main(argv=None):
     parser.add_argument(
         "--target",
         nargs="?",
-        default="term",
-        help="Lean target string to pass to the translator (default: term)",
+        default="command",
+        help="Lean target string to pass to the translator (default: target)",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output for debugging")
     parser.add_argument(
