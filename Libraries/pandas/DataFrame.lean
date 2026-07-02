@@ -115,13 +115,17 @@ set_option linter.unusedVariables false in
 def insert (df : DataFrame) (loc : Nat) (colName : String) (colData : List Cell) (ad : Bool := false) : DataFrame :=
   df.insertColumn colName colData
 
-/-- Render a frame as aligned text (approximating pandas' `__repr__`, without dtype-aware widths). -/
+/-- Render a frame as aligned text, pandas `__repr__`-style: an index column plus one right-justified
+column per name (each column widened to fit its header and cells). -/
 def toStr (df : DataFrame) : String :=
-  let header := "     " ++ String.intercalate "  " df.getColumns
+  let idxW := (df.index.map String.length).foldl Nat.max 0
+  let colStrs : List (String × List String) := df.cols.map fun col =>
+    let cells := col.2.map Cell.toStr
+    let w := (col.1.length :: cells.map String.length).foldl Nat.max 0
+    (padLeft col.1 w, cells.map (fun x => padLeft x w))
+  let header := padRight "" idxW ++ String.join (colStrs.map fun hc => "  " ++ hc.1)
   let rows := (List.range df.index.length).map fun i =>
-    let label := df.index.getD i ""
-    let cells := df.cols.map fun col => (col.2.getD i Cell.na).toStr
-    label ++ "  " ++ String.intercalate "  " cells
+    padRight (df.index.getD i "") idxW ++ String.join (colStrs.map fun hc => "  " ++ hc.2.getD i "")
   String.intercalate "\n" (header :: rows)
 
 instance : ToString DataFrame := ⟨toStr⟩

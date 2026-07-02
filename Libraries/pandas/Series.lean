@@ -36,6 +36,9 @@ def ofList {α} [ToCell α] (xs : List α) (index : Option (List String) := none
 def numeric (s : Series) : List Float :=
   s.values.filterMap Cell.toFloat?
 
+/-- Inferred dtype of the series (`int64`/`float64`/`object`). -/
+def dtype (s : Series) : DType := dtypeOf s.values
+
 /-- `len(s)` — number of entries, including missing ones. -/
 def size (s : Series) : Nat := s.values.length
 
@@ -75,14 +78,26 @@ def round (s : Series) (nd : Nat := 0) : Series :=
   let p := Float.ofNat (10 ^ nd)
   s.apply fun v => (v * p).round / p
 
-/-- Running (cumulative) sum. Missing cells stay missing but do not reset the accumulator. -/
+/-- Running (cumulative) sum. Missing cells stay missing but do not reset the accumulator. Preserves
+integer dtype (an int column's cumsum is integer, as in pandas). -/
 def cumsum (s : Series) : Series :=
-  let rec go (acc : Float) : List Cell → List Cell
-    | []      => []
-    | c :: cs => match c.toFloat? with
-      | some v => Cell.float (acc + v) :: go (acc + v) cs
-      | none   => Cell.na :: go acc cs
-  { s with values := go 0.0 s.values }
+  if s.dtype == DType.int then
+    let rec goI (acc : Int) : List Cell → List Cell
+      | []      => []
+      | c :: cs =>
+        match c with
+        | .int n  => Cell.int (acc + n) :: goI (acc + n) cs
+        | .bool b => let v := acc + (if b then 1 else 0); Cell.int v :: goI v cs
+        | _       => Cell.na :: goI acc cs
+    { s with values := goI 0 s.values }
+  else
+    let rec goF (acc : Float) : List Cell → List Cell
+      | []      => []
+      | c :: cs =>
+        match c.toFloat? with
+        | some v => Cell.float (acc + v) :: goF (acc + v) cs
+        | none   => Cell.na :: goF acc cs
+    { s with values := goF 0.0 s.values }
 
 /-- Distinct values, first occurrence kept (pandas `unique`, returned as a `Series`). -/
 def unique (s : Series) : Series :=
@@ -119,6 +134,22 @@ def sortValues (s : Series) (ascending : Bool := true) : Series :=
       ins acc) []
   let ordered := if ascending then sorted else sorted.reverse
   { s with values := ordered.map (·.1), index := ordered.map (·.2) }
+
+/-- pandas-style `str(series)`: index column, right-justified values, and a `dtype:` footer
+(prefixed with `Name:` when the series is named). -/
+def toStr (s : Series) : String :=
+  let idx := if s.index.length == s.values.length then s.index else rangeIndex s.values.length
+  let iw := (idx.map String.length).foldl Nat.max 0
+  let vstrs := s.values.map Cell.toStr
+  let vw := (vstrs.map String.length).foldl Nat.max 0
+  let lines := (idx.zip vstrs).map fun p => padRight p.1 iw ++ "    " ++ padLeft p.2 vw
+  let footer := (if s.name.isEmpty then "" else s!"Name: {s.name}, ") ++ s!"dtype: {s.dtype}"
+  String.intercalate "\n" (lines ++ [footer])
+
+instance : ToString Series := ⟨toStr⟩
+
+/-- Print a series (`print(s)`). -/
+def printSeries (s : Series) : IO Unit := IO.println s.toStr
 
 end Series
 end Libraries.pandas
