@@ -1,14 +1,21 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
+
+set_option maxHeartbeats 800000
 
 noncomputable def sigmoid := fun (x : Real) ↦ (1.0 : Rat) /ₚ ((1.0 : Rat) +ₚ Libraries.math.pyMathExpR (-x))
 
-def sigmoid'rn := fun (x : Float) ↦ (1.0 : Float) /ₚ ((1.0 : Float) +ₚ Libraries.math.pyMathExp (-x))
+attribute [simp] sigmoid
+
+def sigmoid'rn := fun (x : Float) ↦ PastaLean.pyFloat (1.0 : Float) /ₚ ((1.0 : Float) +ₚ Libraries.math.pyMathExp (-x))
 
 noncomputable def predict := fun (x : List Rat) ↦ fun (w1 : List (List Real)) ↦ fun (b1 : List Real) ↦
   fun (w2 : List (List Real)) ↦ fun (b2 : List Real) ↦
@@ -17,6 +24,8 @@ noncomputable def predict := fun (x : List Rat) ↦ fun (w1 : List (List Real)) 
   let h1 := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
   let hidden := [h0, h1]
   sigmoid (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
+
+attribute [simp] predict
 
 def predict'rn := fun (x : List Float) ↦ fun (w1 : List (List Float)) ↦ fun (b1 : List Float) ↦
   fun (w2 : List (List Float)) ↦ fun (b2 : List Float) ↦
@@ -37,6 +46,8 @@ noncomputable def mean_squared_error := fun (xs : List (List Rat)) ↦ fun (ys :
       let __py_ret_1 := total /ₚ PastaLean.pyLen xs
       return __py_ret_1)
 
+attribute [simp] mean_squared_error
+
 def mean_squared_error'rn := fun (xs : List (List Float)) ↦ fun (ys : List Float) ↦ fun (w1 : List (List Float)) ↦
   fun (b1 : List Float) ↦ fun (w2 : List (List Float)) ↦ fun (b2 : List Float) ↦
   Id.run
@@ -45,7 +56,7 @@ def mean_squared_error'rn := fun (xs : List (List Float)) ↦ fun (ys : List Flo
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
         let mut diff := predict'rn xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
         total := total +ₚ diff *ₚ diff
-      let __py_ret_1 := total /ₚ PastaLean.pyLen xs
+      let __py_ret_1 := PastaLean.pyFloat total /ₚ PastaLean.pyLen xs
       return __py_ret_1)
 
 noncomputable def main' :=
@@ -100,6 +111,8 @@ noncomputable def main' :=
       let mut p := predict xs⦋i⦌ w1 b1 w2 b2
       let mut label := if decide (p > (0.5 : Real)) then (1 : Int) else (0 : Int)
       let _ ← pyPrintNoop [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
+
+attribute [simp] main'
 
 def main''rn :=
   Id.run do

@@ -1,10 +1,15 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
+
+set_option maxHeartbeats 800000
 
 noncomputable def euclidean_distance := fun (p1 : List Int) ↦ fun (p2 : List Int) ↦
   ((do
@@ -23,6 +28,8 @@ noncomputable def euclidean_distance := fun (p1 : List Int) ↦ fun (p2 : List I
       let __py_ret_1 := Libraries.math.pyMathSqrtR (PastaLean.pySum sq_diffs)
       return __py_ret_1) :
     PastaLean.PyExceptId _)
+
+attribute [simp] euclidean_distance
 
 def euclidean_distance'rn : List Int → List Int → PastaLean.PyExcept Float := fun (p1 : List Int) ↦
   fun (p2 : List Int) ↦ do
@@ -69,6 +76,8 @@ noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (data
         else
           throw caught) :
     PastaLean.PyExceptId _)
+
+attribute [simp] find_nearest_neighbor
 
 def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List (List Int)) ↦
   ((do
@@ -125,6 +134,8 @@ noncomputable def run_example :=
       let mut nearest_inv := Prod.snd __unpack_pair_2
       let _ ← pyPrintNoop [pyPrintArg "Fallback Distance:", pyPrintArg dist_inv]) :
     PastaLean.PyExceptId _)
+
+attribute [simp] run_example
 
 def run_example'rn :=
   ((do

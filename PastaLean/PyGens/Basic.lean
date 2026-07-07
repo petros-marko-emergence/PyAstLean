@@ -114,7 +114,7 @@ def jsonLibraryMappedName? (json : Json) : PygenM (Option Lean.Name) := do
   match json.getObjValAs? String "library_module", json.getObjValAs? String "library_member" with
   | .ok moduleName, .ok memberName =>
       -- In exact mode prefer the `ℝ`/`noncomputable` variant for transcendentals so generated
-      -- code is provable; everything else (and all of `--approx`) uses the regular mapping.
+      -- code is provable; everything else (and all of `--mode run`) uses the regular mapping.
       -- Exact mode: a transcendental → `ℝ` (real map); else a computable-but-non-Float override
       -- like `math.pow`→rational (exact map); else the regular (often `Float`) mapping.
       let realName? ← if (← getNumericMode) == .exact
@@ -302,7 +302,10 @@ def binOpApplyTerm (op : String) (leftCode rightCode : TSyntax `term) :
   | "add" => `($leftCode +ₚ $rightCode)
   | "sub" => `($leftCode -ₚ $rightCode)
   | "mul" => `($leftCode *ₚ $rightCode)
-  | "div" => `($leftCode /ₚ $rightCode)
+  | "div" =>
+      match ← getNumericMode with
+      | .approx => `(PastaLean.pyFloat $leftCode /ₚ $rightCode)
+      | .exact => `($leftCode /ₚ $rightCode)
   | "floordiv" =>
       let floorDivIdent := mkIdent ``PastaLean.pyFloorDiv
       `($floorDivIdent $leftCode $rightCode)
@@ -434,9 +437,11 @@ def unaryOpSyntax : (kind : SyntaxNodeKind) → Json →
       s!"UnaryOp node does not have an 'op' field or it is not a string: {json}"
     let .ok operandJson := json.getObjValAs? Json "operand" | throwError
       s!"UnaryOp node does not have an 'operand' field or it is not a JSON value: {json}"
-    -- `not` is `!` (Bool), so its operand must be `Bool` even as an `if` test (`if not (a == b)`).
-    let operandCode ← withPropCondition false (getCode operandJson `term)
-    unaryOpApplyTerm op operandCode
+    -- In a `Prop` position in exact mode (`assert`/theorem, or an `if` test), `not p` is `¬ p` with
+    -- `p` itself a `Prop`. Otherwise `not` is the `Bool` `!`, so its operand must be `Bool`.
+    let propNot := op == "not" && (← getPropCondition) && (← numericModeIsExact)
+    let operandCode ← withPropCondition propNot (getCode operandJson `term)
+    if propNot then `(¬ $operandCode) else unaryOpApplyTerm op operandCode
   | _, _ => throwError s!"Unsupported syntax category for UnaryOp node"
 
 @[pygen "BoolOp"]
@@ -447,17 +452,22 @@ def boolOpSyntax : (kind : SyntaxNodeKind) → Json →
       s!"BoolOp node does not have an 'op' field or it is not a string: {json}"
     let .ok valuesJson := json.getObjValAs? Json "values" | throwError
       s!"BoolOp node does not have a 'values' field or it is not a JSON value: {json}"
-    -- `&&`/`||` need `Bool` operands, so lower them in value (non-`Prop`) position even when this
-    -- `BoolOp` is itself an `if`/`while` test: `if a < b and c < d` → `decide (a<b) && decide (c<d)`.
+    -- In a `Prop` position in exact mode (`assert`/theorem, or an `if` test over ℚ/ℤ/ℝ) `and`/`or`
+    -- become `∧`/`∨` over `Prop` operands — no `decide`. Otherwise `&&`/`||` need `Bool` operands, so
+    -- lower them in value position: `if a < b and c < d` → `decide (a<b) && decide (c<d)`.
+    let opProp := (← getPropCondition) && (← numericModeIsExact)
     let valuesCodes ← match valuesJson with
-      | .arr arr => arr.mapM (fun valueJson => withPropCondition false (getCode valueJson `term))
+      | .arr arr => arr.mapM (fun valueJson => withPropCondition opProp (getCode valueJson `term))
       | _ => throwError s!"BoolOp node 'values' field is not an array: {valuesJson}"
-    -- let valuesCodes := valuesCodes.toList
     let l := valuesCodes.toList.length
     if l = 0 then throwError s!"BoolOp node 'values' array is empty: {valuesJson}"
     match op with
-    | "and" => return ← valuesCodes.foldlM (fun a b => `($a && $b)) (valuesCodes[0]!) (start := 1)
-    | "or" => return ← valuesCodes.foldlM (fun a b => `($a || $b)) (valuesCodes[0]!) (start := 1)
+    | "and" =>
+        if opProp then valuesCodes.foldlM (fun a b => `($a ∧ $b)) (valuesCodes[0]!) (start := 1)
+        else valuesCodes.foldlM (fun a b => `($a && $b)) (valuesCodes[0]!) (start := 1)
+    | "or" =>
+        if opProp then valuesCodes.foldlM (fun a b => `($a ∨ $b)) (valuesCodes[0]!) (start := 1)
+        else valuesCodes.foldlM (fun a b => `($a || $b)) (valuesCodes[0]!) (start := 1)
     | _ => throwError s!"Unsupported boolean operator: {op}"
   | _, _ => throwError s!"Unsupported syntax category for BoolOp node"
 

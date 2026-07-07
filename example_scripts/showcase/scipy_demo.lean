@@ -1,10 +1,15 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
+
+set_option maxHeartbeats 800000
 
 /-
 A small numeric-toolkit showcase: `typing` annotations + a `scipy` subset, all transpiled
@@ -20,6 +25,8 @@ def variance := fun (xs : List Rat) ↦
       let __py_ret_1 := total /ₚ PastaLean.pyLen xs
       return __py_ret_1)
 
+attribute [simp, taste_ingr] variance
+
 def variance'rn := fun (xs : List Float) ↦
   Id.run
     (do
@@ -27,7 +34,7 @@ def variance'rn := fun (xs : List Float) ↦
       let mut total := (0.0 : Float)
       for x in (PastaLean.pyIter xs)do
         total := total +ₚ (x -ₚ m) *ₚ (x -ₚ m)
-      let __py_ret_1 := total /ₚ PastaLean.pyLen xs
+      let __py_ret_1 := PastaLean.pyFloat total /ₚ PastaLean.pyLen xs
       return __py_ret_1)
 
 noncomputable def main' :=
@@ -51,6 +58,8 @@ noncomputable def main' :=
     let mut matrix := [[(4.0 : Rat), (3.0 : Rat)], [(6.0 : Rat), (3.0 : Rat)]]
     let _ ← pyPrintNoop [pyPrintArg "det       =", pyPrintArg (Libraries.scipy.pyScipyDet matrix)]
     let _ ← pyPrintNoop [pyPrintArg "norm[3,4] =", pyPrintArg (Libraries.scipy.pyScipyNormR [(3.0 : Rat), (4.0 : Rat)])]
+
+attribute [simp] main'
 
 def main''rn :=
   Id.run do

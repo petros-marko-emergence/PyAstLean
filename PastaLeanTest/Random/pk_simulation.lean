@@ -1,10 +1,15 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
+
+set_option maxHeartbeats 800000
 
 noncomputable def main' :=
   Id.run do
@@ -67,10 +72,12 @@ noncomputable def main' :=
                     ".2f")} | Avg: {(PastaLean.pyFormatSpec avg
                     ".2f")} | Messy Entropy: {PastaLean.pyFormatSpec entropy ".2f"}"]
     -- final check
-    if h_1 : wolves⦋-1⦌ > (0.1 : Rat) then 
+    if h_1 : wolves⦋-1⦌ > (0.1 : Rat) then
       let _ ← pyPrintNoop [pyPrintArg "The ecosystem survived!"]
     else
       let _ ← pyPrintNoop [pyPrintArg "The wolves went extinct."]
+
+attribute [simp] main'
 
 def main''rn :=
   Id.run do
@@ -133,7 +140,7 @@ def main''rn :=
                     ".2f")} | Avg: {(PastaLean.pyFormatSpec avg
                     ".2f")} | Messy Entropy: {PastaLean.pyFormatSpec entropy ".2f"}"]
     -- final check
-    if h_1 : wolves⦋-1⦌ > (0.1 : Float) then 
+    if h_1 : wolves⦋-1⦌ > (0.1 : Float) then
       let _ ← pyPrintIO [pyPrintArg "The ecosystem survived!"]
     else
       let _ ← pyPrintIO [pyPrintArg "The wolves went extinct."]

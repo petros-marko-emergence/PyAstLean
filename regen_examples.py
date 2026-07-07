@@ -29,6 +29,7 @@ PY2LEAN = REPO / "src/py2lean.py"
 GROUPS: list[tuple[str, Path, bool]] = [
     ("showcase", REPO / "example_scripts/showcase", True),
     ("Random", REPO / "PastaLeanTest/Random", True),
+    ("mvcgen_playgrond", REPO / "example_scripts/mvcgen_playground", True),
     ("General", REPO / "PastaLeanTest/PastaLeanCheck/General", False),
 ]
 
@@ -79,6 +80,7 @@ def compile_lean(path: Path, timeout: int) -> str | None:
 def process(py: Path, in_place: bool, timeout: int) -> tuple[str, Path, str]:
     """Returns (status, py, detail). status in {OK, CONVERT_FAIL, COMPILE_FAIL}."""
     lean, cerr = convert(py)
+    lean = "" if lean is None else lean
     if cerr:
         return "CONVERT_FAIL", py, cerr
     if in_place:

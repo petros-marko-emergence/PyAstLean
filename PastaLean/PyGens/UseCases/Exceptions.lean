@@ -196,8 +196,6 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
   let .ok finalbodyElems := json.getObjValAs? (Array Json) "finalbody" | throwError
     s!"Try node does not have a 'finalbody' field or it is not a JSON array: {json}"
   let bodyAndElse ← tryBranchBodySyntax (bodyElems ++ orelseElems)
-  -- Splice the body statements straight into the `captureIOErrors (do …)` block — don't pre-wrap
-  -- them in a `do` (which would nest `do (do …)`).
   let noopElem ← noopDoElemSyntax
   let innerBodyElems := if bodyAndElse.isEmpty then #[noopElem] else bodyAndElse
   let catchIdent := mkIdent `caught
