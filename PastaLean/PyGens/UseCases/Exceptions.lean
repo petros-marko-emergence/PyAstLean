@@ -200,17 +200,23 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
   let innerBodyElems := if bodyAndElse.isEmpty then #[noopElem] else bodyAndElse
   let catchIdent := mkIdent `caught
   let catchBody ← exceptHandlersDoElemSyntax catchIdent handlersElems.toList
-  let exceptIdent := mkIdent ``PastaLean.PyExcept
   -- The try-branch statements. By default we splice them straight into `try` so a `let mut` in the
   -- body mutates the *enclosing* scope (wrapping them in a nested `do`, as `captureIOErrors (do …)`
   -- does, makes those vars read-only and breaks the mutation). The wrapper is only needed when the
   -- body performs IO — there an IO error (e.g. `EOFError` from `input()` at end of input) must be
   -- turned into a catchable `PyException`; that case keeps the wrapper (and binds/returns the value).
+  let needsIO := bodyNeedsIOMonad (bodyElems ++ orelseElems)
+  -- Pin the exception monad. Mirror `functionValueSyntax`'s choice so a `try` term and its enclosing
+  -- function always agree: use the pure `PyExceptId` (`ExceptT PyException Id`) only in exact/prove
+  -- mode with no real IO; otherwise `PyExcept` (`ExceptT PyException IO`). In run/approx mode the
+  -- whole program is `IO`-backed, so a nested pure `try` must stay `PyExcept` to lift into it.
+  let usePureExcept := (← getNumericMode) == .exact && !needsIO
+  let exceptIdent := mkIdent (if usePureExcept then ``PastaLean.PyExceptId else ``PastaLean.PyExcept)
   let bodyYieldsValue :=
     statementListMayYieldValue (bodyElems ++ orelseElems)
       || handlersListMayYieldValue handlersElems
   let tryBranchElems : Array (TSyntax `doElem) ←
-    if bodyNeedsIOMonad (bodyElems ++ orelseElems) then do
+    if needsIO then do
       let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
       let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
       if bodyYieldsValue then do

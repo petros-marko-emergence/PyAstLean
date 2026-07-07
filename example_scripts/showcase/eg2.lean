@@ -14,21 +14,17 @@ set_option maxHeartbeats 800000
 def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List Rat)) ↦
   ((do
       try
-        let __py_try_val_1 ←
-          PastaLean.PyExcept.captureIOErrors
-              (do
-                -- Calculate mean of the dataset
-                let mut m := Libraries.numpy.pyNumpyMean data
-                let _ ← pyPrintNoop [pyPrintArg s! "Dataset Global Mean: {m}"]
-                -- Center the data by subtracting the mean
-                -- (Using a manual broadcast-like subtraction for this example)
-                -- Note: np.subtract is mapped to pyNumpySubtract
-                let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
-                -- Perform matrix multiplication
-                -- Note: np.matmul is mapped to pyNumpyMatmul
-                let mut result := Libraries.numpy.pyNumpyMatmul centered weights
-                return result)
-        return __py_try_val_1
+        -- Calculate mean of the dataset
+        let mut m := Libraries.numpy.pyNumpyMean data
+        let _ ← pyPrintNoop [pyPrintArg s! "Dataset Global Mean: {m}"]
+        -- Center the data by subtracting the mean
+        -- (Using a manual broadcast-like subtraction for this example)
+        -- Note: np.subtract is mapped to pyNumpySubtract
+        let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+        -- Perform matrix multiplication
+        -- Note: np.matmul is mapped to pyNumpyMatmul
+        let mut result := Libraries.numpy.pyNumpyMatmul centered weights
+        return result
       catch caught =>
         if (caught).OfKind == "ValueError" then 
           let e := caught
@@ -38,28 +34,24 @@ def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List R
           return __py_ret_1
         else
           throw caught) :
-    PastaLean.PyExcept _)
+    PastaLean.PyExceptId _)
 
 attribute [simp] process_data
 
 def process_data'rn : List (List Float) → List (List Float) → PastaLean.PyExcept (List (List Float)) :=
   fun (data : List (List Float)) ↦ fun (weights : List (List Float)) ↦ do
   try
-    let __py_try_val_1 ←
-      PastaLean.PyExcept.captureIOErrors
-          (do
-            -- Calculate mean of the dataset
-            let mut m := Libraries.numpy.pyNumpyMean data
-            let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
-            -- Center the data by subtracting the mean
-            -- (Using a manual broadcast-like subtraction for this example)
-            -- Note: np.subtract is mapped to pyNumpySubtract
-            let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
-            -- Perform matrix multiplication
-            -- Note: np.matmul is mapped to pyNumpyMatmul
-            let mut result := Libraries.numpy.pyNumpyMatmul centered weights
-            return result)
-    return __py_try_val_1
+    -- Calculate mean of the dataset
+    let mut m := Libraries.numpy.pyNumpyMean data
+    let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
+    -- Center the data by subtracting the mean
+    -- (Using a manual broadcast-like subtraction for this example)
+    -- Note: np.subtract is mapped to pyNumpySubtract
+    let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+    -- Perform matrix multiplication
+    -- Note: np.matmul is mapped to pyNumpyMatmul
+    let mut result := Libraries.numpy.pyNumpyMatmul centered weights
+    return result
   catch caught =>
     if (caught).OfKind == "ValueError" then 
       let e := caught
@@ -95,7 +87,7 @@ def run_example :=
       let mut invalid_data := [[(1.0 : Rat), (2.0 : Rat), (3.0 : Rat)]]
       -- This should trigger the ValueError in np.matmul(1x3, 2x2)
       let _ ← process_data invalid_data weights) :
-    PastaLean.PyExcept _)
+    PastaLean.PyExceptId _)
 
 attribute [simp] run_example
 
@@ -127,11 +119,11 @@ def run_example'rn :=
     PastaLean.PyExcept _)
 
 def main : IO Unit := do
-  let result ←
+  let result :=
     (((do
-            let _ ← run_example
-            pure ()) :
-          PastaLean.PyExcept Unit)).run
+          let _ ← run_example
+          pure ()) :
+        PastaLean.PyExceptId Unit)).run
   match result with
   | .ok _ =>
     pure ()

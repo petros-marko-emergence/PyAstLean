@@ -27,7 +27,7 @@ noncomputable def euclidean_distance := fun (p1 : List Int) ↦ fun (p2 : List I
           Libraries.math.pyMathPowExact (a -ₚ b) (2 : Int)
       let __py_ret_1 := Libraries.math.pyMathSqrtR (PastaLean.pySum sq_diffs)
       return __py_ret_1) :
-    PastaLean.PyExcept _)
+    PastaLean.PyExceptId _)
 
 attribute [simp] euclidean_distance
 
@@ -75,7 +75,7 @@ noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (data
           return __py_ret_2
         else
           throw caught) :
-    PastaLean.PyExcept _)
+    PastaLean.PyExceptId _)
 
 attribute [simp] find_nearest_neighbor
 
@@ -133,7 +133,7 @@ noncomputable def run_example :=
       let mut dist_inv := Prod.fst __unpack_pair_2
       let mut nearest_inv := Prod.snd __unpack_pair_2
       let _ ← pyPrintNoop [pyPrintArg "Fallback Distance:", pyPrintArg dist_inv]) :
-    PastaLean.PyExcept _)
+    PastaLean.PyExceptId _)
 
 attribute [simp] run_example
 
@@ -164,11 +164,11 @@ def run_example'rn :=
     PastaLean.PyExcept _)
 
 noncomputable def main : IO Unit := do
-  let result ←
+  let result :=
     (((do
-            let _ ← run_example
-            pure ()) :
-          PastaLean.PyExcept Unit)).run
+          let _ ← run_example
+          pure ()) :
+        PastaLean.PyExceptId Unit)).run
   match result with
   | .ok _ =>
     pure ()

@@ -567,30 +567,53 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
         -- wrapper depend on a `noncomputable` def, so it must itself be `noncomputable` (it
         -- still elaborates / compile-checks; it just can't be run — use `--mode run` to run).
         let isReal := (← getNumericMode) == .exact && json.getObjValAs? Bool "_real_fn" == .ok true
-        let mkMain : TSyntax `term → PygenM (TSyntax `command) := fun body =>
-          if isReal then `(command| noncomputable def $mainIdent : IO Unit := $body)
-          else `(command| def $mainIdent : IO Unit := $body)
-        if bodyNeedsExceptionMonad bodyElems then
-          let exceptIdent := mkIdent ``PastaLean.PyExcept
+        let usesExceptions := bodyNeedsExceptionMonad bodyElems
+        let usesIO := bodyNeedsIOMonad bodyElems
+        -- Determine if we need PyExceptId (pure exceptions in prove mode)
+        let usesPureExceptions := (← getNumericMode) == .exact && usesExceptions && !usesIO
+        if usesExceptions then
+          -- Exception handling path - convert PyExcept/PyExceptId result to IO
+          let exceptIdent := mkIdent (if usesPureExceptions then ``PastaLean.PyExceptId else ``PastaLean.PyExcept)
           let ioUserErrorIdent := mkIdent ``IO.userError
-          mkMain (← `(do
+          let mainBody ← if usesPureExceptions then
+            -- For PyExceptId, we need to lift it to IO - run it in Id then convert to IO
+            `(do
+              let result := (((do
+                  $[$bodyStxArray:doElem]*
+                  pure ()
+                ) : $exceptIdent Unit)).run
+              match result with
+              | .ok _ => pure ()
+              | .error err => throw ($ioUserErrorIdent (toString err)))
+          else
+            -- For PyExcept (IO-backed), unwrap normally
+            `(do
               let result ← (((do
                   $[$bodyStxArray:doElem]*
                   pure ()
                 ) : $exceptIdent Unit)).run
               match result with
               | .ok _ => pure ()
-              | .error err => throw ($ioUserErrorIdent (toString err))))
-        else if bodyNeedsIOMonad bodyElems then
-          mkMain (← `(do
+              | .error err => throw ($ioUserErrorIdent (toString err)))
+          if isReal then `(command| noncomputable def $mainIdent : IO Unit := $mainBody)
+          else `(command| def $mainIdent : IO Unit := $mainBody)
+        else if usesIO then
+          let mainBody ← `(do
               $[$bodyStxArray:doElem]*
-              pure ()))
+              pure ())
+          if isReal then `(command| noncomputable def $mainIdent : IO Unit := $mainBody)
+          else `(command| def $mainIdent : IO Unit := $mainBody)
         else
-          let idRunIdent := mkIdent ``Id.run
-          mkMain (← `(do
-              let _ := $idRunIdent do
-                $[$bodyStxArray:doElem]*
-              pure ()))
+          -- Pure body - no IO, no exceptions
+          -- For mode=both, bodyStxArray contains a call to main' (the renamed Python main function).
+          -- Since main' returns Id Unit (via Id.run), we can't use monadic bind (←) in IO context.
+          -- Solution: evaluate the call directly with := (pure binding).
+          -- This works because Id.run evaluates to a pure value.
+          let mainBody ← `(do
+              $[$bodyStxArray:doElem]*
+              pure ())
+          if isReal then `(command| noncomputable def $mainIdent : IO Unit := $mainBody)
+          else `(command| def $mainIdent : IO Unit := $mainBody)
     | _, _ => throwError s!"Unsupported syntax category for If node"
 
 

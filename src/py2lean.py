@@ -291,9 +291,13 @@ def _body_has_direct_io_syntax(body):
             if (
                 isinstance(func, dict)
                 and func.get("node_type") == "Name"
-                and func.get("id") in {"print", "input"}
             ):
-                return True
+                func_id = func.get("id")
+                # In prove mode, print() is a noop and doesn't count as IO
+                if func_id == "input":
+                    return True
+                elif func_id == "print" and _NUMERIC_MODE != "exact":
+                    return True
     return False
 
 
@@ -350,9 +354,15 @@ def _annotate_direct_io_calls(node):
             if (
                 isinstance(func, dict)
                 and func.get("node_type") == "Name"
-                and func.get("id") in {"print", "input"}
             ):
-                node.setdefault("effect_mode", "io")
+                func_id = func.get("id")
+                # In prove mode, print() is a noop (pyPrintNoop) and doesn't require IO in the type
+                # input() always needs IO, even in prove mode
+                if func_id == "input":
+                    node.setdefault("effect_mode", "io")
+                elif func_id == "print" and _NUMERIC_MODE != "exact":
+                    # Only mark print as IO in run/approx mode
+                    node.setdefault("effect_mode", "io")
         node_type = node.get("node_type")
         for key, value in node.items():
             if node_type == "FunctionDef" and key == "body":
