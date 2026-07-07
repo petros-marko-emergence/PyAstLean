@@ -206,36 +206,27 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
   -- (i.e., when the function body uses real IO). For pure `PyExceptId`, no wrapping is needed.
   -- The wrapping converts IO errors (e.g., EOFError from input()) into catchable PyExceptions.
   let needsIOCapture := bodyNeedsIOMonad bodyElems
-  let wrappedBody ←
-    if needsIOCapture then
-      let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
-      `($captureIdent (do $[$innerBodyElems:doElem]*))
-    else
-      `(do $[$innerBodyElems:doElem]*)
-  -- If the try-body (or its `else`) can `return` a value, that value is the result of the whole
-  -- `try` expression and must be propagated out; binding-and-discarding with `let _ ←` would pin
-  -- the try-branch to `Unit` and clash with a value-returning `catch`. When the body is purely
-  -- effectful we keep `let _ ←` so the try-branch stays `Unit` (e.g. inside a loop body, where an
-  -- unconditional `return` would wrongly exit the enclosing function).
-  -- The whole `try` expression yields a value if the body (or `else`) can `return` one, OR if any
-  -- `except` handler can — in the latter case the `catch` branch produces a value, so the `try`
-  -- branch must produce the same type. We bind the body's result to a fresh name and `return` it
-  -- (rather than emitting a bare `return (← …)`, which mis-pretty-prints into an illegal
-  -- mid-sequence `return`). When the body only raises, `wrappedBody` is polymorphic and unifies
-  -- with the handler's value type.
   let bodyYieldsValue :=
     statementListMayYieldValue (bodyElems ++ orelseElems)
       || handlersListMayYieldValue handlersElems
-  -- Emit the try-branch statements directly into the `try` block (spliced, not wrapped in a `do`).
+  -- Emit the try-branch statements. When IO capture is needed, wrap in captureIOErrors and bind.
+  -- When no IO capture needed, splice the body elements directly (they already contain returns).
   let tryBranchElems : Array (TSyntax `doElem) ←
-    if bodyYieldsValue then do
-      let tryValName := mkIdent (← freshName `__py_try_val)
-      let bindElem ← `(doElem| let $tryValName ← $wrappedBody:term)
-      let retElem ← `(doElem| return $tryValName)
-      pure #[bindElem, retElem]
+    if needsIOCapture then do
+      -- With captureIOErrors: call the function and bind/return the result if needed
+      let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
+      let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
+      if bodyYieldsValue then do
+        let tryValName := mkIdent (← freshName `__py_try_val)
+        let bindElem ← `(doElem| let $tryValName ← $wrappedBody:term)
+        let retElem ← `(doElem| return $tryValName)
+        pure #[bindElem, retElem]
+      else do
+        let discardElem ← `(doElem| let _ ← $wrappedBody:term)
+        pure #[discardElem]
     else do
-      let discardElem ← `(doElem| let _ ← $wrappedBody:term)
-      pure #[discardElem]
+      -- Without captureIOErrors: splice body elements directly (no extra return needed)
+      pure innerBodyElems
   -- Don't hardcode the exception monad type - let Lean infer it from the function's return type.
   -- This allows the same try/catch code to work with both PyExcept (IO-backed) and PyExceptId (pure).
   if finalbodyElems.isEmpty then
@@ -289,27 +280,26 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
         -- Wrap the body in `captureIOErrors` only when using the IO-backed `PyExcept` monad.
         -- For pure `PyExceptId`, no wrapping is needed since there's no IO to capture.
         let needsIOCapture := bodyNeedsIOMonad bodyElems
-        let wrappedBody ←
-          if needsIOCapture then
-            let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
-            `($captureIdent (do $[$innerBodyElems:doElem]*))
-          else
-            `(do $[$innerBodyElems:doElem]*)
-        -- See `tryExceptTerm`: propagate the body's value out of the `try` when it (or any handler)
-        -- can `return` one, binding it to a fresh name and returning it; otherwise keep the
-        -- effectful `let _ ←` form. Splice the statements directly into `try` (no wrapping `do`).
         let bodyYieldsValue :=
           statementListMayYieldValue (bodyElems ++ orelseElems)
             || handlersListMayYieldValue handlersElems
+        -- Emit the try-branch statements. When IO capture is needed, wrap in captureIOErrors and bind.
+        -- When no IO capture needed, splice the body elements directly.
         let tryBranchElems : Array (TSyntax `doElem) ←
-          if bodyYieldsValue then do
-            let tryValName := mkIdent (← freshName `__py_try_val)
-            let bindElem ← `(doElem| let $tryValName ← $wrappedBody:term)
-            let retElem ← `(doElem| return $tryValName)
-            pure #[bindElem, retElem]
+          if needsIOCapture then do
+            let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
+            let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
+            if bodyYieldsValue then do
+              let tryValName := mkIdent (← freshName `__py_try_val)
+              let bindElem ← `(doElem| let $tryValName ← $wrappedBody:term)
+              let retElem ← `(doElem| return $tryValName)
+              pure #[bindElem, retElem]
+            else do
+              let discardElem ← `(doElem| let _ ← $wrappedBody:term)
+              pure #[discardElem]
           else do
-            let discardElem ← `(doElem| let _ ← $wrappedBody:term)
-            pure #[discardElem]
+            -- Without captureIOErrors: splice body elements directly
+            pure innerBodyElems
         if finalbodyElems.isEmpty then
           `(doElem| try
               $[$tryBranchElems:doElem]*

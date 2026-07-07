@@ -8,7 +8,7 @@ set_option linter.all false
 
 noncomputable def euclidean_distance := fun (p1 : List Int) ↦ fun (p2 : List Int) ↦
   ((do
-      if h_1 : PastaLean.pyLen p1 ≠ PastaLean.pyLen p2 then
+      if h_1 : PastaLean.pyLen p1 ≠ PastaLean.pyLen p2 then 
         throw
             (PastaLean.PyException.Raise "ValueError"
               (ToString.toString "Points must have the same number of dimensions"))
@@ -22,11 +22,11 @@ noncomputable def euclidean_distance := fun (p1 : List Int) ↦ fun (p2 : List I
           Libraries.math.pyMathPowExact (a -ₚ b) (2 : Int)
       let __py_ret_1 := Libraries.math.pyMathSqrtR (PastaLean.pySum sq_diffs)
       return __py_ret_1) :
-    PastaLean.PyExcept _)
+    PastaLean.PyExceptId _)
 
 def euclidean_distance'rn : List Int → List Int → PastaLean.PyExcept Float := fun (p1 : List Int) ↦
   fun (p2 : List Int) ↦ do
-  if h_1 : PastaLean.pyLen p1 != PastaLean.pyLen p2 then
+  if h_1 : PastaLean.pyLen p1 != PastaLean.pyLen p2 then 
     throw
         (PastaLean.PyException.Raise "ValueError" (ToString.toString "Points must have the same number of dimensions"))
   else
@@ -43,63 +43,55 @@ def euclidean_distance'rn : List Int → List Int → PastaLean.PyExcept Float :
 noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (dataset : List (List Int)) ↦
   ((do
       try
-        let __py_try_val_1 ←
-          PastaLean.PyExcept.captureIOErrors
-              (do
-                -- Calculate distances using list comprehension
-                let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance target point)
-                -- Find the minimum distance
-                let mut min_dist := PastaLean.pyMin distances
-                -- Find the index of the minimum distance
-                -- Using a loop since index() might not be supported based on tests
-                let mut min_index := -(1 : Int)
-                for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
-                  let i := Prod.fst _pair_1
-                  let d := Prod.snd _pair_1
-                  if h_1 : d = min_dist then
-                    min_index := i
-                    break
-                  else
-                    let _ := ()
-                let __py_ret_1 := (min_dist, dataset⦋min_index⦌)
-                return __py_ret_1)
-        return __py_try_val_1
+        -- Calculate distances using list comprehension
+        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance target point)
+        -- Find the minimum distance
+        let mut min_dist := PastaLean.pyMin distances
+        -- Find the index of the minimum distance
+        -- Using a loop since index() might not be supported based on tests
+        let mut min_index := -(1 : Int)
+        for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
+          let i := Prod.fst _pair_1
+          let d := Prod.snd _pair_1
+          if h_1 : d = min_dist then 
+            min_index := i
+            break
+          else
+            let _ := ()
+        let __py_ret_1 := (min_dist, dataset⦋min_index⦌)
+        return __py_ret_1
       catch caught =>
-        if (caught).OfKind == "ValueError" then
+        if (caught).OfKind == "ValueError" then 
           let e := caught
           let _ ← pyPrintNoop [pyPrintArg s! "Error calculating distances: {e}"]
           let __py_ret_2 := (-(1.0 : Real), [])
           return __py_ret_2
         else
           throw caught) :
-    PastaLean.PyExcept _)
+    PastaLean.PyExceptId _)
 
 def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List (List Int)) ↦
   ((do
       try
-        let __py_try_val_1 ←
-          PastaLean.PyExcept.captureIOErrors
-              (do
-                -- Calculate distances using list comprehension
-                let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance'rn target point)
-                -- Find the minimum distance
-                let mut min_dist := PastaLean.pyMin distances
-                -- Find the index of the minimum distance
-                -- Using a loop since index() might not be supported based on tests
-                let mut min_index := -(1 : Int)
-                for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
-                  let i := Prod.fst _pair_1
-                  let d := Prod.snd _pair_1
-                  if h_1 : d == min_dist then
-                    min_index := i
-                    break
-                  else
-                    let _ := ()
-                let __py_ret_1 := (min_dist, dataset⦋min_index⦌)
-                return __py_ret_1)
-        return __py_try_val_1
+        -- Calculate distances using list comprehension
+        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance'rn target point)
+        -- Find the minimum distance
+        let mut min_dist := PastaLean.pyMin distances
+        -- Find the index of the minimum distance
+        -- Using a loop since index() might not be supported based on tests
+        let mut min_index := -(1 : Int)
+        for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
+          let i := Prod.fst _pair_1
+          let d := Prod.snd _pair_1
+          if h_1 : d == min_dist then 
+            min_index := i
+            break
+          else
+            let _ := ()
+        let __py_ret_1 := (min_dist, dataset⦋min_index⦌)
+        return __py_ret_1
       catch caught =>
-        if (caught).OfKind == "ValueError" then
+        if (caught).OfKind == "ValueError" then 
           let e := caught
           let _ ← pyPrintIO [pyPrintArg s! "Error calculating distances: {e}"]
           let __py_ret_2 := (-(1.0 : Float), [])
@@ -132,7 +124,7 @@ noncomputable def run_example :=
       let mut dist_inv := Prod.fst __unpack_pair_2
       let mut nearest_inv := Prod.snd __unpack_pair_2
       let _ ← pyPrintNoop [pyPrintArg "Fallback Distance:", pyPrintArg dist_inv]) :
-    PastaLean.PyExcept _)
+    PastaLean.PyExceptId _)
 
 def run_example'rn :=
   ((do
@@ -161,11 +153,11 @@ def run_example'rn :=
     PastaLean.PyExcept _)
 
 noncomputable def main : IO Unit := do
-  let result ←
+  let result :=
     (((do
-            let _ ← run_example
-            pure ()) :
-          PastaLean.PyExcept Unit)).run
+          let _ ← run_example
+          pure ()) :
+        PastaLean.PyExceptId Unit)).run
   match result with
   | .ok _ =>
     pure ()

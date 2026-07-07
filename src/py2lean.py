@@ -277,9 +277,13 @@ def _body_has_direct_io_syntax(body):
             if (
                 isinstance(func, dict)
                 and func.get("node_type") == "Name"
-                and func.get("id") in {"print", "input"}
             ):
-                return True
+                func_id = func.get("id")
+                # In prove mode, print() is a noop and doesn't count as IO
+                if func_id == "input":
+                    return True
+                elif func_id == "print" and _NUMERIC_MODE != "exact":
+                    return True
     return False
 
 
