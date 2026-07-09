@@ -28,7 +28,7 @@ theorem sum_to_n_spec : ⦃⌜n ≥ (0 : Int)⌝⦄ sum_to_n n ⦃⇓_ => ⌜Tru
   · ⇓⟨cur, total⟩ =>
     ⌜let i := (cur.prefix.length : Int);
       (2 : Int) *ₚ total = i *ₚ (i -ₚ (1 : Int))⌝
-  simp_all (config := { zetaDelta := true }) [taste_ingr]; grind +locals +suggestions
+  simp_all [taste_ingr]; grind +locals +suggestions
 
 def sum_to_n'rn := fun (n : Int) ↦
   Id.run

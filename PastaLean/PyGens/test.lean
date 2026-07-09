@@ -1,39 +1,48 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
 
--- Assert statements: inline (inside a function) and top-level (outside any function).
-@[simp, grind]
-def GREETING :=
-  "hi"
+set_option maxHeartbeats 800000
 
--- top-level assert — outside any function
-theorem assert_holds : ((PastaLean.pyLen GREETING == (2 : Int)) = true) := by 
-  rfl
+def factorial := fun (n : Int) ↦
+  (do
+    let mut result := (1 : Int)
+    for i in (PastaLean.pyRange (n +ₚ (1 : Int)) (1 : Int))do
+      let _ := Libraries.passta.pyPassInvariant (decide ((1 : Int) ≤ i))
+      let _ := Libraries.passta.pyPassInvariant (decide (i ≤ n +ₚ (1 : Int)))
+      let _ := Libraries.passta.pyPassInvariant (decide (result ≥ (1 : Int)))
+      let _ := Libraries.passta.pyPassDecreases (n +ₚ (1 : Int) -ₚ i)
+      result := result *ₚ i
+    return result : Id _)
 
-@[simp, grind .]
-def checked_add := fun (a : Int) ↦ fun (b : Int) ↦
+@[spec]
+theorem factorial_spec : ⦃⌜n ≥ (0 : Int)⌝⦄ factorial n ⦃⇓result => ⌜result ≥ (1 : Int)⌝⦄ :=
+  by
+  mvcgen [factorial, PastaLean.pyRange_forIn, PastaLean.pyRange_forIn_start] invariants
+  · ⇓⟨cur, result⟩ =>
+    ⌜let i := (cur.prefix.length : Int);
+      ((1 : Int) ≤ i ∧ i ≤ n +ₚ (1 : Int)) ∧ result ≥ (1 : Int)⌝
+  simp_all (config := { zetaDelta := true }) [taste_ingr]; sorry; sorry; omega
+
+def factorial'rn := fun (n : Int) ↦
   Id.run
     (do
-      -- inline asserts inside a function body
-      have ht : ((a == a) = true) := by
-        grind
-      have ht_1 : (decide (a +ₚ b ≥ a +ₚ b) = true) := by
-        grind
-      let __py_ret := a +ₚ b
-      return __py_ret)
+      let _ := Libraries.passta.pyPassRequires (decide (n ≥ (0 : Int)))
+      let mut result := (1 : Int)
+      for i in (PastaLean.pyRange (n +ₚ (1 : Int)) (1 : Int))do
+        let _ := Libraries.passta.pyPassInvariant (decide ((1 : Int) ≤ i))
+        let _ := Libraries.passta.pyPassInvariant (decide (i ≤ n +ₚ (1 : Int)))
+        let _ := Libraries.passta.pyPassInvariant (decide (result ≥ (1 : Int)))
+        let _ := Libraries.passta.pyPassDecreases (n +ₚ (1 : Int) -ₚ i)
+        result := result *ₚ i
+      return result)
 
-def checked_add'rn := fun (a : Int) ↦ fun (b : Int) ↦
-  Id.run
-    (do
-      -- inline asserts inside a function body
-      have ht : ((a == a) = true) := by
-        grind
-      have ht_1 : (decide (a +ₚ b ≥ a +ₚ b) = true) := by
-        grind
-      let __py_ret := a +ₚ b
-      return __py_ret)
+
+#eval factorial'rn 10

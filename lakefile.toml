@@ -12,6 +12,11 @@ name = "mathlib"
 scope = "leanprover-community"
 rev = "v4.31.0"
 
+[[require]]
+name = "verso-slides"
+scope = "leanprover"
+rev = "v4.31.0"
+
 [[lean_lib]]
 name = "PastaLean"
 
@@ -20,6 +25,16 @@ name = "Libraries"
 
 [[lean_lib]]
 name = "PastaLeanTest"
+
+[[lean_lib]]
+name = "Slides"
+srcDir = "docs/ppt"
+
+[[lean_exe]]
+name = "slides"
+srcDir = "docs/ppt"
+root = "SlidesMain"
+supportInterpreter = true
 
 [[lean_exe]]
 name="py2lean"

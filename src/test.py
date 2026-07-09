@@ -35,3 +35,43 @@ def sum_upto(n: int) -> int:
     return s
 
 print(sum_upto(5))
+
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def norm_sq(self):
+        return self.x*self.x \
+             + self.y*self.y
+
+obj = Point(1,2)
+norm = obj.norm_sq()
+
+def classify(nums: list[int]):
+    total = 0
+    for n in nums:
+        if n % 2 == 0:
+            total += n
+        else:
+            total -= n
+    return total
+
+def divide_add(a, b, c):
+    try:
+        result = a / b
+        while result < c:
+            result += 1
+        return result
+    except ZeroDivisionError:
+        print("Division by zero error")
+        return -1
+    finally:
+        print("PastaLean handles exceptions gracefully.")
+
+def transform_and_cube(a,b):
+    c = a + b
+    d = a - b
+    e = c * d
+    return e ** 3
+    

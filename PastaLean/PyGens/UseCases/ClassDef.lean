@@ -217,12 +217,22 @@ def classDefSyntax : (kind : SyntaxNodeKind) → Json → PygenM (TSyntax kind)
 
       let hasEq := methodNames.contains "__eq__"
       -- A class with an `ℝ` field (exact mode) can't derive a COMPUTABLE `BEq` (`Real.decidableEq`
-      -- is noncomputable), and its constructor builds an `ℝ` struct → `noncomputable`.
+      -- is noncomputable; `Real`'s only `Repr` is `unsafe`), and its constructor builds an `ℝ`
+      -- struct → `noncomputable`.
       let hasRealField := (← getNumericMode) == .exact
         && fields.any (fun f => f.getObjValAs? Bool "_real" == .ok true)
-      -- The structure, carrying the class docstring as its `/-- … -/` doc comment (when present)
-      -- and `extends Base` for a single base. `BEq` is derived separately below unless the class
-      -- supplies `__eq__` (which becomes a custom `BEq` instance).
+      -- Everything the structure derives, folded into one `deriving` clause: `Inhabited` always;
+      -- `Repr` unless a real field (no computable `Repr`); `BEq` unless the class supplies a custom
+      -- `__eq__` (which becomes its own `BEq` instance) or has a real field. Each class name is
+      -- wrapped as a `derivingClass` node (an empty `@[expose]?` slot + the class term).
+      let mkDeriv (n : Name) : TSyntax ``Lean.Parser.Command.derivingClass :=
+        ⟨mkNode ``Lean.Parser.Command.derivingClass #[mkNullNode, (mkIdent n).raw]⟩
+      let derivs : Array (TSyntax ``Lean.Parser.Command.derivingClass) :=
+        #[mkDeriv ``Inhabited]
+          ++ (if hasRealField then #[] else #[mkDeriv ``Repr])
+          ++ (if hasEq || hasRealField then #[] else #[mkDeriv ``BEq])
+      -- The structure carries the class docstring as its `/-- … -/` doc comment (when present)
+      -- and `extends Base` for a single base.
       let fieldBinders ← fields.mapM classStructFieldSyntax
       let baseId? : Option (TSyntax `ident) ←
         match bases[0]? with
@@ -242,25 +252,18 @@ def classDefSyntax : (kind : SyntaxNodeKind) → Json → PygenM (TSyntax kind)
       let structCmd ← match docStx?, baseId? with
         | some doc, some baseId =>
             `(command| $doc:docComment structure $nameId:ident extends $baseId:ident where
-                $[$fieldBinders]* deriving Inhabited)
+                $[$fieldBinders]* deriving $derivs,*)
         | some doc, none =>
             `(command| $doc:docComment structure $nameId:ident where
-                $[$fieldBinders]* deriving Inhabited)
+                $[$fieldBinders]* deriving $derivs,*)
         | none, some baseId =>
             `(command| structure $nameId:ident extends $baseId:ident where
-                $[$fieldBinders]* deriving Inhabited)
+                $[$fieldBinders]* deriving $derivs,*)
         | none, none =>
             `(command| structure $nameId:ident where
-                $[$fieldBinders]* deriving Inhabited)
+                $[$fieldBinders]* deriving $derivs,*)
 
       let mut members : Array (TSyntax `command) := #[structCmd]
-      -- A class with an `ℝ` field can't derive a computable `BEq`/`Repr` (`Real.decidableEq` is
-      -- noncomputable; `Real`'s only `Repr` is `unsafe`), and the `prove` version is never compared
-      -- or printed — so skip both for real-field classes. Otherwise derive them as usual.
-      unless hasEq || hasRealField do
-        members := members.push (← `(command| deriving instance BEq for $nameId:ident))
-      unless hasRealField do
-        members := members.push (← `(command| deriving instance Repr for $nameId:ident))
 
       -- Constructor (from `__init__`), operator/printable dunders, and the remaining methods.
       let mut hasInit := false
