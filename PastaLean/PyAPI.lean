@@ -8,3 +8,7 @@ import PastaLean.PyAPI.Lists
 import PastaLean.PyAPI.Dicts
 import PastaLean.PyAPI.Sets
 import PastaLean.PyAPI.CommonProtocols
+import PastaLean.PyAPI.ProofMode.IOStream
+import PastaLean.PyAPI.ProofMode.InputM
+import PastaLean.PyAPI.ProofMode.Input
+import PastaLean.PyAPI.ProofMode.PyPrint

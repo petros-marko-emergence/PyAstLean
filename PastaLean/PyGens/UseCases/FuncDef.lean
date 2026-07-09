@@ -224,8 +224,12 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     PygenM (TSyntax `term) := withFreshVariables do
   let usesExceptions := bodyNeedsExceptionMonad bodyElems
   let usesRealIO := bodyNeedsIOMonad bodyElems
-  -- In prove mode, exceptions without real IO can use the pure PyExceptId monad
-  let usesPureExceptions := (← getNumericMode) == .exact && usesExceptions && !usesRealIO
+  let useProofMonad ← shouldUseProofMonad
+  -- In proof mode (exact + wanting provable IO), use PyProofM for both exceptions and IO
+  let usesProofExceptions := useProofMonad && usesExceptions
+  let usesProofIO := useProofMonad && usesRealIO
+  -- In exact mode without proof monad, exceptions without real IO can use the pure PyExceptId monad
+  let usesPureExceptions := !useProofMonad && (← getNumericMode) == .exact && usesExceptions && !usesRealIO
   let mkLambda (body : TSyntax `term) : PygenM (TSyntax `term) := do
     let mut result := body
     for (argIdent, ty?) in argInfos.toList.reverse do
@@ -242,7 +246,18 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     if bodyElems.any (fun b => jsonMutatesName b argIdent.getId.toString) then
       addVar argIdent.getId
       paramPrelude := paramPrelude.push (← `(doElem| let mut $argIdent:ident := $argIdent))
-  if usesPureExceptions then
+  if usesProofExceptions || usesProofIO then
+    -- Proof mode: use PyProofM (state monad with Python exceptions)
+    let bodyStxArray ← monadicFunctionBodySyntax bodyElems
+    let proofMonadIdent := mkIdent ``PastaLean.ProofMode.PyProofM
+    let proofBody ← `(((do
+          $[$paramPrelude:doElem]*
+          $[$bodyStxArray:doElem]*) : $proofMonadIdent _))
+    if argInfos.isEmpty then
+      pure proofBody
+    else
+      mkLambda proofBody
+  else if usesPureExceptions then
     let bodyStxArray ← monadicFunctionBodySyntax bodyElems
     let exceptIdIdent := mkIdent ``PastaLean.PyExceptId
     let exceptIdBody ← `(((do
@@ -329,13 +344,26 @@ def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
   let mkDef : TSyntax `term → TSyntax `term → PygenM (TSyntax `command) := fun fullTy valueStx =>
     if noncomp then `(command| noncomputable def $nameIdent : $fullTy := $valueStx)
     else `(command| def $nameIdent : $fullTy := $valueStx)
-  -- Exceptions take precedence over `IO`. In prove mode, exceptions without real IO use the pure
-  -- `PyExceptId` monad (ExceptT over Id); in run mode or with real IO, use `PyExcept` (ExceptT over IO).
-  -- This prevents phantom IO from print statements (which compile to pyPrintNoop in prove mode) from
-  -- polluting the type signature.
+  -- Exceptions take precedence over `IO`. Proof mode uses PyProofM (state monad with exceptions).
+  -- Exact mode without proof uses PyExceptId (pure exceptions). Run mode uses PyExcept (IO + exceptions).
   let usesRealIO := bodyNeedsIOMonad bodyElems
-  let usesPureExceptions := (← getNumericMode) == .exact && bodyNeedsExceptionMonad bodyElems && !usesRealIO
-  if usesPureExceptions then
+  let usesExceptions := bodyNeedsExceptionMonad bodyElems
+  let useProofMonad ← shouldUseProofMonad
+  let usesProofMode := useProofMonad && (usesExceptions || usesRealIO)
+  let usesPureExceptions := !useProofMonad && (← getNumericMode) == .exact && usesExceptions && !usesRealIO
+  if usesProofMode then
+    match returnTy? with
+    | none => return none
+    | some retTy =>
+        let proofMonadIdent := mkIdent ``PastaLean.ProofMode.PyProofM
+        let codomain ← `($proofMonadIdent $retTy)
+        match ← functionArrowTypeSyntax? argInfos codomain with
+        | some fullTy =>
+            let valueStx ← functionMonadicValueNoCast argInfos bodyElems
+            return some (← mkDef fullTy valueStx)
+        | none =>
+            return none
+  else if usesPureExceptions then
     match returnTy? with
     | none => return none
     | some retTy =>

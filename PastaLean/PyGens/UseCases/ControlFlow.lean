@@ -569,9 +569,15 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
         let isReal := (← getNumericMode) == .exact && json.getObjValAs? Bool "_real_fn" == .ok true
         let usesExceptions := bodyNeedsExceptionMonad bodyElems
         let usesIO := bodyNeedsIOMonad bodyElems
-        -- Determine if we need PyExceptId (pure exceptions in prove mode)
-        let usesPureExceptions := (← getNumericMode) == .exact && usesExceptions && !usesIO
-        if usesExceptions then
+        let useProofMonad ← shouldUseProofMonad
+        -- Determine monad type based on mode
+        let usesProofMode := useProofMonad && (usesExceptions || usesIO)
+        let usesPureExceptions := !useProofMonad && (← getNumericMode) == .exact && usesExceptions && !usesIO
+        if usesProofMode then
+          -- Proof mode: PyProofM needs an initial IOState (for now, just error - will implement later)
+          throwError "Main entry point generation for proof mode (PyProofM) is not yet implemented. \
+            The main function needs an initial IOState parameter for the proof monad."
+        else if usesExceptions then
           -- Exception handling path - convert PyExcept/PyExceptId result to IO
           let exceptIdent := mkIdent (if usesPureExceptions then ``PastaLean.PyExceptId else ``PastaLean.PyExcept)
           let ioUserErrorIdent := mkIdent ``IO.userError

@@ -3,6 +3,7 @@ import PastaLean.Codegen
 import PastaLean.PyGens.Basic
 import PastaLean.PyGens.Attributes
 import PastaLean.PyGens.Core.Subscript
+import PastaLean.PyGens.Core.Utils
 
 open Lean Meta Elab Term Qq Std
 
@@ -35,7 +36,8 @@ def buildPrintArgsList (argsArray : Array Json) (resolvedArgs : Array (TSyntax `
     | [] => `(([] : List PastaLean.PyPrintArg))
     | _ =>
         let elems ← resolvedArgs.mapM (fun code => `($argIdent $code))
-        `([$elems,*])
+        -- Add type annotation to help typeclass resolution, especially in proof mode
+        `(([$elems,*] : List PastaLean.PyPrintArg))
   else
     -- A `*iterable` is present: build each part as a `List PyPrintArg` and concatenate.
     let mut parts : Array (TSyntax `term) := #[]
@@ -51,7 +53,8 @@ def buildPrintArgsList (argsArray : Array Json) (resolvedArgs : Array (TSyntax `
         let mut acc := first
         for p in rest do
           acc ← `($acc ++ $p)
-        pure acc
+        -- Add type annotation to help typeclass resolution
+        `(($acc : List PastaLean.PyPrintArg))
 
 /-- Local copy of the exception-effect probe so call lowering can avoid cyclic imports. -/
 partial def basicJsonUsesExceptionEffect (json : Json) : Bool :=
@@ -119,12 +122,16 @@ partial def inlineIOTerm (json : Json) : PygenM (TSyntax `term) := do
             throwError "input() keyword arguments are not supported yet."
           unless argsArray.size ≤ 1 do
             throwError "input() expects zero or one positional argument."
-          let pyInputIOIdent := mkIdent ``pyInputIO
+          -- Choose between proof mode (PyProofM) and run mode (IO) input
+          let inputIdent ← if (← shouldUseProofMonad) then
+              pure (mkIdent ``PastaLean.ProofMode.pyInputProof)
+            else
+              pure (mkIdent ``pyInputIO)
           match argsArray.size with
-          | 0 => `((← $pyInputIOIdent ""))
+          | 0 => `((← $inputIdent ""))
           | 1 =>
               let arg0 ← inlineIOTerm argsArray[0]!
-              `((← $pyInputIOIdent $arg0))
+              `((← $inputIdent $arg0))
           | _ => throwError "input() expects zero or one positional argument."
       | .ok "Name", .ok "int" => do
           unless keyWordsMap.isEmpty do
@@ -300,12 +307,16 @@ partial def hoistIOTerm (json : Json) : PygenM (Array (TSyntax `doElem) × TSynt
               resolvedArgs := resolvedArgs.push argTerm
             else
               resolvedArgs := resolvedArgs.push (← getCode argJson `term)
-          let pyInputIOIdent := mkIdent ``pyInputIO
+          -- Choose between proof mode (PyProofM) and run mode (IO) input
+          let inputIdent ← if (← shouldUseProofMonad) then
+              pure (mkIdent ``PastaLean.ProofMode.pyInputProof)
+            else
+              pure (mkIdent ``pyInputIO)
           let action ← match resolvedArgs.size with
-            | 0 => `($pyInputIOIdent "")
+            | 0 => `($inputIdent "")
             | 1 =>
                 let arg0 := resolvedArgs[0]!
-                `($pyInputIOIdent $arg0)
+                `($inputIdent $arg0)
             | _ => throwError "input() expects zero or one positional argument."
           let binder := mkIdent (s!"__py_input{bindings.size}").toName
           let finalBindings := bindings.push (← `(doElem| let $binder:ident ← $action:term))
