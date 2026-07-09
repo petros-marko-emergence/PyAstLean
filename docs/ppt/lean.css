@@ -54,12 +54,20 @@
   width: 100%;
   height: 100%;
 }
-/* Padding goes on the LEAF slides only. A vertical group ("vertical := some
-   true") wraps its sub-slides in an extra <section> that reveal.js tags
-   `.stack`; without this exclusion that wrapper ALSO gets the padding, and it
-   stacks on top of the child's padding — pushing content right and down. */
+/* Padding goes on the LEAF slides only. A vertical group (`vertical := some
+   true`) wraps its sub-slides in an extra <section> that reveal.js tags
+   `.stack`; without this exclusion that wrapper ALSO gets the padding and it
+   stacks on top of the child's padding — pushing content right and down.
+   Less left padding (3vw) than right (5vw) so content sits closer to the left.
+   These are vars because the header slots measure against them (see --author). */
+:root {
+  --pad-t: 4vh;
+  --pad-r: 5vw;
+  --pad-b: 4vh;
+  --pad-l: 3vw;
+}
 .reveal .slides section:not(.stack) {
-  padding: 4vh 5vw 4vh 3vw;
+  padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l);
 }
 .reveal a {
   color: var(--lean-blue-2);
@@ -151,6 +159,37 @@
   content: none;
 }
 
+/* optional header slot: your name / handle / a repo or paper ref, shown as PLAIN
+   text ABOVE the blue rule, right-aligned, on every content slide. It sits in the
+   slide's top padding so the rule keeps its full width and nothing overlaps.
+   Set --author in the deck's own .css:
+     --author: "A. Gupta · github.com/AnirudhG07";
+   Leave it unset to hide the slot entirely.
+   CSS content can only be static text, so this is NOT clickable — for a clickable
+   repo/paper/email link, use :::class "links" on a slide instead. */
+:root {
+  --author: "";
+}
+/* The exclusions live in THIS selector rather than a later `content: none` rule:
+   a separate `.reveal section[data-state="title"]::after` is specificity (0,2,2)
+   and would LOSE to this rule's (0,3,2), so the slot would leak onto the title
+   and section-break slides. Excluding inline can't lose. */
+.reveal .slides section:not(.stack):not([data-state="title"]):not(:has(.section-break)):not(:has(.title-slide))::after {
+  content: var(--author);
+  position: absolute;
+  top: 2.4vh; /* just above the rule — leaves a ~0.5vh gap under the text */
+  /* The rule is on h2::after, so its `right: --rule-end` is measured from inside
+     the section's padding. This slot is on the SECTION, so it must add that
+     padding back to end flush with the rule instead of overhanging it. */
+  right: calc(var(--pad-r) + var(--rule-end));
+  font-size: 0.72em;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* ---------- title / first slide ----------
    Mark the slide with  %%% state := "title" %%%  then author:
      # Big Header
@@ -230,19 +269,38 @@
   color: var(--ink);
   font-weight: 600;
 }
+/* contact / social — GitHub, email, homepage, etc. Write links in the source
+   (`[GitHub](https://github.com/you)`, `[you@x.edu](mailto:you@x.edu)`); the
+   middots between them come from the source too (` · `). Links are blue and
+   underline on hover. */
+.reveal .links {
+  font-size: 1em;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0.5em 0 0;
+}
+.reveal .links a {
+  color: var(--lean-blue);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.reveal .links a:hover {
+  border-bottom-color: var(--lean-blue);
+}
 
 /* ---------- body ---------- */
 .reveal p {
-  font-size: 0.85em;
+  font-size: 0.95em;
   font-weight: 300;
   line-height: 1.7;
   margin: 0 0 0.6em;
 }
 .reveal ul,
 .reveal ol {
-  font-size: 0.85em;
+  font-size: 0.95em;
   font-weight: 300;
-  line-height: 1.8;
+  line-height: 1.75;
   margin: 0;
   padding-left: 1.2em;
 }
@@ -368,11 +426,18 @@
   padding: 0.1em 0.32em;
   border-radius: 3px;
 }
+/* Inline ELABORATED/HIGHLIGHTED code (Verso's {lean}`…`, {python}`…`, etc.)
+   already carries its own token colours, so drop the grey chip. Plain
+   `backtick` code (no `hl` class) keeps its chip. Works for any syntax. */
+.reveal code.hl.inline {
+  background: transparent;
+  padding: 0;
+  font-size: 1em;
+}
 .reveal pre {
   font-family: var(--mono);
   font-size: 0.66em;
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
   margin: 0.5em 0;
   box-shadow: none;
   border: 1px solid var(--line);
@@ -389,17 +454,6 @@
   overflow: auto;
 }
 /* Verso renders Lean with its own semantic token colors — we only style the frame. */
-
-/* Inline Lean ({lean}`pyAppend`) already carries blue token colors, so drop the
-   grey chip (background/padding) — plain `backtick` code keeps its chip. */
-.reveal code.hl.lean.inline,
-.reveal code.hl.lean.inline .token {
-  background: transparent !important;
-}
-.reveal code.hl.lean.inline {
-  padding: 0;
-  font-size: 1em;
-}
 
 /* ---------- callouts & emphasis ---------- */
 .reveal .accent {

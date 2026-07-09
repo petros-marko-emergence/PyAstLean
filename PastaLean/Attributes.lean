@@ -27,8 +27,12 @@ def pythonMethodMap? (attr : String) : Option Lean.Name :=
   | "islower"    => some ``pyIsLower
   | "isupper"    => some ``pyIsUpper
   | "isalpha"    => some ``pyIsAlpha
+  -- `isdigit`/`isnumeric`/`isdecimal` coincide for ASCII digit strings (PastaLean's domain).
   | "isdecimal"  => some ``pyIsDecimal
+  | "isdigit"    => some ``pyIsDecimal
+  | "isnumeric"  => some ``pyIsDecimal
   | "isalphanum" => some ``pyIsAlphanum
+  | "isalnum"    => some ``pyIsAlphanum
   | "isspace"    => some ``pyIsWhitespace
   | "partition"  => some ``pyPartition
   | "capitalize" => some ``pyStringCapitalize

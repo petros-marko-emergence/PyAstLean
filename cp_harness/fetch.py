@@ -161,8 +161,15 @@ def save_leetcode_problem(out_dir, item, max_solutions):
 
     sols_dir = prob_dir / "solutions"
     sols_dir.mkdir(exist_ok=True)
-    # sol_0 = the reference completion's entry method, as a free function (this is what py2lean converts).
-    (sols_dir / "sol_0.py").write_text(fn_src + "\n")
+    # sol_0 = the dataset's own module preamble (its import block + `inf = float('inf')`, verbatim,
+    # pruned to what the solution actually reaches) followed by the reference completion's entry
+    # method as a free function. This is what py2lean converts. Keeping the preamble matters: the
+    # completion references `inf`, `Counter`, `List`, … which the `prompt` — not the completion —
+    # brings into scope, so without it the file is not even valid Python.
+    prompt = item.get("prompt", "")
+    (sols_dir / "sol_0.py").write_text(fh.self_contained_source(prompt, fn_src) + "\n")
+    # The untouched prompt, for provenance: shows exactly what the preamble was pruned from.
+    (sols_dir / "_prompt.py").write_text(prompt + "\n")
     # reference_test.py = the ORIGINAL, self-contained groundtruth: the dataset's import prelude
     # (typing/collections/ListNode/…) + the full `Solution` completion + the assert-based `test` +
     # a `check(entry_point)` call. Running it should exit 0 — i.e. the groundtruth passes 100%.

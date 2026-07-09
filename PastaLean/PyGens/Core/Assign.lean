@@ -21,6 +21,19 @@ def tupleAssignTargetNames? (target : Json) : PygenM (Option (Array (TSyntax `id
     idents := idents.push (← getCode elt `ident)
   return some idents
 
+/-- Return the target elements of a tuple-assignment target (arity ≥ 2), or `none` if the
+target is not a `Tuple`. Unlike `tupleAssignTargetNames?` this does NOT require the elements to
+be `Name`s — `Subscript` elements (`a[i], a[j] = a[j], a[i]`, the in-place swap idiom) are lowered
+per-element by the caller. -/
+def tupleTargetElts? (target : Json) : PygenM (Option (Array Json)) := do
+  unless jsonNodeType? target == some "Tuple" do
+    return none
+  let .ok elts := target.getObjValAs? (Array Json) "elts" | throwError
+    s!"Tuple assignment target does not have an 'elts' field or it is not a JSON value: {target}"
+  if elts.size < 2 then
+    throwError "Tuple assignment target must have at least two elements."
+  return some elts
+
 /-- Build the accessor term to reach element `idx` of an N-element right-nested pair `pairIdent`.
 `buildTuple` produces `(e0, (e1, (e2, e3)))`, so:
   - element 0 → `Prod.fst p`
@@ -122,6 +135,20 @@ partial def nestedSubscriptSetDoElem? (target : Json) (value : TSyntax `term) :
       throwError "Subscript assignment requires the base container to be a variable \
         (`a[i]…[k] = v`); got an unsupported container expression."
 
+/-- Emit the assignment for one element of a tuple-assignment target, given the accessor term
+`acc` that reads that element out of the already-evaluated RHS temp. A `Name` element binds or
+reassigns a local; a `Subscript` element (`a[i]`) rebuilds its container via `pySetItem` — this is
+the in-place swap idiom `a[i], a[j] = a[j], a[i]` (correct because the RHS temp is fully evaluated
+before any element is written back). -/
+def tupleElementAssignDoElem (elt : Json) (acc : TSyntax `term) : PygenM (TSyntax `doElem) := do
+  match ← nestedSubscriptSetDoElem? elt acc with
+  | some setStx => pure setStx
+  | none =>
+    unless jsonNodeType? elt == some "Name" do
+      throwError s!"Unsupported tuple-assignment target element (only `Name` and subscript \
+        `a[i]` targets are supported): {elt}"
+    bindOrAssignLocal (← getCode elt `ident) acc
+
 /-- Lower an optional slice bound expression to a `some _`/`none` `Option Int` term. -/
 def sliceBoundOptTerm (boundJson? : Option Json) : PygenM (TSyntax `term) := do
   match boundJson? with
@@ -221,9 +248,9 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
           s!"Assign node does not have a 'target' field or it is not a JSON value: {json}"
         let .ok value := json.getObjVal? "value" | throwError
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
-        match ← tupleAssignTargetNames? target with
-        | some idents => do
-            let n := idents.size
+        match ← tupleTargetElts? target with
+        | some elts => do
+            let n := elts.size
             let valueStx ← getCode value `term
             let valueTmpIdent := mkIdent (← freshName `__unpack_value)
             let unpackTmpIdent := mkIdent (← freshName `__unpack_pair)
@@ -241,7 +268,7 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
             let mut binds : Array (TSyntax `doElem) := #[bindValueTmp, bindUnpackTmp]
             for i in List.range n do
               let acc ← unpackAccessTerm isTuple unpackTmpIdent i n
-              binds := binds.push (← bindOrAssignLocal idents[i]! acc)
+              binds := binds.push (← tupleElementAssignDoElem elts[i]! acc)
             -- Return the bindings as siblings (a flattened null-node), NOT wrapped in a
             -- nested `do` — wrapping would scope the unpacked names away from following
             -- statements. Consumers flatten via `appendDoElems`.

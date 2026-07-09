@@ -59,6 +59,88 @@ def extract_function(completion_src, method_name):
         return None
 
 
+def _bound_names(tree):
+    """Names bound anywhere in `tree` (assign targets, params, def/class names, imports, excepts).
+    An over-approximation, which is what we want here: a bound name is never a free reference."""
+    bound = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+            bound.add(n.id)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(n.name)
+        elif isinstance(n, ast.arg):
+            bound.add(n.arg)
+        elif isinstance(n, ast.alias):
+            bound.add((n.asname or n.name).split(".")[0])
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            bound.add(n.name)
+    return bound
+
+
+def _free_names(src_or_node):
+    """Names `src_or_node` reads without binding them first."""
+    tree = ast.parse(src_or_node) if isinstance(src_or_node, str) else src_or_node
+    bound = _bound_names(tree)
+    return {n.id for n in ast.walk(tree)
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id not in bound}
+
+
+def _toplevel_binder_names(stmt):
+    """The top-level names a prompt statement binds (`def f`, `class C`, `inf = ...`)."""
+    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {stmt.name}
+    if isinstance(stmt, ast.Assign):
+        return {t.id for t in stmt.targets if isinstance(t, ast.Name)}
+    if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+        return {stmt.target.id}
+    return set()
+
+
+def prompt_preamble(prompt_src, fn_src):
+    """The part of the dataset's `prompt` that `fn_src` actually depends on, verbatim.
+
+    The LeetCode `prompt` is a fixed module preamble: an import block, `inf = float('inf')`, and
+    then linked-list/tree *test scaffolding* (`ListNode`, `tree_node`, `is_same_tree`, …) that the
+    `test` function uses to build inputs — solutions never call it. We keep every import as written
+    plus exactly the top-level definitions reachable from the extracted function (transitively), and
+    drop the unreachable scaffolding. This is dead-code elimination, not a rewrite: every line kept
+    is the dataset's own, unmodified, and every line dropped is provably unused by the solution.
+    """
+    try:
+        prompt_tree = ast.parse(prompt_src)
+    except SyntaxError:
+        return ""
+    imports, binders, order = [], {}, []
+    for stmt in prompt_tree.body:
+        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+            imports.append(stmt)
+            continue
+        names = _toplevel_binder_names(stmt)
+        if names:
+            order.append(stmt)
+            for nm in names:
+                binders[nm] = stmt
+
+    # Transitively close the free names of `fn_src` over the prompt's top-level binders.
+    needed, worklist = set(), list(_free_names(fn_src))
+    while worklist:
+        nm = worklist.pop()
+        stmt = binders.get(nm)
+        if stmt is None or id(stmt) in needed:
+            continue
+        needed.add(id(stmt))
+        worklist.extend(_free_names(stmt))
+
+    kept = imports + [s for s in order if id(s) in needed]
+    return "\n".join(ast.unparse(s) for s in kept)
+
+
+def self_contained_source(prompt_src, fn_src):
+    """The dataset's own preamble (pruned to what the solution uses) + the extracted function."""
+    pre = prompt_preamble(prompt_src, fn_src)
+    return (pre + "\n\n" + fn_src) if pre else fn_src
+
+
 def param_names(fn_src):
     """Positional parameter names of a top-level `def`, in order."""
     tree = ast.parse(fn_src)

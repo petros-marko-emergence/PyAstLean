@@ -41,6 +41,9 @@ _Transpiling_ and _Verifying_ Python in Lean 4 — without LLMs
 Organized by *IISc Bengaluru* × *Emergence AI*
 :::
 
+:::class "links"
+[GitHub PyAstLean](https://github.com/siddhartha-gadgil/PyAstLean)
+:::
 
 # Overview
 
@@ -869,22 +872,22 @@ Real programs — transpiled, type-checked, and (for the pure parts) _proved_. F
 :::
 
 :::class "punch"
-~560 lines of Python → ~1,330 lines of _verified_ Lean — each type-checks in seconds.
+~560 lines of Python → ~1,330 lines of _verified_ Lean — each type-checked and verified within seconds.
 :::
 
-## orbital · conserved quantities
+:::fragment
+Below are some Showcases for PastaLean's transpilation abilities.
+:::
+
+## Orbital Physics · conserved quantities
 
 ::::hstack
 :::class "showpy" "fragment"
 ```code python
-def dot(ax, ay, az, bx, cy, bz):
-    return ax*bx + ay*cy + az*bz
 
-def cross_x(ax, ay, az, bx, cy, bz):
-    return ay*bz - az*cy
-
-def cross_y(ax, ay, az, bx, cy, bz):
-    return az*bx - ax*bz
+def cross_x(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> float:
+    """x-component of a x b."""
+    return ay * bz - az * by
 
 def norm_sq(ax, ay, az):
     return ax*ax + ay*ay + az*az
@@ -894,6 +897,20 @@ def kinetic(m, vx, vy, vz):
 
 def momentum(m, vx, vy, vz):
     return m * norm_sq(vx, vy, vz)
+
+def spring_energy(k: float, dx: float, dy: float, dz: float) -> float:
+    """Hooke potential energy (1/2) k |d|^2 stored in a spring stretched by displacement d."""
+    return 0.5 * k * norm_sq(dx, dy, dz)
+
+def momentum_conserved(m1: float, v1: float, m2: float, v2: float, j: float):
+    """Equal and opposite impulses +j / -j conserve total linear momentum (1-D component)."""
+    assert (m1 * v1 + j) + (m2 * v2 - j) == m1 * v1 + m2 * v2
+
+def spring_force_is_central(k: float, dx: float, dy: float, dz: float):
+    """The Hooke force F = -k d is central (anti-parallel to the displacement d), so it too exerts
+    no torque about the spring axis: d x F = 0 (x-component)."""
+    assert cross_x(dx, dy, dz, -k * dx, -k * dy, -k * dz) == 0
+
 ```
 :::
 
@@ -903,15 +920,33 @@ def momentum(m, vx, vy, vz):
 
 :::class "showlean" "fragment"
 ```lean
-def dot := fun (ax : Rat) ↦ fun (ay : Rat) ↦ fun (az : Rat) ↦ fun (bx : Rat) ↦ fun (cy : Rat) ↦ fun (bz : Rat) ↦
-  ax *ₚ bx +ₚ ay *ₚ cy +ₚ az *ₚ bz
 def cross_x := fun (ax : Rat) ↦ fun (ay : Rat) ↦ fun (az : Rat) ↦ fun (bx : Rat) ↦ fun (cy : Rat) ↦ fun (bz : Rat) ↦
   ay *ₚ bz -ₚ az *ₚ cy
-def cross_y := fun (ax : Rat) ↦ fun (ay : Rat) ↦ fun (az : Rat) ↦ fun (bx : Rat) ↦ fun (cy : Rat) ↦ fun (bz : Rat) ↦
-  az *ₚ bx -ₚ ax *ₚ bz
+
 def norm_sq := fun (ax : Rat) ↦ fun (ay : Rat) ↦ fun (az : Rat) ↦ ax *ₚ ax +ₚ ay *ₚ ay +ₚ az *ₚ az
+
 def kinetic := fun (m : Rat) ↦ fun (vx : Rat) ↦ fun (vy : Rat) ↦ fun (vz : Rat) ↦ (0.5 : Rat) *ₚ m *ₚ norm_sq vx vy vz
+
 def momentum := fun (m : Rat) ↦ fun (vx : Rat) ↦ fun (vy : Rat) ↦ fun (vz : Rat) ↦ m *ₚ norm_sq vx vy vz
+
+def spring_energy := fun (k : Rat) ↦ fun (dx : Rat) ↦ fun (dy : Rat) ↦ fun (dz : Rat) ↦
+  /-
+  Hooke potential energy (1/2) k |d|^2 stored in a spring stretched by displacement d.
+  -/
+  (0.5 : Rat) *ₚ k *ₚ norm_sq dx dy dz
+
+@[taste_ingr]
+theorem momentum_conserved :
+    ∀ (m1 : Rat),
+      ∀ (v1 : Rat), ∀ (m2 : Rat), ∀ (v2 : Rat), ∀ (j : Rat), m1 *ₚ v1 +ₚ j +ₚ (m2 *ₚ v2 -ₚ j) = m1 *ₚ v1 +ₚ m2 *ₚ v2 :=
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]
+
+@[taste_ingr]
+theorem spring_force_is_central :
+    ∀ (k : Rat),
+      ∀ (dx : Rat), ∀ (dy : Rat), ∀ (dz : Rat), cross_x dx dy dz (-k *ₚ dx) (-k *ₚ dy) (-k *ₚ dz) = (0 : Int) :=
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; grind +locals
+
 ```
 :::
 ::::
@@ -969,9 +1004,9 @@ noncomputable def CNN.conv := fun (self : CNN) ↦ fun (img : List (List Rat)) �
 :::
 ::::
 
-## eg2 · numpy + exceptions
+## numpy + exceptions
 
-::::hstack
+::::vstack
 :::class "showpy" "fragment"
 ```code python
 def process_data(data, weights):
@@ -987,8 +1022,8 @@ def process_data(data, weights):
 ```
 :::
 
-:::class "arrow-right" "fragment"
-→
+:::class "arrow-down" "fragment"
+↓
 :::
 
 :::class "showlean" "fragment"
@@ -1453,10 +1488,9 @@ theorem sum_upto_n_spec : ⦃⌜n ≥ (0 : Int)⌝⦄ sum_to_n n ⦃⇓_ => ⌜T
 
 * _Deterministic transpiler_, not an LLM translator — the elaborator is the oracle.
 * Broad language surface: control flow, comprehensions, exceptions, _classes_, libraries.
-* _Runtime (`PyAPI`) vs codegen (`PyGens`)_ — behaviour vs syntax.
 * _Monadic vs non-monadic_ picks the proof strategy:
-  * pure terms → `taste?`
-  * `do` blocks → `mvcgen`
+  * Non-monadic pure function → `taste?`
+  * Monadic functions in `do` blocks → `mvcgen`
 * _LLMs propose contracts_; Lean checks them.
 
 :::class "punch"
@@ -1472,8 +1506,3 @@ Questions?
 ```html
 <div class="finale"><img src="assets/pastaleanlogo.png" alt="PastaLean"></div>
 ```
-
-:::notes
-If time: live `python3 src/py2lean.py example_scripts/showcase/eg1.py
---target command --verbose` to show IR → Lean.
-:::

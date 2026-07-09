@@ -441,7 +441,14 @@ def unaryOpSyntax : (kind : SyntaxNodeKind) → Json →
     -- `p` itself a `Prop`. Otherwise `not` is the `Bool` `!`, so its operand must be `Bool`.
     let propNot := op == "not" && (← getPropCondition) && (← numericModeIsExact)
     let operandCode ← withPropCondition propNot (getCode operandJson `term)
-    if propNot then `(¬ $operandCode) else unaryOpApplyTerm op operandCode
+    if op == "not" then
+      -- `not x` is a truthiness context too: a bare non-boolean operand needs `pyTruthy`
+      -- (same missing coercion as `if x:` / bool operands), else `¬`/`!` gets a raw value.
+      let b ← if conditionIsBoolean operandJson then pure operandCode
+              else if propNot then `($(mkIdent ``PastaLean.pyTruthy) $operandCode = true)
+                   else `($(mkIdent ``PastaLean.pyTruthy) $operandCode)
+      if propNot then `(¬ $b) else `(! $b)
+    else unaryOpApplyTerm op operandCode
   | _, _ => throwError s!"Unsupported syntax category for UnaryOp node"
 
 @[pygen "BoolOp"]
@@ -456,8 +463,17 @@ def boolOpSyntax : (kind : SyntaxNodeKind) → Json →
     -- become `∧`/`∨` over `Prop` operands — no `decide`. Otherwise `&&`/`||` need `Bool` operands, so
     -- lower them in value position: `if a < b and c < d` → `decide (a<b) && decide (c<d)`.
     let opProp := (← getPropCondition) && (← numericModeIsExact)
+    -- Each operand of `and`/`or` is itself a *truthiness* context (Python evaluates each for
+    -- truthiness), exactly like an `if x:` test. So a bare non-boolean operand (an int/list/str)
+    -- must be coerced with `pyTruthy`, or it lands raw in `∧`/`&&` and fails to typecheck. This
+    -- mirrors `truthyConditionTerm`, applied one level deeper — the boundary that was missing.
+    let lowerOperand (valueJson : Json) : PygenM (TSyntax `term) := do
+      let code ← withPropCondition opProp (getCode valueJson `term)
+      if conditionIsBoolean valueJson then pure code
+      else if opProp then `($(mkIdent ``PastaLean.pyTruthy) $code = true)
+      else `($(mkIdent ``PastaLean.pyTruthy) $code)
     let valuesCodes ← match valuesJson with
-      | .arr arr => arr.mapM (fun valueJson => withPropCondition opProp (getCode valueJson `term))
+      | .arr arr => arr.mapM lowerOperand
       | _ => throwError s!"BoolOp node 'values' field is not an array: {valuesJson}"
     let l := valuesCodes.toList.length
     if l = 0 then throwError s!"BoolOp node 'values' array is empty: {valuesJson}"

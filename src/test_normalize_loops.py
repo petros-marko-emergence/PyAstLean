@@ -84,6 +84,16 @@ CASES = [
         None,
         "f", lambda: ([1, 2, 3],),
     ),
+    (
+        # GUARD VIOLATION: `i` is advanced by an intervening statement between its `i = 0` init and the
+        # loop, and that statement is NESTED (inside an `if`), so a top-level backward scan walks past
+        # it. The init therefore does not reach the loop: converting would both restart the counter at 0
+        # and delete a still-live init. The pass MUST refuse.
+        "init_does_not_reach_loop",
+        "def f(n):\n    s = 0\n    i = 0\n    if n > 3:\n        i = i + 1\n    while i < n:\n        s = s + 1\n        i = i + 1\n    return s\n",
+        None,
+        "f", lambda: (random.randint(0, 30),),
+    ),
 ]
 
 
