@@ -27,7 +27,7 @@ def pythonMethodMap? (attr : String) : Option Lean.Name :=
   | "islower"    => some ``pyIsLower
   | "isupper"    => some ``pyIsUpper
   | "isalpha"    => some ``pyIsAlpha
-  -- `isdigit`/`isnumeric`/`isdecimal` coincide for ASCII digit strings (PastaLean's domain).
+  -- `isdigit`/`isnumeric`/`isdecimal` coincide on ASCII digits.
   | "isdecimal"  => some ``pyIsDecimal
   | "isdigit"    => some ``pyIsDecimal
   | "isnumeric"  => some ``pyIsDecimal

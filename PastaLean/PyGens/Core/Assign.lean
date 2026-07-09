@@ -21,10 +21,9 @@ def tupleAssignTargetNames? (target : Json) : PygenM (Option (Array (TSyntax `id
     idents := idents.push (← getCode elt `ident)
   return some idents
 
-/-- Return the target elements of a tuple-assignment target (arity ≥ 2), or `none` if the
-target is not a `Tuple`. Unlike `tupleAssignTargetNames?` this does NOT require the elements to
-be `Name`s — `Subscript` elements (`a[i], a[j] = a[j], a[i]`, the in-place swap idiom) are lowered
-per-element by the caller. -/
+/-- The elements of a tuple-assignment target (arity ≥ 2), or `none` if it is not a `Tuple`.
+Unlike `tupleAssignTargetNames?`, elements may be any target shape — e.g. the `Subscript`s in
+`a[i], a[j] = a[j], a[i]`. -/
 def tupleTargetElts? (target : Json) : PygenM (Option (Array Json)) := do
   unless jsonNodeType? target == some "Tuple" do
     return none
@@ -135,11 +134,9 @@ partial def nestedSubscriptSetDoElem? (target : Json) (value : TSyntax `term) :
       throwError "Subscript assignment requires the base container to be a variable \
         (`a[i]…[k] = v`); got an unsupported container expression."
 
-/-- Emit the assignment for one element of a tuple-assignment target, given the accessor term
-`acc` that reads that element out of the already-evaluated RHS temp. A `Name` element binds or
-reassigns a local; a `Subscript` element (`a[i]`) rebuilds its container via `pySetItem` — this is
-the in-place swap idiom `a[i], a[j] = a[j], a[i]` (correct because the RHS temp is fully evaluated
-before any element is written back). -/
+/-- Assign one element of a tuple target from `acc`, which reads it out of the already-evaluated
+RHS temp. `Subscript` elements rebuild their container, so the swap `a[i], a[j] = a[j], a[i]`
+works: the temp is evaluated before any write-back. -/
 def tupleElementAssignDoElem (elt : Json) (acc : TSyntax `term) : PygenM (TSyntax `doElem) := do
   match ← nestedSubscriptSetDoElem? elt acc with
   | some setStx => pure setStx

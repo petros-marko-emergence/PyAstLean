@@ -8,7 +8,11 @@ namespace PastaLean
 def exprStmtDoElemSyntax (valueJson : Json) : PygenM (TSyntax `doElem) := do
   try
     getCode valueJson `doElem
-  catch _ =>
+  catch e =>
+    -- Only fall back when the node has no `doElem` form at all. A `doElem` generator that ran and
+    -- *failed* must propagate: swallowing it silently discards statements such as `g[i].append(v)`.
+    let msg ← e.toMessageData.toString
+    unless msg.startsWith "Unsupported syntax category" do throw e
     let valueStx ← getCode valueJson `term
     -- If the expression carries an effect (e.g. a statement-position ternary
     -- `print(a) if c else print(b)`, whose branches are `IO`), it must be *run*, not merely

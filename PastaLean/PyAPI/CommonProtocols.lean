@@ -1,4 +1,5 @@
 import PastaLean.PyAPI.CommonProtocols.Length
+import PastaLean.PyAPI.CommonProtocols.Mapping
 import PastaLean.PyAPI.CommonProtocols.SetItem
 import PastaLean.PyAPI.CommonProtocols.GetItem
 import PastaLean.PyAPI.CommonProtocols.Membership

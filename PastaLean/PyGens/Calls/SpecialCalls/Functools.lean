@@ -6,9 +6,6 @@ open Lean Meta Elab Term Qq Std
 
 namespace PastaLean
 
-/-- Internal alias for keyword argument objects in Python call JSON. -/
-abbrev PyKeywordArgs := Std.TreeMap.Raw String Json compare
-
 /-- Recognize both `functools.reduce(...)` and imported `reduce(...)` from `functools`. -/
 def isFunctoolsReduceTarget (json : Json) : Bool :=
   match json.getObjValAs? String "library_module", json.getObjValAs? String "library_member" with

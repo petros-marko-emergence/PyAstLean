@@ -257,6 +257,53 @@ def resolveReceiverClass? (valueJson : Json) (attr : String) : PygenM (Option St
     | none => pure ()
   classOfMethod? attr
 
+/-- Store `newVal` back into the receiver an in-place method mutated. `xs` ⇒ `xs := newVal`;
+`g[i]` ⇒ `g := pySetItem g i newVal` (recursing for `g[i][j]`). -/
+partial def assignBackToReceiver (recvJson : Json) (newVal : TSyntax `term) :
+    PygenM (TSyntax `doElem) := do
+  match jsonNodeType? recvJson with
+  | some "Name" =>
+      let recvIdent ← getCode recvJson `ident
+      `(doElem| $recvIdent:ident := $newVal)
+  | some "Subscript" =>
+      let .ok containerJson := recvJson.getObjValAs? Json "value" | throwError
+        s!"Subscript receiver is missing a 'value' field: {recvJson}"
+      let .ok sliceJson := recvJson.getObjValAs? Json "slice" | throwError
+        s!"Subscript receiver is missing a 'slice' field: {recvJson}"
+      if jsonNodeType? sliceJson == some "Slice" then
+        throwError "A mutating method on a slice receiver (`xs[a:b].append(v)`) is not supported."
+      let indexTerm ← getCode sliceJson `term
+      let containerTerm ← getCode containerJson `term
+      let setItemIdent := mkIdent ``PastaLean.pySetItem
+      assignBackToReceiver containerJson (← `($setItemIdent $containerTerm $indexTerm $newVal))
+  | _ =>
+      throwError "A mutating method needs a variable or subscript receiver (`xs.append(v)`, \
+        `g[i].append(v)`) under value semantics."
+
+/-- Lower an in-place mutator `recv.m(args)` by rebuilding `recv` from `mkNewValue recv` and storing
+it back, so `g[i].append(v)` becomes `g := pySetItem g i (pyAppend g[i] v)` rather than a no-op. -/
+def mutatingMethodDoElem (recvJson : Json)
+    (mkNewValue : TSyntax `term → PygenM (TSyntax `term)) : PygenM (TSyntax `doElem) := do
+  let recvTerm ← getCode recvJson `term
+  assignBackToReceiver recvJson (← mkNewValue recvTerm)
+
+/-- Set methods that mutate the receiver in place, and the runtime function each lowers to. -/
+def setMutatorName? (attr : String) : Option Lean.Name :=
+  match attr with
+  | "add"     => some ``pySetAdd
+  | "discard" => some ``pySetDiscard
+  | "remove"  => some ``pySetRemove
+  | _         => none
+
+/-- Python methods that mutate the receiver in place and return `None`, with their arity. Their
+runtime functions return a new container, so a statement call must store the result back. `append`
+and the `setMutatorName?` methods have their own branches. -/
+def inPlaceMutatorArity? (attr : String) : Option Nat :=
+  match attr with
+  | "clear" | "reverse" => some 0
+  | "extend" | "update" => some 1
+  | _                   => none
+
 /-- The class to construct for a call `f(...)` whose callee is the `Name` `funcName`: a registered
 class (`C(..)`), or `cls(..)` inside a class body (classmethod sugar). `none` for ordinary calls. -/
 def constructorClassOfName? (funcName : String) : PygenM (Option String) := do
@@ -275,6 +322,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     let argsArray ← match argsJson with
       | .arr arr => pure arr
       | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
+    checkFiniteFloatLiteral funcJson argsArray
     let argsCodes ← argsArray.mapM (fun argJson => getCode argJson `term)
 
     let .ok keyWordsJson := json.getObjVal? "keywords" | throwError
@@ -579,6 +627,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     let argsArray ← match argsJson with
       | .arr arr => pure arr
       | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
+    checkFiniteFloatLiteral funcJson argsArray
     let .ok keyWordsJson := json.getObjVal? "keywords" | throwError
       s!"Call node does not have a 'keywords' field or it is not json pairs: {json}"
     let .ok keyWordsMap := keyWordsJson.getObj? | throwError
@@ -660,25 +709,31 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           let some argJson := argsArray[0]? | throwError "append() expects exactly one positional argument."
           unless argsArray.size == 1 do
             throwError "append() expects exactly one positional argument."
-          let targetIdent ← getCode valueJson `ident
           let argCode ← getCode argJson `term
           let pyAppendIdent := mkIdent ``pyAppend
-          return ← `(doElem| $targetIdent:ident := $pyAppendIdent $targetIdent $argCode)
+          return ← mutatingMethodDoElem valueJson fun recv => `($pyAppendIdent $recv $argCode)
 
         -- Set mutators rebuild the set and reassign the variable, like `append`.
-        if attr == "add" || attr == "discard" || attr == "remove" then
+        if let some mutName := setMutatorName? attr then
           unless keyWordsMap.isEmpty do
             throwError s!"{attr}() calls do not support keyword arguments."
           let some argJson := argsArray[0]? | throwError s!"{attr}() expects exactly one positional argument."
           unless argsArray.size == 1 do
             throwError s!"{attr}() expects exactly one positional argument."
-          let targetIdent ← getCode valueJson `ident
           let argCode ← getCode argJson `term
-          let mutIdent := match attr with
-            | "add" => mkIdent ``pySetAdd
-            | "discard" => mkIdent ``pySetDiscard
-            | _ => mkIdent ``pySetRemove
-          return ← `(doElem| $targetIdent:ident := $mutIdent $targetIdent $argCode)
+          let mutIdent := mkIdent mutName
+          return ← mutatingMethodDoElem valueJson fun recv => `($mutIdent $recv $argCode)
+
+        if let some arity := inPlaceMutatorArity? attr then
+          unless keyWordsMap.isEmpty do
+            throwError s!"{attr}() calls do not support keyword arguments."
+          let some methodName := pythonMethodMap? attr
+            | throwError s!"No runtime function is registered for '{attr}'."
+          unless argsArray.size == arity do
+            throwError s!"{attr}() expects exactly {arity} positional argument(s)."
+          let methodIdent := mkIdent methodName
+          let mutArgCodes ← argsArray.mapM (fun argJson => getCode argJson `term)
+          return ← mutatingMethodDoElem valueJson fun recv => `($methodIdent $recv $mutArgCodes*)
 
         if attr == "get" then
           unless keyWordsMap.isEmpty do

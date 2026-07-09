@@ -1,3 +1,4 @@
+import PastaLean.PyGens.Calls.SpecialCalls.Collections
 import PastaLean.PyGens.Calls.SpecialCalls.Functools
 
 open Lean Meta Elab Term Qq Std
@@ -8,6 +9,9 @@ namespace PastaLean
 def lowerSpecialCallTerm? (funcJson : Json) (argsArray : Array Json) (argsCodes : Array (TSyntax `term))
     (keyWordsMap : PyKeywordArgs) : PygenM (Option (TSyntax `term)) := do
   match ← lowerFunctoolsCallTerm? funcJson argsArray argsCodes keyWordsMap with
+  | some lowered => return some lowered
+  | none =>
+  match ← lowerCollectionsCallTerm? funcJson argsArray argsCodes keyWordsMap with
   | some lowered => return some lowered
   | none => return none
 

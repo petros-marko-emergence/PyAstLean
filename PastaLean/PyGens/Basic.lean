@@ -47,12 +47,11 @@ def floatDecimalString (magnitude exponent : Nat) : String :=
     let cut := chars.length - exponent
     String.ofList (chars.take cut) ++ "." ++ String.ofList (chars.drop cut)
 
-/-- Preserve Python float literals as Lean `Float`s, even when the decimal part is `.0`.
+/-- Preserve Python float literals as Lean `Float`s, even with a trailing `.0`.
 
-When the source was written in scientific notation (`1e5`), keep the explicit
-`Float.ofScientific magnitude true exponent` form. Otherwise emit a readable decimal literal
-ascribed to `Float` (e.g. `(0.25 : Float)`). The `: Float` ascription is required because a bare
-decimal literal would otherwise resolve to `Rat` via the default instances. -/
+Keep scientific notation as `Float.ofScientific magnitude true exponent`; otherwise emit a
+decimal literal ascribed to `Float` (e.g. `(0.25 : Float)`). The ascription is needed because a
+bare decimal literal would otherwise resolve to `Rat`. -/
 def floatNumToStx (mantissa : Int) (exponent : Nat) (scientific : Bool) :
     MetaM <| TSyntax `term := do
   let magnitude := Int.natAbs mantissa
@@ -113,10 +112,9 @@ def constantSyntax : (kind : SyntaxNodeKind) → Json →
 def jsonLibraryMappedName? (json : Json) : PygenM (Option Lean.Name) := do
   match json.getObjValAs? String "library_module", json.getObjValAs? String "library_member" with
   | .ok moduleName, .ok memberName =>
-      -- In exact mode prefer the `ℝ`/`noncomputable` variant for transcendentals so generated
-      -- code is provable; everything else (and all of `--mode run`) uses the regular mapping.
-      -- Exact mode: a transcendental → `ℝ` (real map); else a computable-but-non-Float override
-      -- like `math.pow`→rational (exact map); else the regular (often `Float`) mapping.
+      -- Exact mode prefers provable `ℝ`/`noncomputable` mappings for transcendentals; otherwise
+      -- use the regular mapping (`--mode run` always does). Example: `math.pow` → rational in the
+      -- exact map, else the regular (often `Float`) mapping.
       let realName? ← if (← getNumericMode) == .exact
         then pure (Libraries.pythonLibraryMapReal? moduleName memberName
                     <|> Libraries.pythonLibraryMapExact? moduleName memberName)
@@ -133,6 +131,22 @@ def builtinMappedName? (name : String) : PygenM (Option Lean.Name) := do
     return pythonBuiltinMapExact? name <|> pythonBuiltinMap? name
   else
     return pythonBuiltinMap? name
+
+/-- Throw on a literal `float('inf')` / `float('-inf')` / `float('nan')` in exact mode, where the
+`ℚ` cast would degrade it to `0`. `--mode run` lowers these to `Float`, which represents them. -/
+def checkFiniteFloatLiteral (funcJson : Json) (argsArray : Array Json) : PygenM Unit := do
+  unless (← getNumericMode) == .exact do return
+  let .ok "Name" := funcJson.getObjValAs? String "node_type" | return
+  let .ok "float" := funcJson.getObjValAs? String "id" | return
+  let some argJson := argsArray[0]? | return
+  let .ok "Constant" := argJson.getObjValAs? String "node_type" | return
+  let .ok (Json.str raw) := argJson.getObjValAs? Json "value" | return
+  let normalized := raw.trim.toLower
+  let body := if normalized.startsWith "-" || normalized.startsWith "+"
+    then normalized.drop 1 else normalized
+  if body == "inf" || body == "infinity" || body == "nan" then
+    throwError s!"float('{raw}') has no value in ℚ, so exact mode cannot represent it (it would \
+      silently degrade to 0). Use --mode run to model non-finite floats as Lean `Float`."
 
 @[pygen "Name"]
 def nameSyntax : (kind : SyntaxNodeKind) → Json →
@@ -358,28 +372,19 @@ def isStringyJson (json : Json) : Bool :=
       | _ => false
   | _ => false
 
-/-- Apply a Python comparison operator to already-lowered operand terms. `leftJson` is the
-left operand's IR, used only to decide membership lowering: a string literal on the left of
-`in`/`not in` means *substring* containment (`pyStrContainsSubstr`); otherwise membership
-dispatches through `pyContains`, whose `outParam` element type pins the element from the
-container. -/
+/-- Apply a Python comparison operator to already-lowered terms. `leftJson` only affects
+membership lowering: a string literal on the left of `in`/`not in` means substring containment
+(`pyStrContainsSubstr`); otherwise membership uses `pyContains`, whose `outParam` element type
+pins the element from the container. -/
 def compareApplyTerm (op : String) (leftJson : Json) (leftCode rightCode : TSyntax `term)
     (rightJson : Option Json := none) : PygenM (TSyntax `term) := do
   -- `x is None` / `x is not None`: lower to `Option.isNone`/`Option.isSome` rather than
-  -- `== none`/`!= none`. This needs no `BEq` and works even when `x`'s element type is still an
-  -- unresolved metavariable — exactly the `[None] * n` placeholder pattern, where the list's
-  -- `Option` element type is only pinned later. (`is`/`is not` against a non-`None` operand keep
-  -- the plain `==`/`!=` lowering below.)
+  -- `== none`/`!= none`. Works with unresolved `Option` element types (e.g., `[None] * n`).
   if (op == "is" || op == "isnot") && (rightJson.any isNoneConstantJson) then
     if op == "is" then return ← `($(mkIdent ``Option.isNone) $leftCode)
     else return ← `($(mkIdent ``Option.isSome) $leftCode)
-  -- In a *condition position* (`prop` — the direct test of an `if`/`while`, see `withPropCondition`)
-  -- a comparison lowers to a provable `Prop`, paired with the `if h : …` hypothesis: ordering →
-  -- `a < b` (decidable for every numeric type, so it works in any mode), equality → `a = b` / `a ≠ b`
-  -- but ONLY in exact mode (ℚ/ℤ/ℝ have `DecidableEq`; `Float` does NOT, so it keeps `==`).
-  -- In a *value position* (`!prop` — a comprehension element, an `and`/`or` operand, an `any`/`all`
-  -- generator) the result must be a `Bool`: ordering goes through `decide`, equality through `==`.
-  -- (`Prop` has no `Bool`/`PyBool` instance, so it cannot be a plain value.)
+  -- *Condition position* (`prop`): comparison yields `Prop` (e.g., `a < b`, `a = b` in exact mode).
+  -- *Value position* (`!prop`): comparison yields `Bool` (e.g., `decide (a < b)`, `a == b`).
   let prop ← getPropCondition
   let exact ← numericModeIsExact
   match op with
@@ -416,10 +421,7 @@ def binOpSyntax : (kind : SyntaxNodeKind) → Json →
       s!"BinOp node does not have a 'right' field or it is not a JSON value: {json}"
     let leftCode ←  getCode leftJson `term
     let rightCode ← getCode rightJson `term
-    -- List repetition `[..] * n` / `n * [..]`: when an operand is a list literal, target the
-    -- plain `pyListRepeat` (result type concretely `List α`) instead of the `outParam`-result
-    -- `*ₚ`. Otherwise a `[None] * n` placeholder leaves the whole list type postponed, stalling
-    -- every later `pyIter`/`pyGetItem`/`pySetItem` whose element type is only pinned afterwards.
+    -- Use `pyListRepeat` for list literals so the result type is fixed immediately.
     if op == "mul" then
       let repeatIdent := mkIdent ``PastaLean.pyListRepeat
       if leftJson.getObjValAs? String "node_type" == .ok "List" then
@@ -459,14 +461,9 @@ def boolOpSyntax : (kind : SyntaxNodeKind) → Json →
       s!"BoolOp node does not have an 'op' field or it is not a string: {json}"
     let .ok valuesJson := json.getObjValAs? Json "values" | throwError
       s!"BoolOp node does not have a 'values' field or it is not a JSON value: {json}"
-    -- In a `Prop` position in exact mode (`assert`/theorem, or an `if` test over ℚ/ℤ/ℝ) `and`/`or`
-    -- become `∧`/`∨` over `Prop` operands — no `decide`. Otherwise `&&`/`||` need `Bool` operands, so
-    -- lower them in value position: `if a < b and c < d` → `decide (a<b) && decide (c<d)`.
+    -- In exact `Prop` positions, `and`/`or` become `∧`/`∨`; otherwise lower to `Bool`.
     let opProp := (← getPropCondition) && (← numericModeIsExact)
-    -- Each operand of `and`/`or` is itself a *truthiness* context (Python evaluates each for
-    -- truthiness), exactly like an `if x:` test. So a bare non-boolean operand (an int/list/str)
-    -- must be coerced with `pyTruthy`, or it lands raw in `∧`/`&&` and fails to typecheck. This
-    -- mirrors `truthyConditionTerm`, applied one level deeper — the boundary that was missing.
+    -- Each `and`/`or` operand is a truthiness context, so non-booleans must be coerced with `pyTruthy`.
     let lowerOperand (valueJson : Json) : PygenM (TSyntax `term) := do
       let code ← withPropCondition opProp (getCode valueJson `term)
       if conditionIsBoolean valueJson then pure code

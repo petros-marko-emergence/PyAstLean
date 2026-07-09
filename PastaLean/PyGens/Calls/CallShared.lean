@@ -7,6 +7,9 @@ open Lean Meta Elab Term Qq Std
 
 namespace PastaLean
 
+/-- Keyword-argument object in Python call JSON. -/
+abbrev PyKeywordArgs := Std.TreeMap.Raw String Json compare
+
 /-- Infer a simple runtime type from a value expression when the shape is obvious. -/
 def inferSimpleValueTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
   match json.getObjValAs? String "node_type" with

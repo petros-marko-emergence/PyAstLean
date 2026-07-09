@@ -13,30 +13,13 @@ def pyDict {α β γ : Type} [PyIterable γ (α × β)] [BEq α] [Hashable α] (
 def pyDictItems [BEq α] [Hashable α] : Std.HashMap α β → List (α × β)
   | m => m.toList
 
-/--
-Public runtime surface for Python `items()`.
-
-Keep codegen targeting `pyItems`; if another dictionary-like runtime type later needs
-an `items` view, this public name can be promoted without changing emitted syntax.
--/
-def pyItems [BEq α] [Hashable α] : Std.HashMap α β → List (α × β) :=
-  pyDictItems
-
 /-- For `dict.keys()`, return the list of keys. -/
 def pyDictKeys [BEq α] [Hashable α] : Std.HashMap α β → List α
   | m => m.toList.map (fun (k, _) => k)
 
-/-- Public runtime surface for Python `keys()`. -/
-def pyKeys [BEq α] [Hashable α] : Std.HashMap α β → List α :=
-  pyDictKeys
-
 /-- For `dict.values()`, return the list of values. -/
 def pyDictValues [BEq α] [Hashable α] : Std.HashMap α β → List β
   | m => m.toList.map (fun (_, v) => v)
-
-/-- Public runtime surface for Python `values()`. -/
-def pyValues [BEq α] [Hashable α] : Std.HashMap α β → List β :=
-  pyDictValues
 
 /-- For `dict.clear()`, return an empty map. -/
 def pyDictClear [BEq α] [Hashable α] (_ : Std.HashMap α β) : Std.HashMap α β :=
@@ -90,21 +73,20 @@ def pyGetD [BEq α] [Hashable α] (m : Std.HashMap α β) (key : α) (default : 
 
 
 theorem pyDict_length_eq_items_length [BEq α] [EquivBEq α] [Hashable α] [LawfulHashable α](m : Std.HashMap α β) :
-  m.size = (pyItems m).length := by
-    simp only [pyItems, pyDictItems, Std.HashMap.length_toList]
+  m.size = (pyDictItems m).length := by
+    simp only [pyDictItems, Std.HashMap.length_toList]
 
 theorem pyDict_keys_length_eq_items_length [BEq α] [EquivBEq α] [Hashable α] [LawfulHashable α](m : Std.HashMap α β) :
-  (pyKeys m).length = (pyItems m).length := by
-    simp only [pyKeys, pyDictKeys, Std.HashMap.map_fst_toList_eq_keys, Std.HashMap.length_keys,
-      pyItems, pyDictItems, Std.HashMap.length_toList]
+  (pyDictKeys m).length = (pyDictItems m).length := by
+    simp only [pyDictKeys, Std.HashMap.map_fst_toList_eq_keys, Std.HashMap.length_keys,
+      pyDictItems, Std.HashMap.length_toList]
 
 theorem pyDict_values_length_eq_items_length [BEq α] [EquivBEq α] [Hashable α] [LawfulHashable α](m : Std.HashMap α β) :
-  (pyValues m).length = (pyItems m).length := by
-    simp only [pyValues, pyDictValues, List.length_map, Std.HashMap.length_toList, pyItems,
-      pyDictItems]
+  (pyDictValues m).length = (pyDictItems m).length := by
+    simp only [pyDictValues, List.length_map, Std.HashMap.length_toList, pyDictItems]
 
 theorem pyDict_keys_length_eq_values_length [BEq α] [EquivBEq α] [Hashable α] [LawfulHashable α](m : Std.HashMap α β) :
-  (pyKeys m).length = (pyValues m).length := by
+  (pyDictKeys m).length = (pyDictValues m).length := by
     simp only [pyDict_keys_length_eq_items_length, pyDict_values_length_eq_items_length]
 
 -- #eval do

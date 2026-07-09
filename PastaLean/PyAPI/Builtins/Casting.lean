@@ -132,8 +132,9 @@ instance : PyFloatCast String where
 
 In the default (exact) numeric mode `float(x)` lowers to `pyRat`, producing an exact rational.
 Notably a decimal string parses *exactly* (`float("0.1") = 1/10`), and `int`/`bool`/`Rat` inputs
-coerce losslessly. `inf`/`nan` have no `ℚ` value, so the string parser degrades them to `0`
-(exact mode does not model them — use `--mode run` for `float('inf')`). -/
+coerce losslessly. `inf`/`nan` have no `ℚ` value, so the string parser degrades them to `0`; a
+*literal* `float('inf')` is rejected at codegen (`checkFiniteFloatLiteral`), leaving this path
+reachable only for a runtime-computed string. -/
 
 /-- Typeclass for exact-mode `float(...)` coercions producing `ℚ`. -/
 class PyRatCast (α : Type) where
