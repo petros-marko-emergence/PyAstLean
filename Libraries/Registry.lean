@@ -1,5 +1,8 @@
 import Lean
+import Libraries.bisect.Mapping
+import Libraries.collections.Mapping
 import Libraries.functools.Mapping
+import Libraries.itertools.Mapping
 import Libraries.math.Mapping
 import Libraries.numpy.Mapping
 import Libraries.passta.Mapping
@@ -17,7 +20,10 @@ coming from a specific imported module.
 -/
 def pythonLibraryMap? (moduleName member : String) : Option Lean.Name :=
   match moduleName with
+  | "bisect" => bisect.pythonBisectMemberMap? member
+  | "collections" => collections.pythonCollectionsMemberMap? member
   | "functools" => functools.pythonFunctoolsMemberMap? member
+  | "itertools" => itertools.pythonItertoolsMemberMap? member
   | "math" => math.pythonMathMemberMap? member
   | "numpy" => numpy.pythonNumpyMemberMap? member
   | "passta" => passta.pythonPasstaMemberMap? member
