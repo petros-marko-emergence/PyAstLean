@@ -36,8 +36,7 @@ def buildPrintArgsList (argsArray : Array Json) (resolvedArgs : Array (TSyntax `
     | [] => `(([] : List PastaLean.PyPrintArg))
     | _ =>
         let elems ← resolvedArgs.mapM (fun code => `($argIdent $code))
-        -- Add type annotation to help typeclass resolution, especially in proof mode
-        `(([$elems,*] : List PastaLean.PyPrintArg))
+        `([$elems,*])
   else
     -- A `*iterable` is present: build each part as a `List PyPrintArg` and concatenate.
     let mut parts : Array (TSyntax `term) := #[]
@@ -53,8 +52,7 @@ def buildPrintArgsList (argsArray : Array Json) (resolvedArgs : Array (TSyntax `
         let mut acc := first
         for p in rest do
           acc ← `($acc ++ $p)
-        -- Add type annotation to help typeclass resolution
-        `(($acc : List PastaLean.PyPrintArg))
+        pure acc
 
 /-- Local copy of the exception-effect probe so call lowering can avoid cyclic imports. -/
 partial def basicJsonUsesExceptionEffect (json : Json) : Bool :=
