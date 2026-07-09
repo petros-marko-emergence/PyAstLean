@@ -21,11 +21,14 @@ Usage:
 """
 
 import argparse
+import ast
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+import _function as fh
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -47,6 +50,12 @@ def strip_lean_diagnostics(text):
             continue
         kept.append(line)
     return "\n".join(kept)
+
+
+def _maxtests(s):
+    """`--max-tests` value → int cap, or 0 (= all) for 'max'/'all'/''."""
+    t = str(s).strip().lower()
+    return 0 if t in ("max", "all", "-1", "") else int(t)
 
 
 def normalize(text):
@@ -91,6 +100,104 @@ def run_lean(lean_path, input_text, timeout):
         return None, "timeout"
     except Exception as e:  # noqa: BLE001
         return None, str(e)
+
+
+_PASSED_RE = re.compile(r"PASSED\s+(\d+)/(\d+)")
+
+
+def run_lean_harness(harness_src, tmp_path, timeout):
+    """Write a function-model harness to `tmp_path`, run it with `lean --run`, and parse
+    its `PASSED p/t` line. Returns (passed, total) or (None, error)."""
+    tmp_path.write_text(harness_src)
+    try:
+        proc = subprocess.run(
+            ["lake", "env", "lean", "--run", str(tmp_path)],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return None, "timeout"
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)
+    out = strip_lean_diagnostics(proc.stdout)
+    m = _PASSED_RE.search(out)
+    if m:
+        return (int(m.group(1)), int(m.group(2))), None
+    if proc.returncode != 0:
+        return None, f"exit {proc.returncode}: {(proc.stderr or out)[:200]}"
+    return None, "no PASSED line in output"
+
+
+def load_function_cases(prob_dir, params, method):
+    """Turn each `tests/tests.json` input into an (args, expected) pair, where **expected
+    is what the groundtruth Python produces** for that input (not the dataset's `output`
+    string, which mis-types string/None returns via `literal_eval`). This makes the Python
+    baseline 100% by construction and gives Lean the true reference value to match."""
+    tests_file = prob_dir / "tests" / "tests.json"
+    if not tests_file.exists():
+        return []
+    raw = json.loads(tests_file.read_text())
+    fn = fh.load_callable((prob_dir / "solutions" / "sol_0.py").read_text(), method)
+    if fn is None:
+        return []
+    cases = []
+    for c in raw:
+        try:
+            args = fh.parse_test_input(c["input"], params)
+        except (ValueError, SyntaxError, KeyError):
+            continue
+        try:
+            expected = fn(*args)  # groundtruth output = the true expected value
+        except Exception:  # noqa: BLE001
+            continue  # the reference itself errors here → can't judge, skip
+        cases.append((args, expected))
+    return cases
+
+
+def evaluate_function_problem(prob_dir, lean_dir, tmp_dir, timeout, max_tests, skip_python):
+    """Function-model evaluation (LeetCode-style): call the converted `'rn` function on
+    each test case and compare its return value. Returns {sol_name: report} and agg deltas."""
+    meta = json.loads((prob_dir / "meta.json").read_text())
+    method, params = meta["method"], meta["params"]
+    cases = load_function_cases(prob_dir, params, method)
+    if max_tests:
+        cases = cases[:max_tests]
+    prob_report, deltas = {}, {"lean_pass": 0, "lean_total": 0, "py_pass": 0, "py_total": 0, "solutions": 0}
+    if not cases:
+        return prob_report, deltas
+
+    eval_dir = prob_dir / "eval"
+    eval_dir.mkdir(exist_ok=True)
+    for status_path in sorted(lean_dir.glob("sol_*.status")):
+        if status_path.read_text().strip() != "ok":
+            continue
+        name = status_path.stem
+        converted = (lean_dir / f"{name}.lean").read_text()
+        harness, n = fh.build_test_harness(converted, method, cases)
+        print(f"[*] {prob_dir.name}/{name} (function) over {n} renderable test(s)...")
+        res, err = run_lean_harness(harness, tmp_dir / f"{prob_dir.name}_{name}_harness.lean", timeout)
+        lean_pass, lean_total = (res if res else (0, n))
+        lean_note = err
+
+        py_pass = py_total = 0
+        if not skip_python:
+            py_src = (prob_dir / "solutions" / f"{name}.py").read_text()
+            py_pass, py_total = fh.run_python_check(py_src, method, cases)
+
+        (eval_dir / f"{name}.json").write_text(json.dumps({
+            "model": "function", "method": method,
+            "lean": {"passed": lean_pass, "total": lean_total, "error": lean_note},
+            "python": {"passed": py_pass, "total": py_total},
+        }, indent=2))
+        prob_report[name] = {
+            "lean": f"{lean_pass}/{lean_total}" + (f" ({lean_note})" if lean_note else ""),
+            "python": f"{py_pass}/{py_total}" if py_total else "skipped",
+        }
+        print(f"    lean {lean_pass}/{lean_total}" + (f"  python {py_pass}/{py_total}" if py_total else "")
+              + (f"   [{lean_note}]" if lean_note else ""))
+        deltas["lean_pass"] += lean_pass; deltas["lean_total"] += lean_total
+        deltas["py_pass"] += py_pass; deltas["py_total"] += py_total
+        deltas["solutions"] += 1
+    return prob_report, deltas
 
 
 def evaluate_runner(runner, target_path, tests, timeout):
@@ -169,7 +276,8 @@ def main():
     parser.add_argument("--dataset", default="cp_harness/dataset", help="Dataset directory")
     parser.add_argument("--timeout", type=int, default=15, help="Per-run timeout (seconds)")
     parser.add_argument(
-        "--max-tests", type=int, default=0, help="Cap tests per solution (0 = all)"
+        "--max-tests", type=_maxtests, default=0,
+        help="Cap tests per solution (0 or 'max'/'all' = all tests)",
     )
     parser.add_argument(
         "--skip-python", action="store_true", help="Skip the Python baseline run"
@@ -184,11 +292,27 @@ def main():
     report = {}
     agg = {"lean_pass": 0, "lean_total": 0, "py_pass": 0, "py_total": 0, "solutions": 0}
     divergences = []  # Lean-vs-Python output mismatches on compiling solutions
+    tmp_dir = dataset / ".tmp"
+    tmp_dir.mkdir(exist_ok=True)
 
     for prob_dir in sorted(p for p in dataset.iterdir() if p.is_dir() and not p.name.startswith(".")):
         lean_dir = prob_dir / "lean"
         tests_dir = prob_dir / "tests"
         if not (lean_dir.is_dir() and tests_dir.is_dir()):
+            continue
+
+        # Function-model problems (LeetCode-style) are tested by calling the converted
+        # function, not by stdin/stdout — dispatch on the `kind` marker fetch wrote.
+        kind_file = prob_dir / "kind"
+        kind = kind_file.read_text().strip() if kind_file.exists() else "stdio"
+        if kind == "function":
+            prob_report, deltas = evaluate_function_problem(
+                prob_dir, lean_dir, tmp_dir, args.timeout, args.max_tests, args.skip_python
+            )
+            if prob_report:
+                report[prob_dir.name] = prob_report
+                for k, v in deltas.items():
+                    agg[k] += v
             continue
 
         tests = []

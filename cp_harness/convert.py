@@ -153,10 +153,12 @@ def summarize_error(status, log_text):
     return lines[0].strip()
 
 
-def convert_solution(sol_path, lean_dir, tmp_dir):
+def convert_solution(sol_path, lean_dir, tmp_dir, wrap=True):
     name = sol_path.stem
     source = sol_path.read_text()
-    wrapped = wrap_for_main(source)
+    # LeetCode solutions are bare functions tested by calling them — never wrap them
+    # in a `__main__` guard (that would nest the `def` inside a block, hiding it).
+    wrapped = wrap_for_main(source) if wrap else source
 
     wrapped_path = tmp_dir / f"{name}_wrapped.py"
     wrapped_path.write_text(wrapped)
@@ -208,9 +210,12 @@ def main():
         lean_dir = prob_dir / "lean"
         lean_dir.mkdir(exist_ok=True)
 
+        kind_file = prob_dir / "kind"
+        is_leetcode = kind_file.exists() and kind_file.read_text().strip() == "function"
+
         prob_results = {}
         for sol_path in sorted(sols_dir.glob("sol_*.py")):
-            status, error = convert_solution(sol_path, lean_dir, tmp_dir)
+            status, error = convert_solution(sol_path, lean_dir, tmp_dir, wrap=not is_leetcode)
             prob_results[sol_path.name] = {"status": status}
             if error is not None:
                 prob_results[sol_path.name]["error"] = error
