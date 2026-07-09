@@ -11,6 +11,8 @@ directly via `pyWhile`). A false negative (leaving a convertible loop) is harmle
   * the test is `i < bound` / `i <= bound` with `i` a bare name on the left;
   * the increment is exactly `i += 1` and is the loop's LAST statement;
   * `i` has a constant-int init in the same block;
+  * `i` is untouched between that init and the loop (`i = 0; while s[i] == ' ': i += 1` in between
+    leaves `i` drifted, so the init neither reaches the loop nor is dead);
   * `i` is unused after the loop (a `for` leaves `i = bound-1`, a `while` leaves `i = bound`);
   * `i` is not reassigned mid-body (a `for` would clobber it);
   * no loop-bound variable is mutated in the body — by rebind, by in-place mutation (`x.pop()`,
@@ -224,7 +226,10 @@ def _normalize_counting_loops_in_block(body):
                             for nm in bound_names)
                 and not _contains_continue(loop_body)
             )
-            if init_idx is not None and sound and not _name_referenced(body[i + 1:], loop_var):
+            # `i` must be untouched at any depth between its init and the loop, so the init reaches
+            # the loop and is dead. Rules out `i = 0; while s[i] == ' ': i += 1; while i < n: ...`.
+            reaches = not _name_referenced(body[init_idx + 1:i], loop_var) if init_idx is not None else False
+            if init_idx is not None and sound and reaches and not _name_referenced(body[i + 1:], loop_var):
                 stmt = body[i]
                 new_body = stmt["body"][:-1]  # drop the `i += 1`
                 # `range(stop)` when the counter starts at 0, else `range(start, stop)`.

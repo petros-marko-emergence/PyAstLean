@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pastalean"
 version = "0.1.0"
@@ -19,6 +23,24 @@ dependencies = [
     "scipy>=1.17.1",
     "setuptools>=82.0.1",
 ]
+
+[project.optional-dependencies]
+# `pastalean serve` only. Kept out of the core install so the CLI stays dependency-light.
+server = [
+    "fastapi>=0.115",
+    "pydantic>=2.0",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+pastalean = "pastalean.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pastalean*"]
 
 [tool.pyrefly]
 project-includes = [

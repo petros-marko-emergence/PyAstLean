@@ -700,10 +700,20 @@ class ASTToJsonLeanVisitorBase:
 
 
     def visit_Import(self, node):
-        """Translate `import ...` statements into a lightweight IR node."""
+        """Translate `import ...` statements into a lightweight IR node.
+
+        Each alias is tagged `foreign` (see `_is_foreign_module`), so the Lean header emitter can
+        skip it: `import random` has no Lean module, while `import helper` (a sibling `.py`) does.
+        """
+        names = []
+        for alias in node.names:
+            alias_json = self.visit(alias)
+            if isinstance(alias_json, dict):
+                alias_json["foreign"] = self._is_foreign_module(alias.name)
+            names.append(alias_json)
         return {
             "node_type": "Import",
-            "names": [self.visit(alias) for alias in node.names],
+            "names": names,
         }
 
     def visit_ImportFrom(self, node):
@@ -713,6 +723,7 @@ class ASTToJsonLeanVisitorBase:
             "module": node.module,
             "names": [self.visit(alias) for alias in node.names],
             "level": node.level,
+            "foreign": self._is_foreign_module(node.module),
         }
 
     def visit_FunctionDef(self, node):

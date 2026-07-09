@@ -1,38 +1,29 @@
-import argparse
-import sys
-import os
 import json
 import ast
 import atexit
-import select
+import functools
+import importlib
 import re
 from pathlib import Path
 import subprocess
 import logging
-import threading
-from collections import deque
-try:
-    import fcntl  # POSIX advisory file locking; used to serialize the backend build across processes.
-except ImportError:  # pragma: no cover - non-POSIX
-    fcntl = None
-sys.path.append(os.path.dirname(__file__))
-from node_visitor import *
-from toplevel_state import (
+
+from .node_visitor import *
+from .toplevel_state import (
     annotate_main_entrypoint,
     annotate_toplevel_state,
     annotate_if_assigned_names,
 )
-from contract_passta import CONTRACT_FUNCS as PASSTA_STAR_MEMBERS
-from normalize_loops import normalize_counting_loops
+from .contract_passta import CONTRACT_FUNCS as PASSTA_STAR_MEMBERS
+from .normalize_loops import normalize_counting_loops
+from ..backend import LeanBackendClient
+from ..paths import ANNOTATE_SCRIPT, LIBRARIES_DIR, REPO_ROOT, python_executable
 
-HOMEDIR = Path.absolute(Path(__name__).parent.parent)
-SRC_DIR = HOMEDIR / "src"
-PY_EXEC = HOMEDIR / ".venv" / "bin" / "python"
 logger = logging.getLogger(__name__)
 
 def get_supported_libraries():
     # Read directory names from the Libraries folder to determine supported libraries
-    libraries_path = Path(__file__).parent.parent / "Libraries"
+    libraries_path = LIBRARIES_DIR
     if not libraries_path.exists() or not libraries_path.is_dir():
         logger.warning("Libraries directory not found at %s; no libraries will be supported.", libraries_path)
         return set()
@@ -60,6 +51,9 @@ _NUMERIC_MODE = "exact"
 # backend suffixes in a twin (so `foo'rn` calls `bar'rn`, builds `CNN'rn`).
 _RUN_SUFFIX = ""
 _USER_NAMES = []
+
+# Statements the most recent `translate_to_json` degraded to `pyUnsupported(...)` under best-effort.
+_LAST_UNSUPPORTED = []
 
 # Submodules of a supported library that act as nested namespaces (e.g. `scipy.special`). Their
 # members all flatten into the top-level library's registry, so importing the submodule (e.g.
@@ -224,9 +218,12 @@ def _crossfile_import_lines(body):
                 module_name = alias_node.get("name")
                 if not isinstance(module_name, str):
                     continue
-                # `import math` etc. is library-mapped, not a cross-file Lean import.
+                # Skip library modules (reached as `Libraries.math.…`) and foreign ones (`random`
+                # has no Lean module; emitting `import Random` breaks the file).
                 top = module_name.split(".")[0]
                 if top in SUPPORTED_LIBRARY_IMPORTS or top in TYPE_ONLY_IMPORTS:
+                    continue
+                if alias_node.get("foreign"):
                     continue
                 add_import(_lean_module_path(module_name))
         elif node_type == "ImportFrom":
@@ -236,6 +233,7 @@ def _crossfile_import_lines(body):
             if (
                 _supported_library_root(module_name) is not None
                 or module_name.split(".")[0] in TYPE_ONLY_IMPORTS
+                or stmt.get("foreign")
             ):
                 continue
             add_import(_lean_module_path(module_name))
@@ -764,6 +762,8 @@ def _stmt_bound_names(node):
         if isinstance(ident, str):
             bound.add(ident)
     elif node_type == "Assign":
+        # The IR carries a single `target`; `targets` is tolerated for older/multi-target shapes.
+        bound.update(_stmt_bound_names(node.get("target")))
         for target in node.get("targets", []):
             bound.update(_stmt_bound_names(target))
     elif node_type == "AnnAssign":
@@ -772,7 +772,7 @@ def _stmt_bound_names(node):
         bound.update(_stmt_bound_names(node.get("target")))
     elif node_type == "For":
         bound.update(_stmt_bound_names(node.get("target")))
-    elif node_type == "FunctionDef":
+    elif node_type in {"FunctionDef", "ClassDef"}:
         name = node.get("name")
         if isinstance(name, str):
             bound.add(name)
@@ -820,6 +820,62 @@ def _annotate_library_refs_in_expr(node, import_env):
         _annotate_library_refs_in_expr(value, import_env)
 
 
+@functools.lru_cache(maxsize=None)
+def _library_star_members(root):
+    """Public names `from <root> import *` brings into scope, taken from the real Python module so
+    the binding set matches CPython. A name the Lean registry lacks still binds, then fails with a
+    precise "unsupported member" error rather than as an unresolved Lean identifier."""
+    if root == "passta":
+        return frozenset(PASSTA_STAR_MEMBERS)
+    try:
+        module = importlib.import_module(root)
+    except ImportError:
+        return frozenset()
+    exported = getattr(module, "__all__", None)
+    if exported is None:
+        exported = [n for n in dir(module) if not n.startswith("_")]
+    return frozenset(exported)
+
+
+def _strip_library_annotation_from_binders(stmt):
+    """Un-annotate the binder `Name`s of an assignment/loop target: a binder is a definition, not a
+    reference. Without this, `inf = float('inf')` under `from math import *` emits
+    `def Libraries.math.pyMathInf`. Loads inside a subscript target (`xs[gcd(a, b)] = v`) stay."""
+    def strip(node):
+        if not isinstance(node, dict):
+            return
+        node_type = node.get("node_type")
+        if node_type == "Name":
+            node.pop("library_module", None)
+            node.pop("library_member", None)
+        elif node_type in {"Tuple", "List"}:
+            for elt in node.get("elts", []):
+                strip(elt)
+
+    if stmt.get("node_type") in {"Assign", "AnnAssign", "AugAssign", "For"}:
+        strip(stmt.get("target"))
+        for target in stmt.get("targets", []) or []:
+            strip(target)
+
+
+def _scope_bound_names(body):
+    """Every name bound anywhere in a function body. A name assigned anywhere in a function is local
+    for the whole body, so it can never refer to a star-imported member."""
+    # `_stmt_bound_names` also yields the id of a bare `Name`, so restrict it to binding statements.
+    binding_stmts = {"Assign", "AnnAssign", "AugAssign", "For", "FunctionDef", "ClassDef"}
+    names = set()
+    stack = list(body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            if node.get("node_type") in binding_stmts:
+                names |= _stmt_bound_names(node)
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+    return names
+
+
 def _annotate_library_imports_in_scope(body, inherited_env=None):
     env = dict(inherited_env or {})
     for stmt in body:
@@ -848,12 +904,13 @@ def _annotate_library_imports_in_scope(body, inherited_env=None):
                         continue
                     member_name = alias_node.get("name")
                     local_name = _imported_alias_name(alias_node)
-                    if root == "passta" and member_name == "*":
-                        for contract_member in PASSTA_STAR_MEMBERS:
-                            env[contract_member] = {
+                    if member_name == "*":
+                        # Bind every name the module exports; later local bindings shadow these.
+                        for star_member in _library_star_members(root):
+                            env[star_member] = {
                                 "kind": "member",
                                 "module": root,
-                                "member": contract_member,
+                                "member": star_member,
                             }
                         continue
                     if isinstance(member_name, str) and isinstance(local_name, str):
@@ -870,6 +927,12 @@ def _annotate_library_imports_in_scope(body, inherited_env=None):
             continue
 
         _annotate_library_refs_in_expr(stmt, env)
+        _strip_library_annotation_from_binders(stmt)
+
+        # A binding here shadows a star-imported member from now on (`from math import *` then
+        # `inf = float('inf')`). Annotate first, so the RHS still sees the old env.
+        for bound_name in _stmt_bound_names(stmt):
+            env.pop(bound_name, None)
 
         if node_type == "ClassDef":
             # Class methods are FunctionDefs under "methods"; annotate library refs in each body.
@@ -879,11 +942,15 @@ def _annotate_library_imports_in_scope(body, inherited_env=None):
                 child_env = dict(env)
                 for arg_name in _function_arg_names(method):
                     child_env.pop(arg_name, None)
+                for local_name in _scope_bound_names(method.get("body", [])):
+                    child_env.pop(local_name, None)
                 _annotate_library_imports_in_scope(method.get("body", []), child_env)
         elif node_type == "FunctionDef":
             child_env = dict(env)
             for arg_name in _function_arg_names(stmt):
                 child_env.pop(arg_name, None)
+            for local_name in _scope_bound_names(stmt.get("body", [])):
+                child_env.pop(local_name, None)
             _annotate_library_imports_in_scope(stmt.get("body", []), child_env)
         else:
             for body_key in ("body", "orelse", "finalbody"):
@@ -946,7 +1013,7 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
         logger.debug("Annotating Python source from %s before AST translation.", filepath)
         logger.debug("Original source:\n%s", source_code)
         annotated_code = subprocess.run(
-            [str(PY_EXEC), str(SRC_DIR / "annotate_python.py"), "--no-write", "--file", str(filepath)],
+            [python_executable(), str(ANNOTATE_SCRIPT), "--no-write", "--file", str(filepath)],
             text=True,
             capture_output=True,
         )
@@ -968,6 +1035,10 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
         module_dir=module_dir,
     )
     data = translator.visit(ast_tree)
+    # Record which statements best-effort degraded, so callers (`TranslationResult.unsupported`)
+    # can report them instead of having to scrape the log.
+    global _LAST_UNSUPPORTED
+    _LAST_UNSUPPORTED = list(translator.unsupported_log)
     if best_effort and translator.unsupported_log:
         logger.warning(
             "best-effort: replaced %d unsupported statement(s) with pyUnsupported placeholders:",
@@ -990,258 +1061,9 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
     logger.debug("Generated JSON IR: %s", json.dumps(data))
     return json.dumps(data)
 
-parent_dir = Path(__file__).parent.parent
-
-class LeanBackendClient:
-    """Persistent line-oriented client for the Lean backend server mode."""
-
-    def __init__(self, cwd: Path):
-        self.cwd = cwd
-        self.proc = None
-        self._stderr_lines = deque(maxlen=200)
-        self._stderr_thread = None
-
-    @property
-    def binary_path(self):
-        return self.cwd / ".lake" / "build" / "bin" / "py2lean"
-
-    def _tracked_backend_sources(self):
-        """Yield Lean source files whose freshness determines whether `py2lean` must be rebuilt."""
-        explicit_files = [
-            self.cwd / "py2lean.lean",
-            self.cwd / "lakefile.lean",
-            self.cwd / "lakefile.toml",
-            self.cwd / "lean-toolchain",
-        ]
-        for path in explicit_files:
-            if path.exists():
-                yield path
-
-        PastaLean_dir = self.cwd / "PastaLean"
-        if PastaLean_dir.exists():
-            yield from PastaLean_dir.rglob("*.lean")
-        libraries_dir = self.cwd / "Libraries"
-        if libraries_dir.exists():
-            yield from libraries_dir.rglob("*.lean")
-
-    def _binary_needs_rebuild(self):
-        """Return true when the backend binary is missing or older than tracked Lean sources."""
-        binary = self.binary_path
-        if not binary.exists():
-            logger.debug("py2lean backend binary is missing; rebuild required.")
-            return True
-
-        binary_mtime = binary.stat().st_mtime
-        latest_source_mtime = max(
-            (path.stat().st_mtime for path in self._tracked_backend_sources()),
-            default=0.0,
-        )
-        if latest_source_mtime > binary_mtime:
-            logger.debug(
-                "A tracked Lean source is newer than the py2lean backend binary; rebuild required."
-            )
-            return True
-        return False
-
-    def _run_lake_build(self):
-        logger.debug("Building py2lean backend binary before starting server.")
-        build = subprocess.run(
-            ["lake", "build", "py2lean"],
-            cwd=self.cwd,
-            text=True,
-            capture_output=True,
-        )
-        if build.returncode != 0:
-            raise RuntimeError(build.stderr.strip() or build.stdout.strip() or "lake build py2lean failed")
-
-    def _ensure_binary(self):
-        if not self._binary_needs_rebuild():
-            logger.debug("Reusing existing py2lean backend binary; no rebuild needed.")
-            return
-
-        # Serialize the build across processes. Without this, N parallel workers (e.g. `regen_examples.py
-        # --jobs`) each run `lake build py2lean` at once; they contend on lake's `.lake` lock, all but one
-        # fail to start the backend, and best-effort then silently degrades every statement to
-        # `pyUnsupported`. With an exclusive lock, the first worker builds while the rest wait, then
-        # re-check and reuse the freshly-built binary.
-        if fcntl is None:
-            self._run_lake_build()
-            return
-
-        lock_dir = self.cwd / ".lake"
-        lock_dir.mkdir(parents=True, exist_ok=True)
-        lock_path = lock_dir / "py2lean-build.lock"
-        with open(lock_path, "w") as lock_file:
-            fcntl.flock(lock_file, fcntl.LOCK_EX)
-            try:
-                # Another worker may have built it while we blocked on the lock — re-check before building.
-                if self._binary_needs_rebuild():
-                    self._run_lake_build()
-            finally:
-                fcntl.flock(lock_file, fcntl.LOCK_UN)
-
-    def _command(self):
-        return ["lake", "env", str(self.binary_path), "--server"]
-
-    def _drain_stderr(self):
-        assert self.proc is not None and self.proc.stderr is not None
-        for line in self.proc.stderr:
-            line = line.rstrip()
-            if not line:
-                continue
-            self._stderr_lines.append(line)
-            logger.debug("Lean backend stderr: %s", line)
-
-    def _recent_stderr(self):
-        return "\n".join(self._stderr_lines)
-
-    def _one_shot_request(self, ast_json, target, check=True):
-        """Fallback backend path that avoids the persistent server when it misbehaves."""
-        json_task = json.dumps(
-            {"task": "translate", "ast": ast_json, "target": target, "check": check,
-             "numericMode": _NUMERIC_MODE, "runSuffix": _RUN_SUFFIX,
-             "userNames": _USER_NAMES},
-            separators=(",", ":"),
-        )
-        cmd = ["lake", "exe", "py2lean", json_task, target]
-        logger.debug("Falling back to one-shot Lean backend: %s", cmd)
-        proc = subprocess.run(
-            cmd,
-            cwd=self.cwd,
-            text=True,
-            capture_output=True,
-        )
-        if proc.returncode != 0:
-            return {
-                "result": False,
-                "error": proc.stderr.strip() or proc.stdout.strip() or "Lean backend failed",
-            }
-        output = proc.stdout.strip()
-        try:
-            return json.loads(output)
-        except json.JSONDecodeError as err:
-            return {
-                "result": False,
-                "error": f"Invalid JSON response from one-shot Lean backend: {err}\n{output}",
-            }
-
-    def start(self):
-        if self.proc is not None and self.proc.poll() is None:
-            return
-        self._ensure_binary()
-        cmd = self._command()
-        logger.debug("Starting persistent Lean backend: %s", cmd)
-        self.proc = subprocess.Popen(
-            cmd,
-            cwd=self.cwd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-        )
-        self._stderr_lines.clear()
-        self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
-        self._stderr_thread.start()
-
-    def close(self):
-        if self.proc is None:
-            return
-        try:
-            if self.proc.stdin is not None:
-                self.proc.stdin.close()
-        except BrokenPipeError:
-            pass
-        try:
-            self.proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
-            self.proc.wait(timeout=2)
-        finally:
-            if self.proc.stdout is not None:
-                self.proc.stdout.close()
-            if self.proc.stderr is not None:
-                self.proc.stderr.close()
-        self.proc = None
-        self._stderr_thread = None
-
-    def request(self, ast_json, target, check=True):
-        """Send one translation request to the persistent Lean backend."""
-        self.start()
-        assert self.proc is not None
-        assert self.proc.stdin is not None
-        assert self.proc.stdout is not None
-        json_task = json.dumps(
-            {"task": "translate", "ast": ast_json, "target": target, "check": check,
-             "numericMode": _NUMERIC_MODE, "runSuffix": _RUN_SUFFIX,
-             "userNames": _USER_NAMES},
-            separators=(",", ":"),
-        )
-        logger.debug("Sending request to Lean backend: target=%s check=%s", target, check)
-        try:
-            self.proc.stdin.write(json_task + "\n")
-            self.proc.stdin.flush()
-        except BrokenPipeError:
-            self.close()
-            return self._one_shot_request(ast_json, target, check)
-
-        assert self.proc.stdout is not None
-        ready, _, _ = select.select([self.proc.stdout], [], [], 5.0)
-        if not ready:
-            logger.debug("Persistent Lean backend timed out waiting for a response; retrying once-shot.")
-            self.close()
-            return self._one_shot_request(ast_json, target, check)
-
-        response_line = self.proc.stdout.readline()
-        if not response_line:
-            self.close()
-            return self._one_shot_request(ast_json, target, check)
-        response_line = response_line.strip()
-        logger.debug("Lean backend response: %s", response_line)
-        try:
-            return json.loads(response_line)
-        except json.JSONDecodeError as err:
-            logger.debug(f"Persistent Lean backend returned invalid JSON; retrying one-shot: {err}")
-            self.close()
-            return self._one_shot_request(ast_json, target, check)
-
-    def prove_file(self, code, timeout=600.0):
-        """Elaborate an assembled generated file in the WARM backend so `taste?` searches each
-        assert; return the parsed JSON carrying the ordered list of winning tactic strings
-        (`winners`). Uses a long timeout because this elaborates the whole program — unlike
-        `request`'s 5s budget, which a `nlinarith`/`grind` search would blow past."""
-        self.start()
-        assert self.proc is not None and self.proc.stdin is not None and self.proc.stdout is not None
-        json_task = json.dumps({"task": "proveFile", "code": code}, separators=(",", ":"))
-        try:
-            self.proc.stdin.write(json_task + "\n")
-            self.proc.stdin.flush()
-        except BrokenPipeError:
-            self.close()
-            return None
-        ready, _, _ = select.select([self.proc.stdout], [], [], timeout)
-        if not ready:
-            logger.debug("proveFile timed out after %ss; leaving taste? in place.", timeout)
-            return None
-        line = self.proc.stdout.readline()
-        if not line:
-            self.close()
-            return None
-        try:
-            return json.loads(line.strip())
-        except json.JSONDecodeError as err:
-            logger.debug("proveFile returned invalid JSON: %s", err)
-            return None
-
-    def __enter__(self):
-        self.start()
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
-
-
-_LEAN_BACKEND = LeanBackendClient(parent_dir)
+# Process-wide default backend, started lazily on first use. Callers that want an explicit
+# lifetime (e.g. `Session`) build their own `LeanBackendClient` and pass it as `client=`.
+_LEAN_BACKEND = LeanBackendClient(REPO_ROOT)
 atexit.register(_LEAN_BACKEND.close)
 
 
@@ -1249,7 +1071,14 @@ def invoke_lean_backend(ast_json, target, check=True, client=None):
     """Send one JSON AST node to the Lean backend and return the parsed JSON response."""
     backend = client or _LEAN_BACKEND
     try:
-        return backend.request(ast_json, target, check)
+        return backend.request(
+            ast_json,
+            target,
+            check,
+            numeric_mode=_NUMERIC_MODE,
+            run_suffix=_RUN_SUFFIX,
+            user_names=_USER_NAMES,
+        )
     except Exception as err:
         return {"result": False, "error": str(err)}
 
@@ -1615,19 +1444,22 @@ def _collect_user_names(body):
     return sorted(names)
 
 
-def translate_to_lean(source_code, target="term", filepath = None, imports_add = True, best_effort=False, mode="both", prove_asserts=True):
+def translate_to_lean(source_code, target="term", filepath = None, imports_add = True, best_effort=False, mode="both", prove_asserts=True, client=None):
     """Translate Python source to Lean via JSON IR and the Lean backend executable.
 
     `mode` selects the numeric semantics: "prove" (exact ℚ/ℝ, provable), "run" (Float, runnable), or
     "both" (default) — emit the provable version AND a runnable twin whose top-level defs/classes and
-    the entry point are suffixed `'rn`, adjacently."""
+    the entry point are suffixed `'rn`, adjacently.
+
+    `client` is the `LeanBackendClient` to translate through; defaults to the process-wide one. Pass
+    an explicit client to reuse a single warm Lean process across many files."""
     global _NUMERIC_MODE, _RUN_SUFFIX, _USER_NAMES
     _NUMERIC_MODE = "approx" if mode == "run" else "exact"
     _RUN_SUFFIX, _USER_NAMES = "", []
     json_ir = translate_to_json(source_code, filepath, best_effort=best_effort)
     ast_json = json.loads(json_ir)
     _stamp_class_dispatch(ast_json)
-    client = _LEAN_BACKEND
+    client = client or _LEAN_BACKEND
 
     if ast_json.get("node_type") == "Module":
         body = ast_json.get("body", [])
@@ -1646,14 +1478,18 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                 return [("exact", "", []), ("approx", "'rn", user_names)]
             return [(single, "", [])]
 
+        last_backend_error = {"msg": None}
+
         def send_node(node):
-            """Send `node` once per pass; return the list of code strings, or None on failure."""
+            """Send `node` once per pass; return the list of code strings, or None on failure
+            (stashing the backend's error in `last_backend_error`)."""
             global _NUMERIC_MODE, _RUN_SUFFIX, _USER_NAMES
             codes = []
             for nmode, suffix, unames in node_passes(node):
                 _NUMERIC_MODE, _RUN_SUFFIX, _USER_NAMES = nmode, suffix, unames
                 r = invoke_lean_backend(node, target, check=False, client=client)
                 if r.get("result") is False or code_key not in r:
+                    last_backend_error["msg"] = r.get("error")
                     return None
                 codes.append(r[code_key])
             return codes
@@ -1695,7 +1531,8 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                                 backend_unsup += 1
                                 emitted_funcs.update(group)
                                 continue
-                            return {"result": False, "error": f"backend could not translate {name}"}
+                            detail = last_backend_error["msg"]
+                            return {"result": False, "error": f"backend could not translate {name}" + (f": {detail}" if detail else "")}
                         for c in codes:
                             code_parts.append((False, c))
                         emitted_funcs.update(group)
@@ -1707,7 +1544,8 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                         code_parts.append((False, _backend_placeholder_command(stmt, backend_unsup)))
                         backend_unsup += 1
                         continue
-                    return {"result": False, "error": f"backend could not translate {stmt.get('node_type')}"}
+                    detail = last_backend_error["msg"]
+                    return {"result": False, "error": f"backend could not translate {stmt.get('node_type')}" + (f": {detail}" if detail else "")}
                 # Inline comment placeholders live inside each emitted version, so inject into the
                 # prove version AND every `'rn` twin.
                 for c in codes:
@@ -1776,149 +1614,3 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
     if code_key in result:
         result[code_key] = _inject_comments_into_lean(ast_json, result[code_key])
     return result
-
-def _run_llm_prepasses(file_path, source_code, args):
-    """Apply the requested LLM pre-passes (`--redesign` then `--contracts`) to `source_code`, write the
-    transformed program to a sibling `.py` file, and return its path for translation. The heavy lifting
-    (prompts, provider/model handling) lives in `src/llm.py`; this only orchestrates and persists."""
-    import llm
-
-    applied = []
-    if args.redesign:
-        logger.info("LLM redesign pre-pass (provider=%s)…", args.llm_provider)
-        source_code = llm.verifiable_design_code(source_code, provider=args.llm_provider, model=args.llm_model)
-        applied.append("redesign")
-    if args.contracts:
-        logger.info("LLM contracts pre-pass (provider=%s)…", args.llm_provider)
-        source_code = llm.contract_code(source_code, provider=args.llm_provider, model=args.llm_model,
-                                        goal=getattr(args, "user_prompt", None))
-        applied.append("contracts")
-
-    orig = Path(file_path)
-    out_path = orig.with_name(f"{orig.stem}.{'.'.join(applied)}.py")
-    out_path.write_text(source_code, encoding="utf-8")
-    logger.warning("LLM %s pre-pass wrote transformed source to %s", "+".join(applied), out_path)
-    return str(out_path)
-
-
-def egProgram():
-    return """def f(n):
-    x = n + 1
-    y = x * 2
-    x = y - 1
-    return x + y
-"""
-
-
-def main(argv=None):
-    """CLI entry point that reads a file and forwards its contents to the translator."""
-    parser = argparse.ArgumentParser(description="Translate a Python file to Lean.")
-    parser.add_argument("file", nargs="?", help="Python source file to translate")
-    parser.add_argument("--file", dest="file_option", help=argparse.SUPPRESS)
-    parser.add_argument(
-        "--target",
-        nargs="?",
-        default="command",
-        help="Lean target string to pass to the translator (default: target)",
-    )
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output for debugging")
-    parser.add_argument(
-        "--strict",
-        dest="strict",
-        action="store_true",
-        help="Disable the best-effort fallback (which is ON by default): fail hard on "
-             "unsupported constructs (foreign libraries, unhandled syntax) instead of emitting "
-             "pyUnsupported(...) placeholders.",
-    )
-    parser.add_argument(
-        "--mode",
-        dest="mode",
-        choices=["prove", "run", "both"],
-        default="both",
-        help="Which numeric semantics to emit. 'prove': exact ℚ/ℝ (provable; transcendentals "
-             "noncomputable). 'run': Float (fast, runnable). 'both' (default): emit BOTH in one file "
-             "— the provable version under its name and a runnable twin suffixed 'rn "
-             "(e.g. `main'rn`, `sigmoid'rn`).",
-    )
-    parser.add_argument(
-        "-p",
-        "--prove-asserts",
-        dest="prove_asserts",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run the prove-and-replace pass on each assert: elaborate in the warm backend and "
-             "splice the concrete winning tactic — or `sorry` — over each `:= by taste?`. Default: "
-             "on. Use --no-prove-asserts to leave the obligations as `:= by taste?`.",
-    )
-    parser.add_argument(
-        "-r",
-        "--redesign",
-        action="store_true",
-        help="LLM pre-pass: restructure the Python to maximise its provable surface (pure "
-             "single-expression math, IO/raise pushed to the edge) per docs/verifiable-python-design.md "
-             "BEFORE translating. Runs before --contracts when both are given.",
-    )
-    parser.add_argument(
-        "-c",
-        "--contracts",
-        action="store_true",
-        help="LLM pre-pass: insert formal contracts (Requires/Ensures/Invariant/Assert/…) into the "
-             "Python BEFORE translating, so the emitted Lean carries provable Hoare-triple obligations.",
-    )
-    parser.add_argument(
-        "--llm-provider",
-        default="openai",
-        help="LLM provider for --contracts/--redesign (openai, gemini, openrouter, deepinfra). "
-             "Default: openai.",
-    )
-    parser.add_argument(
-        "--llm-model",
-        default=None,
-        help="LLM model for --contracts/--redesign. Default: the provider's default chat model.",
-    )
-    parser.add_argument(
-        "-u",
-        "--user-prompt",
-        dest="user_prompt",
-        default=None,
-        help="Optional natural-language goal for --contracts: what you want to be able to prove "
-             "(e.g. -p \"I want to prove the result equals n!\"). Passed to the LLM so the inserted "
-             "contracts/asserts are tailored to it.",
-    )
-    args = parser.parse_args(argv)
-    configure_logging(args.verbose)
-
-    file_path = args.file_option or args.file
-    if not file_path:
-        parser.error("the following arguments are required: file")
-
-    source_code = Path(file_path).read_text(encoding="utf-8")
-
-    # LLM pre-passes (optional). `--redesign` runs first (restructure for provability), then
-    # `--contracts` (annotate the restructured code). Each rewrites the source; because the downstream
-    # annotator re-reads the file by path, the transformed source is written to a sibling `.py` file and
-    # translated from there — which also lets the user inspect exactly what the LLM produced.
-    if args.redesign or args.contracts:
-        file_path = _run_llm_prepasses(file_path, source_code, args)
-        source_code = Path(file_path).read_text(encoding="utf-8")
-
-    result = translate_to_lean(source_code, args.target, file_path, best_effort=not args.strict,
-                               mode=args.mode, prove_asserts=args.prove_asserts)
-
-    if isinstance(result, dict):
-        if result.get("result") is False:
-            print(result.get("error", "Translation failed."), file=sys.stderr)
-            return 1
-
-        code_key = f"lean_{args.target}"
-        if code_key in result:
-            logger.info("Successfully translated to Lean target '%s'.", args.target)
-            print(result[code_key])
-            return 0
-    print("Unexpected translation result format.", file=sys.stderr)
-    print(result)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
