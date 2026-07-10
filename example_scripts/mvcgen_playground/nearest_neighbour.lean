@@ -62,7 +62,7 @@ noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (data
       -- The minimum is one of the computed distances.
       let _ := Libraries.passta.pyPassAssert (PastaLean.pyContains distances min_dist)
       -- Find the index of the minimum distance with an explicit loop + break
-      let mut min_index := -(1 : Int)
+      let mut min_index : Int := -(1 : Int)
       for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
         let i := Prod.fst _pair_1
         let d := Prod.snd _pair_1
@@ -101,7 +101,7 @@ def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List 
         -- The minimum is one of the computed distances.
         let _ := Libraries.passta.pyPassAssert (PastaLean.pyContains distances min_dist)
         -- Find the index of the minimum distance with an explicit loop + break
-        let mut min_index := -(1 : Int)
+        let mut min_index : Int := -(1 : Int)
         for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
           let i := Prod.fst _pair_1
           let d := Prod.snd _pair_1

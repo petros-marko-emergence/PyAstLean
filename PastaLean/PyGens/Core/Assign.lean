@@ -65,12 +65,17 @@ def unpackAccessTerm (isTuple : Bool) (sourceIdent : TSyntax `ident) (idx n : Na
     let idxStx ← intToStx (Int.ofNat idx)
     `($getIdent $sourceIdent $idxStx)
 
-/-- Emit either a fresh `let mut` or a reassignment for one local binding. -/
-def bindOrAssignLocal (nameIdent : TSyntax `ident) (rhs : TSyntax `term) : PygenM (TSyntax `doElem) := do
+/-- Emit either a fresh `let mut` or a reassignment for one local binding. On the first binding an
+inferred type (`ty?`) is ascribed — `let mut x : T := …` — which stops Lean defaulting an
+unconstrained element/index to `ℚ`. A reassignment never re-ascribes. -/
+def bindOrAssignLocal (nameIdent : TSyntax `ident) (rhs : TSyntax `term)
+    (ty? : Option (TSyntax `term) := none) : PygenM (TSyntax `doElem) := do
   if ← hasVar nameIdent.getId then
     `(doElem| $nameIdent:ident := $rhs)
   else
-    let stx ← `(doElem| let mut $nameIdent:ident := $rhs)
+    let stx ← match ty? with
+      | some ty => `(doElem| let mut $nameIdent:ident : $ty := $rhs)
+      | none => `(doElem| let mut $nameIdent:ident := $rhs)
     addVar nameIdent.getId
     pure stx
 
@@ -313,7 +318,7 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
                 pure setStx
             | none =>
                 let nameIdent ← getCode target `ident
-                bindOrAssignLocal nameIdent rhs
+                bindOrAssignLocal nameIdent rhs (← stampedTypeSyntax? target)
     | _, _ => throwError s!"Unsupported syntax category for Assign node"
 
 /--

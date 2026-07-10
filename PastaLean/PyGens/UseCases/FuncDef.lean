@@ -83,12 +83,16 @@ def functionArgInfos (json : Json) : PygenM (Array (TSyntax `ident × Option (TS
     -- A parameter the per-variable real-flow pass stamped `_real` receives an `ℝ` value at some
     -- call site → ascribe `ℝ` (exact mode), overriding the annotation. Everything else stays `ℚ`.
     let isRealParam := (← getNumericMode) == .exact && arg.getObjValAs? Bool "_real" == .ok true
-    let ty? ← match jsonFieldOption arg "annotation" with
+    let ty? ← withRealContext isRealParam do
+      match jsonFieldOption arg "annotation" with
       -- Real-marked params lower their annotation under real-context so `float` → `ℝ` while the
       -- container shape is preserved (`list[list[float]]` → `List (List ℝ)`, scalar → `ℝ`).
-      | some annotationJson => withRealContext isRealParam (functionArgTypeSyntax? annotationJson)
-      -- No annotation but real: ascribe a bare scalar `ℝ` (best effort).
-      | none => if isRealParam then pure (some (← `(Real))) else pure none
+      | some annotationJson => functionArgTypeSyntax? annotationJson
+      -- No annotation: use the type `TypeInfer` inferred (`_ty`), else a bare `ℝ` if real.
+      | none =>
+          match ← stampedTypeSyntax? arg with
+          | some t => pure (some t)
+          | none => if isRealParam then pure (some (← `(Real))) else pure none
     argInfos := argInfos.push (mkIdent argName.toName, ty?)
   return argInfos
 

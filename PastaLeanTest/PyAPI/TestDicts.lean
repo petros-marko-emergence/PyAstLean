@@ -1,5 +1,6 @@
 import PastaLean.PyAPI.Dicts
 import PastaLean.PyAPI.CommonProtocols.Length
+import PastaLean.PyAPI.CommonProtocols.Mapping
 
 open PastaLean
 

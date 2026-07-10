@@ -53,7 +53,7 @@ partial def beq : PyType → PyType → Bool
 
 instance : BEq PyType := ⟨beq⟩
 
-partial def toString : PyType → String
+def toString : PyType → String
   | .unknown => "?"
   | .any => "Any"
   | .int => "int"

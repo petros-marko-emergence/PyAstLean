@@ -5,6 +5,7 @@ import PastaLean.PyAPI.CommonProtocols.Clear
 import PastaLean.PyAPI.CommonProtocols.Pop
 import PastaLean.PyAPI.CommonProtocols.Sorting
 import PastaLean.PyAPI.CommonProtocols.Reversed
+import PastaLean.PyAPI.CommonProtocols.Mapping
 
 open PastaLean
 

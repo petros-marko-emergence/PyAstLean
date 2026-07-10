@@ -2,6 +2,8 @@ import TypeInfer.PyType
 import TypeInfer.Annotation
 import TypeInfer.Value
 import TypeInfer.Emit
+import TypeInfer.Rules
+import TypeInfer.Solve
 
 /-!
 # TypeInfer — what type is this Python value?

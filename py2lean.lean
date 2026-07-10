@@ -1,5 +1,6 @@
 import Lean
 import PastaLean
+import TypeInfer
 open Lean Meta Elab Term Qq Std
 open PastaLean
 
@@ -55,6 +56,9 @@ def runTranslateTask (jsonTask : Json) (ctx : Core.Context) (env : Environment) 
   let json ← match PastaLean.desugarAst json with
     | .ok desugared => pure desugared
     | .error message => return errorResponse s!"Error generating code: {message}"
+  -- Type inference stamps `_ty` on binders whose Lean type the code generator would otherwise
+  -- leave for Lean to guess (and get stuck on). See `TypeInfer/`.
+  let json := TypeInfer.stampNode json
   let code? ← getCodeIO json target.toName ctx env checkCode
   pure <| match code? with
     | .ok code => successResponse target code

@@ -9,7 +9,7 @@ open Std.Do
 set_option linter.all false
 set_option mvcgen.warning false
 
-set_option maxHeartbeats 800000
+set_option maxHeartbeats 0
 
 noncomputable def sigmoid := fun (x : Real) ↦ (1.0 : Rat) /ₚ ((1.0 : Rat) +ₚ Libraries.math.pyMathExpR (-x))
 
@@ -39,7 +39,7 @@ noncomputable def mean_squared_error := fun (xs : List (List Rat)) ↦ fun (ys :
   fun (w1 : List (List Real)) ↦ fun (b1 : List Real) ↦ fun (w2 : List (List Real)) ↦ fun (b2 : List Real) ↦
   Id.run
     (do
-      let mut total := (0.0 : Real)
+      let mut total : Real := (0.0 : Real)
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
         let mut diff := predict xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
         total := total +ₚ diff *ₚ diff
@@ -52,7 +52,7 @@ def mean_squared_error'rn := fun (xs : List (List Float)) ↦ fun (ys : List Flo
   fun (b1 : List Float) ↦ fun (w2 : List (List Float)) ↦ fun (b2 : List Float) ↦
   Id.run
     (do
-      let mut total := (0.0 : Float)
+      let mut total : Float := (0.0 : Float)
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
         let mut diff := predict'rn xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
         total := total +ₚ diff *ₚ diff
@@ -63,22 +63,22 @@ noncomputable def main' :=
   Id.run do
     -- XOR is not linearly separable, so a single layer cannot solve it -- the
     -- hidden layer is what makes this learnable.
-    let mut xs :=
+    let mut xs : List (List Rat) :=
       [[(0.0 : Rat), (0.0 : Rat)], [(0.0 : Rat), (1.0 : Rat)], [(1.0 : Rat), (0.0 : Rat)], [(1.0 : Rat), (1.0 : Rat)]]
-    let mut ys := [(0.0 : Rat), (1.0 : Rat), (1.0 : Rat), (0.0 : Rat)]
+    let mut ys : List Rat := [(0.0 : Rat), (1.0 : Rat), (1.0 : Rat), (0.0 : Rat)]
     -- Fixed initial weights so the run is reproducible (no RNG needed).
-    let mut w1 := [[(0.5 : Real), -(0.4 : Real)], [(0.9 : Real), (1.0 : Real)]]
-    let mut b1 := [(0.1 : Real), -(0.2 : Real)]
-    let mut w2 := [[(0.7 : Real), -(0.8 : Real)]]
-    let mut b2 := [(0.3 : Real)]
-    let mut lr := (0.5 : Rat)
-    let mut epochs := (4000 : Int)
+    let mut w1 : List (List Real) := [[(0.5 : Real), -(0.4 : Real)], [(0.9 : Real), (1.0 : Real)]]
+    let mut b1 : List Real := [(0.1 : Real), -(0.2 : Real)]
+    let mut w2 : List (List Real) := [[(0.7 : Real), -(0.8 : Real)]]
+    let mut b2 : List Real := [(0.3 : Real)]
+    let mut lr : Rat := (0.5 : Rat)
+    let mut epochs : Int := (4000 : Int)
     let _ ← pyPrintNoop [pyPrintArg "=== Training a neural net on XOR (NumPy + math) ==="]
     let _ ← pyPrintNoop [pyPrintArg s! "initial loss: {mean_squared_error xs ys w1 b1 w2 b2}"]
     for epoch in (PastaLean.pyRange epochs)do
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-        let mut x := xs⦋i⦌
-        let mut y := ys⦋i⦌
+        let mut x : List Rat := xs⦋i⦌
+        let mut y : Rat := ys⦋i⦌
         -- Forward pass, keeping the hidden activations for backprop.
         let mut h0 := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
         let mut h1 := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
@@ -109,7 +109,7 @@ noncomputable def main' :=
     let _ ← pyPrintNoop [pyPrintArg "learned predictions:"]
     for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
       let mut p := predict xs⦋i⦌ w1 b1 w2 b2
-      let mut label := if decide (p > (0.5 : Real)) then (1 : Int) else (0 : Int)
+      let mut label : Int := if decide (p > (0.5 : Real)) then (1 : Int) else (0 : Int)
       let _ ← pyPrintNoop [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
 
 attribute [simp] main'
@@ -118,23 +118,23 @@ def main''rn :=
   Id.run do
     -- XOR is not linearly separable, so a single layer cannot solve it -- the
     -- hidden layer is what makes this learnable.
-    let mut xs :=
+    let mut xs : List (List Float) :=
       [[(0.0 : Float), (0.0 : Float)], [(0.0 : Float), (1.0 : Float)], [(1.0 : Float), (0.0 : Float)],
         [(1.0 : Float), (1.0 : Float)]]
-    let mut ys := [(0.0 : Float), (1.0 : Float), (1.0 : Float), (0.0 : Float)]
+    let mut ys : List Float := [(0.0 : Float), (1.0 : Float), (1.0 : Float), (0.0 : Float)]
     -- Fixed initial weights so the run is reproducible (no RNG needed).
-    let mut w1 := [[(0.5 : Float), -(0.4 : Float)], [(0.9 : Float), (1.0 : Float)]]
-    let mut b1 := [(0.1 : Float), -(0.2 : Float)]
-    let mut w2 := [[(0.7 : Float), -(0.8 : Float)]]
-    let mut b2 := [(0.3 : Float)]
-    let mut lr := (0.5 : Float)
-    let mut epochs := (4000 : Int)
+    let mut w1 : List (List Float) := [[(0.5 : Float), -(0.4 : Float)], [(0.9 : Float), (1.0 : Float)]]
+    let mut b1 : List Float := [(0.1 : Float), -(0.2 : Float)]
+    let mut w2 : List (List Float) := [[(0.7 : Float), -(0.8 : Float)]]
+    let mut b2 : List Float := [(0.3 : Float)]
+    let mut lr : Float := (0.5 : Float)
+    let mut epochs : Int := (4000 : Int)
     let _ ← pyPrintIO [pyPrintArg "=== Training a neural net on XOR (NumPy + math) ==="]
     let _ ← pyPrintIO [pyPrintArg s! "initial loss: {mean_squared_error'rn xs ys w1 b1 w2 b2}"]
     for epoch in (PastaLean.pyRange epochs)do
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-        let mut x := xs⦋i⦌
-        let mut y := ys⦋i⦌
+        let mut x : List Float := xs⦋i⦌
+        let mut y : Float := ys⦋i⦌
         -- Forward pass, keeping the hidden activations for backprop.
         let mut h0 := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
         let mut h1 := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
@@ -166,7 +166,7 @@ def main''rn :=
     let _ ← pyPrintIO [pyPrintArg "learned predictions:"]
     for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
       let mut p := predict'rn xs⦋i⦌ w1 b1 w2 b2
-      let mut label := if decide (p > (0.5 : Float)) then (1 : Int) else (0 : Int)
+      let mut label : Int := if decide (p > (0.5 : Float)) then (1 : Int) else (0 : Int)
       let _ ← pyPrintIO [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
 
 noncomputable def main : IO Unit := do

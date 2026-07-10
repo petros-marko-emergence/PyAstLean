@@ -15,8 +15,8 @@ set_option maxHeartbeats 800000
 -- library — a small "summary statistic" over a list of measurements.
 noncomputable def analyze := fun (xs : List Int) ↦ fun (threshold : Int) ↦
   (do
-    let mut total := (0 : Int)
-    let mut count := (0 : Int)
+    let mut total : Int := (0 : Int)
+    let mut count : Int := (0 : Int)
     for x in (PastaLean.pyIter xs)do
       let _ := Libraries.passta.pyPassInvariant (decide (count ≥ (0 : Int)))
       total := total +ₚ x
@@ -24,7 +24,7 @@ noncomputable def analyze := fun (xs : List Int) ↦ fun (threshold : Int) ↦
         count := count +ₚ (1 : Int)
       else
         let _ := ()
-    let mut ss := (0 : Int)
+    let mut ss : Int := (0 : Int)
     for x in (PastaLean.pyIter xs)do
       let _ := Libraries.passta.pyPassInvariant (decide (ss ≥ (0 : Int)))
       ss := ss +ₚ x ^ₚ (2 : Int)
@@ -43,7 +43,7 @@ noncomputable def analyze := fun (xs : List Int) ↦ fun (threshold : Int) ↦
     else
       avg := (0.0 : Rat)
       spread := (0.0 : Real)
-    let mut result := avg +ₚ spread
+    let mut result : Real := avg +ₚ spread
     let _ := Libraries.passta.pyPassEnsures (decide (result ≥ (0.0 : Rat)))
     return result : ExceptT PastaLean.PyException Id _)
 
@@ -57,8 +57,8 @@ theorem analyze_spec : ⦃⌜PastaLean.pyLen xs > (0 : Int)⌝⦄ analyze xs thr
 def analyze'rn : List Int → Int → PastaLean.PyExcept Float := fun (xs : List Int) ↦ fun (threshold : Int) ↦ do
   let _ := Libraries.passta.pyPassRequires (decide (PastaLean.pyLen xs > (0 : Int)))
   -- Loop 1: running total + count of entries above the threshold.
-  let mut total := (0 : Int)
-  let mut count := (0 : Int)
+  let mut total : Int := (0 : Int)
+  let mut count : Int := (0 : Int)
   for x in (PastaLean.pyIter xs)do
     let _ := Libraries.passta.pyPassInvariant (decide (count ≥ (0 : Int)))
     total := total +ₚ x
@@ -67,7 +67,7 @@ def analyze'rn : List Int → Int → PastaLean.PyExcept Float := fun (xs : List
     else
       let _ := ()
   -- Loop 2: sum of squares (uses exponentiation).
-  let mut ss := (0 : Int)
+  let mut ss : Int := (0 : Int)
   for x in (PastaLean.pyIter xs)do
     let _ := Libraries.passta.pyPassInvariant (decide (ss ≥ (0 : Int)))
     ss := ss +ₚ x ^ₚ (2 : Int)
@@ -87,6 +87,6 @@ def analyze'rn : List Int → Int → PastaLean.PyExcept Float := fun (xs : List
   else
     avg := (0.0 : Float)
     spread := (0.0 : Float)
-  let mut result := avg +ₚ spread
+  let mut result : Float := avg +ₚ spread
   let _ := Libraries.passta.pyPassEnsures (decide (result ≥ (0.0 : Float)))
   return result

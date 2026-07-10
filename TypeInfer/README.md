@@ -160,16 +160,46 @@ against `Int`. A captured *list* — the case that used to leave Lean stuck — 
 from its shape instead, exactly like `out` above. Either way the lifted helper is well-typed, and
 `path_count([[0,0,0],[0,0,0]])` prints `3`.
 
+## Following a type through a function
+
+Reading a type off one expression isn't enough — the type learned in one line has to reach every
+use. That's the fixpoint: seed each variable from what we know, then walk the function body over and
+over, learning a bit more each pass, until nothing changes. Because we only ever `join` upward, it
+always settles.
+
+The payoff is the accumulator pattern, where the *literal is empty* and the type only appears later:
+
+```python
+def evens(n: int) -> list[int]:
+    out = []                 # out : list[?]  — nothing to go on yet
+    for i in range(n):
+        out.append(i * 2)    # out.append(int) — now we know: out : list[int]
+    return out
+```
+
+Nobody annotated `out`, and `[]` says nothing. But `out.append(i * 2)` teaches us the element type,
+so `out` is ascribed `List Int`:
+
+```lean
+let mut out : List Int := []
+```
+
+That one ascription is what stops Lean defaulting the empty list's element to `ℚ` and getting stuck
+on the later `out.append`. The same thing types a dictionary from its first `d[k] = v`, and a
+lifted helper's captured variables from how the enclosing function uses them.
+
 ## What's here, and what's next
 
-Today (P0) the library is the four pieces above — the lattice, the two readers, and the emitter —
-wired into the code generator so all three places that used to guess types now share one
-implementation.
+Today the library:
+
+- reads a type from an **annotation** or a **literal's shape** (P0), and
+- **propagates** it through a function to a fixpoint, ascribing `fun (x : T)` on parameters and
+  `let mut x : T := …` on locals (P1).
 
 Still to come, in order:
 
-- **Fixpoint propagation** — loop over a function (and across functions) so a type learned in one
-  place reaches every use, not just the obvious literals.
+- **Across functions** — let a caller's argument types reach a callee's parameters, and a callee's
+  return type reach the call site, iterated to a fixpoint over the whole module.
 - **`PyAny`, the total fallback** — for the slots that stay `unknown`, box the value into a single
   runtime type that holds anything. That's what makes the transpiler handle *general* Python and
   never simply fail; the cost is that a boxed value isn't provable, so it comes with a warning and a
@@ -185,6 +215,8 @@ Still to come, in order:
 | `Annotation.lean` | `ofAnnotation` / `toAnnotation?` — Python type hints ↔ `PyType` |
 | `Value.lean` | `ofValue` — the type of a literal, read from its shape |
 | `Emit.lean` | `toTypeSyntax?` — `PyType` → Lean type text |
+| `Rules.lean` | `typeOfExpr` / `applyStmt` — the type of an expression, and how a statement updates what's known |
+| `Solve.lean` | `inferFunction` (the fixpoint) and `stampNode` (write `_ty` back onto the IR) |
 
-Tests are in `PastaLeanTest/TypeInfer/TestLattice.lean` (unit checks on the lattice) and
-`PastaLeanTest/PastaLeanCheck/Typing/` (golden tests on the emitted Lean).
+Tests are in `PastaLeanTest/TypeInfer/TestLattice.lean` and `TestInfer.lean` (unit checks on the
+lattice and the rules) and `PastaLeanTest/PastaLeanCheck/Typing/` (worked programs).

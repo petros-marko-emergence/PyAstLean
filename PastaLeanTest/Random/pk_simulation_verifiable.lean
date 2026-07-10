@@ -9,7 +9,7 @@ open Std.Do
 set_option linter.all false
 set_option mvcgen.warning false
 
-set_option maxHeartbeats 800000
+set_option maxHeartbeats 0
 
 -- --- PURE MATH (Tier 0, provable) ---
 -- Exact mode lowers these to ℚ (rational, computable AND provable); calc_entropy uses

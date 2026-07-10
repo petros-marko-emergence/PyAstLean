@@ -18,6 +18,14 @@ def pyTypeSyntax? (t : TypeInfer.PyType) : PygenM (Option (TSyntax `term)) := do
     | .approx => pure (mkIdent ``Float)
   TypeInfer.toTypeSyntax? floatTy t
 
+/-- The Lean type stamped on a node by the inference pass (`_ty`), if any. `_ty` is an annotation
+node, so it round-trips through `PyType` and the full emitter — covering lists, dicts, tuples and
+`Optional`, not just the shapes the annotation reader handles directly. -/
+def stampedTypeSyntax? (node : Json) : PygenM (Option (TSyntax `term)) := do
+  match jsonFieldOption node "_ty" with
+  | some ann => pyTypeSyntax? (TypeInfer.ofAnnotation ann)
+  | none => return none
+
 /-- Infer a simple runtime type from a value expression when the shape is obvious. -/
 def inferSimpleValueTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) :=
   pyTypeSyntax? (TypeInfer.ofValue json)

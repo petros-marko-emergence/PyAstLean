@@ -116,7 +116,10 @@ partial def localAnnotations (stmts : Array Json) : Std.HashMap String Json :=
       if jsonNodeType? stmt == some "Assign" then
         match stmt.getObjVal? "target", stmt.getObjVal? "value" with
         | .ok target, .ok value =>
-            match target.getObjValAs? String "id", TypeInfer.toAnnotation? (TypeInfer.ofValue value) with
+            -- Prefer the inference pass's `_ty` (mutation-informed); fall back to the RHS shape.
+            let annotation? := (jsonFieldOption target "_ty").orElse fun _ =>
+              TypeInfer.toAnnotation? (TypeInfer.ofValue value)
+            match target.getObjValAs? String "id", annotation? with
             | .ok name, some annotation =>
                 if acc.contains name then acc else acc.insert name annotation
             | _, _ => acc

@@ -41,6 +41,7 @@ GROUPS: list[tuple[str, Path, bool]] = [
     ("Random", REPO / "PastaLeanTest/Random", True),
     ("mvcgen_playgrond", REPO / "example_scripts/mvcgen_playground", True),
     ("General", REPO / "PastaLeanTest/PastaLeanCheck/General", False),
+    ("Typing", REPO / "PastaLeanTest/PastaLeanCheck/Typing", False),
 ]
 
 # Helper scripts that are NOT transpiler inputs (they drive/figure showcases, not programs to port).

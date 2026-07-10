@@ -1,6 +1,7 @@
 import PastaLeanTest.PyGens.Basic
 import PastaLeanTest.PyAPI
 import PastaLeanTest.TypeInfer.TestLattice
+import PastaLeanTest.TypeInfer.TestInfer
 import PastaLeanTest.PALCRunner
 import PastaLeanTest.Random
 import PastaLeanTest.Libraries.numpy.numpy_test

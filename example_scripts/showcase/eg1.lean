@@ -9,7 +9,7 @@ open Std.Do
 set_option linter.all false
 set_option mvcgen.warning false
 
-set_option maxHeartbeats 800000
+set_option maxHeartbeats 0
 
 noncomputable def euclidean_distance := fun (p1 : List Int) ↦ fun (p2 : List Int) ↦
   ((do
@@ -56,7 +56,7 @@ noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (data
         let mut min_dist := PastaLean.pyMin distances
         -- Find the index of the minimum distance
         -- Using a loop since index() might not be supported based on tests
-        let mut min_index := -(1 : Int)
+        let mut min_index : Int := -(1 : Int)
         for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
           let i := Prod.fst _pair_1
           let d := Prod.snd _pair_1
@@ -88,7 +88,7 @@ def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List 
         let mut min_dist := PastaLean.pyMin distances
         -- Find the index of the minimum distance
         -- Using a loop since index() might not be supported based on tests
-        let mut min_index := -(1 : Int)
+        let mut min_index : Int := -(1 : Int)
         for _pair_1 in (PastaLean.pyIter (PastaLean.pyEnumerate distances))do
           let i := Prod.fst _pair_1
           let d := Prod.snd _pair_1
@@ -111,11 +111,11 @@ def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List 
 
 noncomputable def run_example :=
   ((do
-      let mut dataset :=
+      let mut dataset : List (List Int) :=
         [[(1 : Int), (2 : Int), (3 : Int)], [(4 : Int), (5 : Int), (6 : Int)], [(7 : Int), (8 : Int), (9 : Int)],
           [(2 : Int), (1 : Int), (4 : Int)]]
-      let mut target_point := [(2 : Int), (3 : Int), (4 : Int)]
-      let mut invalid_point := [(1 : Int), (2 : Int)]
+      let mut target_point : List Int := [(2 : Int), (3 : Int), (4 : Int)]
+      let mut invalid_point : List Int := [(1 : Int), (2 : Int)]
       let _ ← pyPrintNoop [pyPrintArg "Dataset:", pyPrintArg dataset]
       let _ ← pyPrintNoop [pyPrintArg "Target Point:", pyPrintArg target_point]
       -- Valid Case
@@ -139,11 +139,11 @@ attribute [simp] run_example
 
 def run_example'rn :=
   ((do
-      let mut dataset :=
+      let mut dataset : List (List Int) :=
         [[(1 : Int), (2 : Int), (3 : Int)], [(4 : Int), (5 : Int), (6 : Int)], [(7 : Int), (8 : Int), (9 : Int)],
           [(2 : Int), (1 : Int), (4 : Int)]]
-      let mut target_point := [(2 : Int), (3 : Int), (4 : Int)]
-      let mut invalid_point := [(1 : Int), (2 : Int)]
+      let mut target_point : List Int := [(2 : Int), (3 : Int), (4 : Int)]
+      let mut invalid_point : List Int := [(1 : Int), (2 : Int)]
       let _ ← pyPrintIO [pyPrintArg "Dataset:", pyPrintArg dataset]
       let _ ← pyPrintIO [pyPrintArg "Target Point:", pyPrintArg target_point]
       -- Valid Case
