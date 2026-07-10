@@ -10,6 +10,7 @@ import PastaLean.PyGens.UseCases.Exceptions
 import PastaLean.PyVerify.AssertTactic
 import PastaLean.PyVerify.Contracts
 import PastaLean.PyGens.Transform.ClosureConvert
+import PastaLean.PyGens.Transform.Desugar
 
 open Lean Meta Elab Term Qq Std
 

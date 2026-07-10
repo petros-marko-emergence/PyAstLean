@@ -107,6 +107,60 @@ def functionParamAnnotations (fnJson : Json) : Std.HashMap String Json := Id.run
           m := m.insert name annotation
   return m
 
+/-- The obvious type of an assignment RHS as a Python annotation name: `0` → `int`,
+`[0]` / `[0] * n` → `list[int]`. `none` when the shape is unclear. -/
+partial def inferredTypeName (json : Json) : Option String :=
+  match jsonNodeType? json with
+  | some "Constant" =>
+      match json.getObjVal? "value" with
+      | .ok (.bool _) => some "bool"
+      | .ok (.str _) => some "str"
+      | .ok (.num ⟨_, exponent⟩) =>
+          if json.getObjValAs? String "python_literal_kind" == .ok "float" then some "float"
+          else if exponent == 0 then some "int" else some "float"
+      | _ => none
+  | some "List" =>
+      match ((json.getObjValAs? (Array Json) "elts").toOption.getD #[])[0]? with
+      | some elt => (inferredTypeName elt).map fun t => s!"list[{t}]"
+      | none => none
+  | some "BinOp" =>
+      if json.getObjValAs? String "op" == .ok "mul" then
+        match json.getObjVal? "left", json.getObjVal? "right" with
+        | .ok left, .ok right =>
+            if jsonNodeType? left == some "List" then inferredTypeName left
+            else if jsonNodeType? right == some "List" then inferredTypeName right
+            else none
+        | _, _ => none
+      else none
+  | _ => none
+
+/-- `list[int]` → the `Subscript` annotation node the argument lowering expects. -/
+partial def annotationOfTypeName (typeName : String) : Json :=
+  if typeName.startsWith "list[" && typeName.endsWith "]" then
+    let inner := ((typeName.drop 5).dropEnd 1).toString
+    Json.mkObj [("node_type", Json.str "Subscript"),
+                ("value", Json.mkObj [("node_type", Json.str "Name"), ("id", Json.str "list")]),
+                ("slice", annotationOfTypeName inner)]
+  else Json.mkObj [("node_type", Json.str "Name"), ("id", Json.str typeName)]
+
+/-- Annotations inferred for the enclosing function's locals, from their first assignment. Without
+these a lifted capture is an untyped parameter and Lean's instance resolution gets stuck. -/
+partial def localAnnotations (stmts : Array Json) : Std.HashMap String Json :=
+  stmts.foldl (init := {}) fun acc stmt =>
+    let acc :=
+      if jsonNodeType? stmt == some "Assign" then
+        match stmt.getObjVal? "target", stmt.getObjVal? "value" with
+        | .ok target, .ok value =>
+            match target.getObjValAs? String "id", inferredTypeName value with
+            | .ok name, some typeName =>
+                if acc.contains name then acc else acc.insert name (annotationOfTypeName typeName)
+            | _, _ => acc
+        | _, _ => acc
+      else acc
+    if jsonNodeType? stmt == some "FunctionDef" then acc
+    else (nestedBlocks stmt).foldl (fun a block =>
+      (localAnnotations block).fold (fun m k v => if m.contains k then m else m.insert k v) a) acc
+
 /-- Python methods that mutate their receiver, so a captured container they are called on is
 mutated rather than merely read. -/
 private def mutatingMethodName (attr : String) : Bool :=
@@ -186,8 +240,235 @@ partial def rewriteHelperCalls (old new : String) (captures : Array String) (jso
       return Json.mkObj rewritten
   | _ => return json
 
+
+/-! ### State threading
+
+A helper cannot mutate a captured variable — Lean closures are pure. So a capture it rebinds
+(`nonlocal ans`) or mutates in place (`grid[i][j] = v`, `xs.append(x)`) is **threaded**: appended to
+the parameter list *and* returned, with every call site rebinding it.
+-/
+
+/-- `Tuple` of `elts`, or the single element itself (so one threaded name stays a plain name). -/
+private def tupleNode (elts : Array Json) : Json :=
+  if elts.size == 1 then elts[0]!
+  else Json.mkObj [("node_type", Json.str "Tuple"), ("elts", Json.arr elts)]
+
+private def assignNode (target value : Json) : Json :=
+  Json.mkObj [("node_type", Json.str "Assign"), ("target", target), ("value", value)]
+
+private def returnNode (value : Option Json) : Json :=
+  Json.mkObj [("node_type", Json.str "Return"), ("value", value.getD Json.null)]
+
+/-- The `Nonlocal` names declared anywhere in `json`. -/
+partial def nonlocalNames (json : Json) : Array String :=
+  let here := if jsonNodeType? json == some "Nonlocal" then
+      (json.getObjValAs? (Array String) "names").toOption.getD #[]
+    else #[]
+  match json with
+  | .arr elems => elems.foldl (fun acc e => appendUnique acc (nonlocalNames e)) here
+  | .obj fields => fields.toList.foldl (fun acc (_, v) => appendUnique acc (nonlocalNames v)) here
+  | _ => here
+
+/-- The statement-list fields of a node. -/
+private def blockFields : Array String := #["body", "orelse", "finalbody"]
+
+/-- Rewrite every statement list in `json` with `f`, innermost first. -/
+partial def mapStatementLists (f : Array Json → Array Json) (json : Json) : Json :=
+  match json with
+  | .arr elems => Json.arr (elems.map (mapStatementLists f))
+  | .obj fields =>
+      Json.mkObj (fields.toList.map fun (key, value) =>
+        let value := mapStatementLists f value
+        if blockFields.contains key then
+          match value with
+          | .arr stmts => (key, Json.arr (f stmts))
+          | _ => (key, value)
+        else (key, value))
+  | _ => json
+
+/-- Drop `nonlocal` declarations; the names they refer to become threaded parameters. -/
+def stripNonlocal (json : Json) : Json :=
+  mapStatementLists (fun stmts => stmts.filter (jsonNodeType? · != some "Nonlocal")) json
+
+/-- Is `json` a call to `name`? -/
+private def isCallTo (name : String) (json : Json) : Bool :=
+  jsonNodeType? json == some "Call" &&
+    (match json.getObjVal? "func" with
+     | .ok func => jsonNodeType? func == some "Name" && func.getObjValAs? String "id" == .ok name
+     | _ => false)
+
+/-- Does `json` contain a call to `name` anywhere? -/
+partial def containsCallTo (name : String) (json : Json) : Bool :=
+  if isCallTo name json then true
+  else match json with
+    | .arr elems => elems.any (containsCallTo name)
+    | .obj fields => fields.toList.any (fun (_, v) => containsCallTo name v)
+    | _ => false
+
+/-- `Return` nodes carrying a value, anywhere outside a nested definition. -/
+partial def hasValuedReturn (json : Json) : Bool :=
+  if jsonNodeType? json == some "FunctionDef" then false
+  else if jsonNodeType? json == some "Return" then
+    match json.getObjVal? "value" with
+    | .ok value => !value.isNull
+    | _ => false
+  else match json with
+    | .arr elems => elems.any hasValuedReturn
+    | .obj fields => fields.toList.any (fun (_, v) => hasValuedReturn v)
+    | _ => false
+
+/-- A `Return` with no value, anywhere outside a nested definition. -/
+partial def hasBareReturn (json : Json) : Bool :=
+  if jsonNodeType? json == some "FunctionDef" then false
+  else if jsonNodeType? json == some "Return" then
+    match json.getObjVal? "value" with
+    | .ok value => value.isNull
+    | _ => true
+  else match json with
+    | .arr elems => elems.any hasBareReturn
+    | .obj fields => fields.toList.any (fun (_, v) => hasBareReturn v)
+    | _ => false
+
+/-- Every `return e` also yields the threaded names, and a helper that falls off the end returns
+them too. -/
+partial def threadReturns (threaded : Array String) (hasValue : Bool) (json : Json) : Json :=
+  if jsonNodeType? json == some "FunctionDef" then json
+  else if jsonNodeType? json == some "Return" then
+    let threadedNodes := threaded.map nameNode
+    match json.getObjVal? "value" with
+    | .ok value =>
+        if hasValue && !value.isNull then returnNode (tupleNode (#[value] ++ threadedNodes))
+        else returnNode (tupleNode threadedNodes)
+    | _ => returnNode (tupleNode threadedNodes)
+  else match json with
+    | .arr elems => Json.arr (elems.map (threadReturns threaded hasValue))
+    | .obj fields =>
+        Json.mkObj (fields.toList.map fun (k, v) => (k, threadReturns threaded hasValue v))
+    | _ => json
+
+/-- Build `new(args…, captures…)` from a call to `old`, after rewriting its arguments. -/
+private def retargetCall (new : String) (captures : Array String) (call : Json)
+    (rewrittenArgs : Array Json) : Json :=
+  ((call.setObjVal! "func" (nameNode new)).setObjVal!
+    "args" (Json.arr (rewrittenArgs ++ captures.map nameNode)))
+
+/-- Is `old` referenced anywhere other than as the callee of a direct call? -/
+partial def usedAsValue (old : String) (json : Json) : Bool :=
+  match json with
+  | .arr elems => elems.any (usedAsValue old)
+  | .obj fields =>
+      if isCallTo old json then
+        fields.toList.any (fun (key, value) => key != "func" && usedAsValue old value)
+      else if jsonNodeType? json == some "Name" && json.getObjValAs? String "id" == .ok old then true
+      else fields.toList.any (fun (_, value) => usedAsValue old value)
+  | _ => false
+
+mutual
+
+/-- Replace each threaded call inside an expression with a temporary, returning the assignments
+that must run first. A helper with no return value cannot appear in a value position. -/
+partial def hoistThreadedCalls (old new : String) (captures threaded : Array String)
+    (hasValue : Bool) (counter : IO.Ref Nat) (expr : Json) : PygenM (Json × Array Json) := do
+  if isCallTo old expr then
+    let args := (expr.getObjValAs? (Array Json) "args").toOption.getD #[]
+    let mut rewrittenArgs := #[]
+    let mut prelude := #[]
+    for arg in args do
+      let (arg, pre) ← hoistThreadedCalls old new captures threaded hasValue counter arg
+      rewrittenArgs := rewrittenArgs.push arg
+      prelude := prelude ++ pre
+    let call := retargetCall new captures expr rewrittenArgs
+    unless hasValue do
+      throwError s!"nested function '{old}' returns no value but is used as one."
+    let n ← counter.modifyGet (fun n => (n, n + 1))
+    let temp := s!"__thread_t{n + 1}"
+    let target := tupleNode (#[nameNode temp] ++ threaded.map nameNode)
+    return (nameNode temp, prelude.push (assignNode target call))
+  match expr with
+  | .arr elems =>
+      let mut out := #[]
+      let mut prelude := #[]
+      for elem in elems do
+        let (elem, pre) ← hoistThreadedCalls old new captures threaded hasValue counter elem
+        out := out.push elem
+        prelude := prelude ++ pre
+      return (Json.arr out, prelude)
+  | .obj fields =>
+      let mut rewritten := []
+      let mut prelude := #[]
+      for (key, value) in fields.toList do
+        let (value, pre) ← hoistThreadedCalls old new captures threaded hasValue counter value
+        prelude := prelude ++ pre
+        rewritten := rewritten ++ [(key, value)]
+      return (Json.mkObj rewritten, prelude)
+  | _ => return (expr, #[])
+
+/-- Rewrite the calls to `old` in a statement list, rebinding the threaded names at each one. -/
+partial def rewriteThreadedStmts (old new : String) (captures threaded : Array String)
+    (hasValue : Bool) (counter : IO.Ref Nat) (stmts : Array Json) : PygenM (Array Json) := do
+  let mut out := #[]
+  for stmt in stmts do
+    unless containsCallTo old stmt do
+      out := out.push stmt
+      continue
+    if jsonNodeType? stmt == some "While" then
+      if (stmt.getObjVal? "test").toOption.any (containsCallTo old) then
+        throwError s!"call to '{old}' in a `while` test cannot rebind the threaded state."
+    for context in ["Lambda", "ListComp", "SetComp", "DictComp", "GeneratorExp"] do
+      if jsonContainsNodeType stmt [context] then
+        throwError s!"call to '{old}' inside a {context} cannot rebind the threaded state."
+
+    let threadedNodes := threaded.map nameNode
+    -- `dfs(i, j)` as a statement: keep only the rebinding.
+    if jsonNodeType? stmt == some "Expr" then
+      if let .ok value := stmt.getObjVal? "value" then
+        if isCallTo old value then
+          let args := (value.getObjValAs? (Array Json) "args").toOption.getD #[]
+          let call := retargetCall new captures value args
+          let targets ←
+            if hasValue then do
+              let n ← counter.modifyGet (fun n => (n, n + 1))
+              pure (#[nameNode s!"__thread_t{n + 1}"] ++ threadedNodes)
+            else pure threadedNodes
+          out := out.push (assignNode (tupleNode targets) call)
+          continue
+    -- `x = dfs(i, j)`: bind the value and the threaded names together.
+    if jsonNodeType? stmt == some "Assign" then
+      if let .ok value := stmt.getObjVal? "value" then
+        if isCallTo old value then
+          unless hasValue do
+            throwError s!"nested function '{old}' returns no value but its result is assigned."
+          let .ok target := stmt.getObjVal? "target" | throwError "Assign is missing a 'target'"
+          let args := (value.getObjValAs? (Array Json) "args").toOption.getD #[]
+          let call := retargetCall new captures value args
+          out := out.push (assignNode (tupleNode (#[target] ++ threadedNodes)) call)
+          continue
+
+    -- Anywhere else the call sits inside an expression: hoist it to a temporary first.
+    let mut stmt := stmt
+    let mut prelude := #[]
+    for (key, value) in (stmt.getObj?.toOption.getD ∅).toList do
+      unless blockFields.contains key || key == "handlers" do
+        if containsCallTo old value then
+          let (value, pre) ← hoistThreadedCalls old new captures threaded hasValue counter value
+          prelude := prelude ++ pre
+          stmt := stmt.setObjVal! key value
+    for key in blockFields do
+      if let .ok block := stmt.getObjValAs? (Array Json) key then
+        let block ← rewriteThreadedStmts old new captures threaded hasValue counter block
+        stmt := stmt.setObjVal! key (Json.arr block)
+    out := out ++ prelude
+    out := out.push stmt
+  return out
+
+end
+
 /-- Lift one nested `FunctionDef` out of `outerJson`, returning the lifted helper and the rewritten
-outer function. Assumes `innerJson` has already been closure-converted itself. -/
+outer function.
+
+Captures the helper only reads become extra parameters. Captures it rebinds (`nonlocal`) or mutates
+in place are **threaded**: extra parameters that the helper also returns, with each call site
+rebinding them. -/
 private def liftHelper (outerName : String) (outerJson innerJson : Json) :
     PygenM (Json × Json) := do
   let .ok innerName := innerJson.getObjValAs? String "name" | throwError
@@ -195,43 +476,78 @@ private def liftHelper (outerName : String) (outerJson innerJson : Json) :
   let .ok outerBody := outerJson.getObjValAs? (Array Json) "body" | throwError
     s!"FunctionDef is missing a 'body': {outerJson}"
 
-  -- A capture is a name the helper reads that the enclosing function binds. Intersecting with the
-  -- outer scope keeps builtins (`len`, `range`) and globals out of the parameter list.
-  let outerBound := appendUnique (functionParamNames outerJson) (bodyBoundNames outerBody)
-  let innerBound := appendUnique (functionParamNames innerJson)
-    (bodyBoundNames ((innerJson.getObjValAs? (Array Json) "body").toOption.getD #[]))
-  let innerUsed := jsonNameIds innerJson
-  let captures := outerBound.filter fun name =>
-    innerUsed.contains name && !innerBound.contains name && name != innerName
+  let declaredNonlocal := nonlocalNames innerJson
+  let inner := stripNonlocal innerJson
+  let innerBody := (inner.getObjValAs? (Array Json) "body").toOption.getD #[]
 
-  let mutated := captures.filter (jsonMutatesCapture innerJson ·)
-  unless mutated.isEmpty do
-    throwError s!"nested function '{innerName}' mutates the captured variable(s) \
-      {mutated.toList}; that needs state threading, which is not supported yet."
+  -- A capture is a name the helper reads that the enclosing function binds. Intersecting with the
+  -- outer scope keeps builtins (`len`, `range`) and globals out of the parameter list. A `nonlocal`
+  -- name is rebound inside the helper, so it looks local — add it back explicitly.
+  let outerBound := appendUnique (functionParamNames outerJson) (bodyBoundNames outerBody)
+  let innerBound := appendUnique (functionParamNames inner) (bodyBoundNames innerBody)
+  let innerUsed := jsonNameIds inner
+  let captures := outerBound.filter fun name =>
+    name != innerName &&
+      ((innerUsed.contains name && !innerBound.contains name) || declaredNonlocal.contains name)
+
+  let threaded := captures.filter fun c => declaredNonlocal.contains c || jsonMutatesCapture inner c
+  let readOnly := captures.filter fun c => !threaded.contains c
+  let ordered := readOnly ++ threaded
+
+  if usedAsValue innerName inner || usedAsValue innerName (Json.arr outerBody) then
+    throwError s!"nested function '{innerName}' is used as a value; only direct calls are supported."
+
+  let hasValue := hasValuedReturn (Json.arr innerBody)
+  unless threaded.isEmpty do
+    -- A helper that sometimes returns a value and sometimes falls through would have to return an
+    -- `Option`, which its callers do not expect.
+    if hasValue && hasBareReturn (Json.arr innerBody) then
+      throwError s!"nested function '{innerName}' mixes `return <value>` with a bare `return`; \
+        threading its state would need an `Option` result."
+    if hasValue && !statementListDefinitelyReturns innerBody.toList then
+      throwError s!"nested function '{innerName}' can fall off the end while threading state; \
+        give it an explicit `return`."
 
   let helperName := s!"_{outerName}_{innerName}"
   -- References to a user function are suffixed in the `'rn` twin; the helper is a user function too.
   userNamesRef.modify (helperName :: ·)
 
-  let annotations := functionParamAnnotations outerJson
-  let .ok innerArgs := innerJson.getObjVal? "args" | throwError
-    s!"nested FunctionDef is missing 'args': {innerJson}"
+  -- Parameter annotations win; a local's type is inferred from its first assignment.
+  let annotations := (localAnnotations outerBody).fold
+    (fun m k v => if m.contains k then m else m.insert k v) (functionParamAnnotations outerJson)
+  let .ok innerArgs := inner.getObjVal? "args" | throwError
+    s!"nested FunctionDef is missing 'args': {inner}"
   let innerArgsArray := (innerArgs.getObjValAs? (Array Json) "args").toOption.getD #[]
-  let extraArgs := captures.map fun c => argNode c (annotations[c]?)
+  let extraArgs := ordered.map fun c => argNode c (annotations[c]?)
   let innerArgs := innerArgs.setObjVal! "args" (Json.arr (innerArgsArray ++ extraArgs))
 
-  -- Inside the helper the captures are now parameters, so a self-call passes them straight through.
-  let innerBodyJson ← rewriteHelperCalls innerName helperName captures
-    (Json.arr ((innerJson.getObjValAs? (Array Json) "body").toOption.getD #[]))
-  let helper := ((innerJson.setObjVal! "name" (Json.str helperName)).setObjVal! "args" innerArgs)
-    |>.setObjVal! "body" innerBodyJson
-
-  -- The enclosing body drops the `def` and calls the helper with the captures appended.
   let remaining := outerBody.filter fun stmt =>
     !(jsonNodeType? stmt == some "FunctionDef"
       && stmt.getObjValAs? String "name" == .ok innerName)
-  let rewrittenBody ← rewriteHelperCalls innerName helperName captures (Json.arr remaining)
-  return (helper, outerJson.setObjVal! "body" rewrittenBody)
+
+  let counter ← IO.mkRef 0
+  let (helperBody, rewrittenOuter) ←
+    if threaded.isEmpty then do
+      let body ← rewriteHelperCalls innerName helperName ordered (Json.arr innerBody)
+      let outer ← rewriteHelperCalls innerName helperName ordered (Json.arr remaining)
+      pure (body, outer)
+    else do
+      let body ← rewriteThreadedStmts innerName helperName ordered threaded hasValue counter innerBody
+      let body := threadReturns threaded hasValue (Json.arr body)
+      -- A helper that returns nothing still has to hand the threaded state back on every path.
+      let body := match body with
+        | .arr stmts =>
+            if statementListDefinitelyReturns stmts.toList then Json.arr stmts
+            else Json.arr (stmts.push (returnNode (tupleNode (threaded.map nameNode))))
+        | other => other
+      let outer ← rewriteThreadedStmts innerName helperName ordered threaded hasValue counter remaining
+      pure (body, Json.arr outer)
+
+  let helper := ((inner.setObjVal! "name" (Json.str helperName)).setObjVal! "args" innerArgs)
+    |>.setObjVal! "body" helperBody
+  -- Threading changes the result into a tuple, so the declared return annotation no longer holds.
+  let helper := if threaded.isEmpty then helper else helper.setObjVal! "returns" Json.null
+  return (helper, outerJson.setObjVal! "body" rewrittenOuter)
 
 /-- Lift every nested `def` out of `fnJson`, innermost-first. Returns the helper functions (to be
 emitted as sibling `partial def`s, before `fnJson`) and the rewritten function. -/
