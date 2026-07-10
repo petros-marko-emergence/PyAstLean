@@ -2,6 +2,7 @@ import Mathlib
 import PastaLean.Codegen
 import PastaLean.PyGens.Basic
 import PastaLean.PyGens.Core.Utils
+import TypeInfer
 
 open Lean Meta Elab Term Qq Std
 
@@ -10,55 +11,23 @@ namespace PastaLean
 /-- Keyword-argument object in Python call JSON. -/
 abbrev PyKeywordArgs := Std.TreeMap.Raw String Json compare
 
+/-- The Lean type of a `PyType`, with `float` resolved against the current numeric mode. -/
+def pyTypeSyntax? (t : TypeInfer.PyType) : PygenM (Option (TSyntax `term)) := do
+  let floatTy : TSyntax `term ← match ← getNumericMode with
+    | .exact => pure (mkIdent (if (← getRealContext) then ``Real else ``Rat))
+    | .approx => pure (mkIdent ``Float)
+  TypeInfer.toTypeSyntax? floatTy t
+
 /-- Infer a simple runtime type from a value expression when the shape is obvious. -/
-def inferSimpleValueTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
-  match json.getObjValAs? String "node_type" with
-  | .ok "Constant" =>
-      let .ok value := json.getObjValAs? Json "value" | throwError
-        s!"Constant node does not have a 'value' field or it is not a JSON value: {json}"
-      match value with
-      | .num (JsonNumber.mk _ exponent) =>
-          if json.getObjValAs? String "python_literal_kind" == .ok "float" then
-            match ← getNumericMode with
-            | .exact => return some (mkIdent ``Rat)
-            | .approx => return some (mkIdent ``Float)
-          else if exponent == 0 then
-            return some (mkIdent ``Int)
-          else
-            return some (mkIdent ``Rat)
-      | .str _ => return some (mkIdent ``String)
-      | .bool _ => return some (mkIdent ``Bool)
-      | _ => return none
-  | _ => return none
+def inferSimpleValueTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) :=
+  pyTypeSyntax? (TypeInfer.ofValue json)
 
 /-- Infer a simple iterable element type from obvious literal iterables. -/
 def inferIterableElemTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
-  match json.getObjValAs? String "node_type" with
-  | .ok "List" => do
-      let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
-        s!"List node does not have an 'elts' field or it is not a JSON value: {json}"
-      match eltsJson with
-      | .arr arr =>
-          match arr[0]? with
-          | some first => inferSimpleValueTypeSyntax? first
-          | none => return none
-      | _ => return none
-  | .ok "Tuple" => do
-      let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
-        s!"Tuple node does not have an 'elts' field or it is not a JSON value: {json}"
-      match eltsJson with
-      | .arr arr =>
-          match arr[0]? with
-          | some first => inferSimpleValueTypeSyntax? first
-          | none => return none
-      | _ => return none
-  | .ok "Constant" => do
-      let .ok value := json.getObjValAs? Json "value" | throwError
-        s!"Constant node does not have a 'value' field or it is not a JSON value: {json}"
-      match value with
-      | .str _ => return some (mkIdent ``Char)
-      | _ => return none
-  | _ => return none
+  -- Iterating a `String` yields `Char`, not a one-character `String`.
+  match TypeInfer.ofValue json with
+  | .str => return some (mkIdent ``Char)
+  | t => pyTypeSyntax? t.elemType
 
 /-- Read the positional parameter names from a lambda node without depending on `FuncDef.lean`. -/
 def lambdaArgIdents (json : Json) : PygenM (Array (TSyntax `ident)) := do

@@ -35,10 +35,15 @@ def classStructFieldSyntax (fieldJson : Json) :
   -- A field the per-variable pass marked `_real` (holds an `ℝ` value, e.g. a trained weight) types
   -- its annotation under real-context so `float`/`list[float]` → `ℝ`/`List ℝ`.
   let isRealField := (← getNumericMode) == .exact && fieldJson.getObjValAs? Bool "_real" == .ok true
-  let ty : TSyntax `term ←
+  -- No annotation: read the type off what `__init__` assigns (`self.c = [0] * n` → `List Int`).
+  -- Only then fall back to `Int`.
+  let ty : TSyntax `term ← withRealContext isRealField do
     match (fieldJson.getObjVal? "annotation").toOption with
-    | some (.null) | none => pure intTy
-    | some annJson => pure ((← withRealContext isRealField (functionArgTypeSyntax? annJson)).getD intTy)
+    | some (.null) | none =>
+        match (fieldJson.getObjVal? "init").toOption with
+        | some initJson => pure ((← pyTypeSyntax? (TypeInfer.ofValue initJson)).getD intTy)
+        | none => pure intTy
+    | some annJson => pure ((← functionArgTypeSyntax? annJson).getD intTy)
   match (fieldJson.getObjVal? "default").toOption with
   | some (.null) | none => `(structSimpleBinder| $fid:ident : $ty)
   | some defJson =>

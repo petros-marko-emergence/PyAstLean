@@ -24,6 +24,9 @@ name = "PastaLean"
 name = "Libraries"
 
 [[lean_lib]]
+name = "TypeInfer"
+
+[[lean_lib]]
 name = "PastaLeanTest"
 
 [[lean_lib]]

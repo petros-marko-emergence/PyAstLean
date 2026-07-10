@@ -765,48 +765,29 @@ class ASTToJsonLeanVisitorBase:
             return target.attr
         return None
 
-    def _inferred_type_name(self, value):
-        """The obvious type of an assignment RHS as a Python annotation string, or None.
-        `0` -> `int`, `[0]` / `[0] * n` -> `list[int]`."""
-        if isinstance(value, ast.Constant):
-            # bool before int: `bool` is a subclass of `int`.
-            for py_type, name in ((bool, "bool"), (int, "int"), (float, "float"), (str, "str")):
-                if isinstance(value.value, py_type):
-                    return name
-            return None
-        if isinstance(value, ast.List):
-            elt = self._inferred_type_name(value.elts[0]) if value.elts else None
-            return f"list[{elt}]" if elt else None
-        if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Mult):
-            for side in (value.left, value.right):
-                if isinstance(side, ast.List):
-                    return self._inferred_type_name(side)
-        return None
-
-    def _inferred_field_annotation(self, value):
-        """An annotation AST inferred from `self.x = <value>`; None when the shape is unclear.
-        Without this an unannotated field defaults to `Int`, so `self.c = [0] * n` becomes `c : Int`."""
-        name = self._inferred_type_name(value)
-        return ast.parse(name, mode="eval").body if name else None
-
-    def _add_class_field(self, fields, seen, name, annotation, default):
+    def _add_class_field(self, fields, seen, name, annotation, default, init=None):
         """Record a class field, merging type/default info if the name is already known.
 
         First occurrence fixes order; a later annotated/defaulted occurrence upgrades a
-        previously-unknown annotation or default. `annotation`/`default` are raw AST nodes
-        (or None) and get visited to IR here.
+        previously-unknown annotation or default. `annotation`/`default`/`init` are raw AST nodes
+        (or None) and get visited to IR here. `init` is what the constructor assigns to the field
+        (`self.c = [0] * n`); the backend reads its type off that when there is no annotation.
         """
         ann_json = self.visit(annotation) if annotation is not None else None
         def_json = self.visit(default) if default is not None else None
+        init_json = self.visit(init) if init is not None else None
         if name in seen:
             idx = seen[name]
             if ann_json is not None and fields[idx]["annotation"] is None:
                 fields[idx]["annotation"] = ann_json
             if def_json is not None and fields[idx]["default"] is None:
                 fields[idx]["default"] = def_json
+            if init_json is not None and fields[idx]["init"] is None:
+                fields[idx]["init"] = init_json
         else:
             seen[name] = len(fields)
-            fields.append({"name": name, "annotation": ann_json, "default": def_json})
+            fields.append({"name": name, "annotation": ann_json, "default": def_json,
+                           "init": init_json})
 
     def _collect_self_fields(self, body, fields, seen, param_types=None):
         """Harvest `self.X` assignment targets from a method body into the field list.
@@ -828,15 +809,13 @@ class ASTToJsonLeanVisitorBase:
                 for tgt in stmt.targets:
                     name = self._self_attr_name(tgt)
                     if name is not None:
-                        # `self.x = x` where `x` is a typed parameter -> use the param's type;
-                        # otherwise infer from the RHS shape.
+                        # `self.x = x` where `x` is a typed parameter -> use the param's type.
+                        # Otherwise pass the RHS along; the backend infers the type from it.
                         ann = None
                         if (isinstance(stmt.value, ast.Name)
                                 and stmt.value.id in param_types):
                             ann = param_types[stmt.value.id]
-                        if ann is None:
-                            ann = self._inferred_field_annotation(stmt.value)
-                        self._add_class_field(fields, seen, name, ann, None)
+                        self._add_class_field(fields, seen, name, ann, None, init=stmt.value)
             elif isinstance(stmt, ast.AugAssign):
                 name = self._self_attr_name(stmt.target)
                 if name is not None:

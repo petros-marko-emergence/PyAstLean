@@ -1,7 +1,7 @@
 # PastaLeanCHECK START
 # TARGET: command
 # CHECK: def total := fun (xs : List Int)
-# CHECK: def scale := fun (row : List Float)
+# CHECK: def scale := fun (row : List Rat)
 # CHECK: def label := fun (pairs : Std.HashMap String Int)
 # CHECK-NOT: import Typing
 # PastaLeanCHECK END

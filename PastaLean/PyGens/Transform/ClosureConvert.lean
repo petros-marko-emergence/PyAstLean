@@ -1,4 +1,5 @@
 import PastaLean.PyGens.Core.Utils
+import TypeInfer
 
 open Lean Meta Elab Term Qq Std
 
@@ -107,42 +108,6 @@ def functionParamAnnotations (fnJson : Json) : Std.HashMap String Json := Id.run
           m := m.insert name annotation
   return m
 
-/-- The obvious type of an assignment RHS as a Python annotation name: `0` → `int`,
-`[0]` / `[0] * n` → `list[int]`. `none` when the shape is unclear. -/
-partial def inferredTypeName (json : Json) : Option String :=
-  match jsonNodeType? json with
-  | some "Constant" =>
-      match json.getObjVal? "value" with
-      | .ok (.bool _) => some "bool"
-      | .ok (.str _) => some "str"
-      | .ok (.num ⟨_, exponent⟩) =>
-          if json.getObjValAs? String "python_literal_kind" == .ok "float" then some "float"
-          else if exponent == 0 then some "int" else some "float"
-      | _ => none
-  | some "List" =>
-      match ((json.getObjValAs? (Array Json) "elts").toOption.getD #[])[0]? with
-      | some elt => (inferredTypeName elt).map fun t => s!"list[{t}]"
-      | none => none
-  | some "BinOp" =>
-      if json.getObjValAs? String "op" == .ok "mul" then
-        match json.getObjVal? "left", json.getObjVal? "right" with
-        | .ok left, .ok right =>
-            if jsonNodeType? left == some "List" then inferredTypeName left
-            else if jsonNodeType? right == some "List" then inferredTypeName right
-            else none
-        | _, _ => none
-      else none
-  | _ => none
-
-/-- `list[int]` → the `Subscript` annotation node the argument lowering expects. -/
-partial def annotationOfTypeName (typeName : String) : Json :=
-  if typeName.startsWith "list[" && typeName.endsWith "]" then
-    let inner := ((typeName.drop 5).dropEnd 1).toString
-    Json.mkObj [("node_type", Json.str "Subscript"),
-                ("value", Json.mkObj [("node_type", Json.str "Name"), ("id", Json.str "list")]),
-                ("slice", annotationOfTypeName inner)]
-  else Json.mkObj [("node_type", Json.str "Name"), ("id", Json.str typeName)]
-
 /-- Annotations inferred for the enclosing function's locals, from their first assignment. Without
 these a lifted capture is an untyped parameter and Lean's instance resolution gets stuck. -/
 partial def localAnnotations (stmts : Array Json) : Std.HashMap String Json :=
@@ -151,9 +116,9 @@ partial def localAnnotations (stmts : Array Json) : Std.HashMap String Json :=
       if jsonNodeType? stmt == some "Assign" then
         match stmt.getObjVal? "target", stmt.getObjVal? "value" with
         | .ok target, .ok value =>
-            match target.getObjValAs? String "id", inferredTypeName value with
-            | .ok name, some typeName =>
-                if acc.contains name then acc else acc.insert name (annotationOfTypeName typeName)
+            match target.getObjValAs? String "id", TypeInfer.toAnnotation? (TypeInfer.ofValue value) with
+            | .ok name, some annotation =>
+                if acc.contains name then acc else acc.insert name annotation
             | _, _ => acc
         | _, _ => acc
       else acc
