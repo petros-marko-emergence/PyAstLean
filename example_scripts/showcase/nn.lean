@@ -73,8 +73,8 @@ noncomputable def main' :=
     let mut b2 := [(0.3 : Real)]
     let mut lr := (0.5 : Rat)
     let mut epochs := (4000 : Int)
-    let _ ← pyPrintNoop [pyPrintArg "=== Training a neural net on XOR (NumPy + math) ==="]
-    let _ ← pyPrintNoop [pyPrintArg s! "initial loss: {mean_squared_error xs ys w1 b1 w2 b2}"]
+    let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "=== Training a neural net on XOR (NumPy + math) ==="]
+    let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "initial loss: {mean_squared_error xs ys w1 b1 w2 b2}"]
     for epoch in (PastaLean.pyRange epochs)do
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
         let mut x := xs⦋i⦌
@@ -103,14 +103,18 @@ noncomputable def main' :=
               w1⦋(1 : Int)⦌⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1 *ₚ x⦋(1 : Int)⦌]
         b1 := [b1⦋(0 : Int)⦌ -ₚ lr *ₚ d_h0, b1⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1]
       if h_1 : (epoch +ₚ (1 : Int)) %ₚ (1000 : Int) = (0 : Int) then 
-        let _ ← pyPrintNoop [pyPrintArg s!"epoch {(epoch +ₚ (1 : Int))}: loss = {mean_squared_error xs ys w1 b1 w2 b2}"]
+        let _ ←
+          PastaLean.ProofMode.pyPrintProof
+              [pyPrintArg s!"epoch {(epoch +ₚ (1 : Int))}: loss = {mean_squared_error xs ys w1 b1 w2 b2}"]
       else
         let _ := ()
-    let _ ← pyPrintNoop [pyPrintArg "learned predictions:"]
+    let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "learned predictions:"]
     for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
       let mut p := predict xs⦋i⦌ w1 b1 w2 b2
       let mut label := if decide (p > (0.5 : Real)) then (1 : Int) else (0 : Int)
-      let _ ← pyPrintNoop [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
+      let _ ←
+        PastaLean.ProofMode.pyPrintProof
+            [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
 
 attribute [simp] main'
 

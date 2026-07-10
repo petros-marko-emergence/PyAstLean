@@ -53,8 +53,8 @@ noncomputable def main' :=
     let mut rabbits := List.map (fun row => row⦋(1 : Int)⦌) solution
     let mut wolves := List.map (fun row => row⦋(2 : Int)⦌) solution
     -- print some results in a messy way
-    let _ ← pyPrintNoop [pyPrintArg "Simulation results for 3-species system:"]
-    let _ ← pyPrintNoop [pyPrintArg "Time | Grass | Rabbits | Wolves"]
+    let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Simulation results for 3-species system:"]
+    let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Time | Grass | Rabbits | Wolves"]
     for i in (PastaLean.pyRange (5000 : Int) (0 : Int) (100 : Int))do
       -- bunching up printing and math
       let mut avg := (grass⦋i⦌ +ₚ rabbits⦋i⦌ +ₚ wolves⦋i⦌) /ₚ (3.0 : Rat)
@@ -63,7 +63,7 @@ noncomputable def main' :=
               rabbits⦋i⦌ *ₚ Libraries.math.pyMathLogR (rabbits⦋i⦌ +ₚ (1 : Int)) +ₚ
             wolves⦋i⦌ *ₚ Libraries.math.pyMathLogR (wolves⦋i⦌ +ₚ (1 : Int)))
       let _ ←
-        pyPrintNoop
+        PastaLean.ProofMode.pyPrintProof
             [pyPrintArg
                 s!"{(PastaLean.pyFormatSpec t⦋i⦌
                     ".1f")} | {(PastaLean.pyFormatSpec grass⦋i⦌
@@ -72,10 +72,10 @@ noncomputable def main' :=
                     ".2f")} | Avg: {(PastaLean.pyFormatSpec avg
                     ".2f")} | Messy Entropy: {PastaLean.pyFormatSpec entropy ".2f"}"]
     -- final check
-    if h_1 : wolves⦋-1⦌ > (0.1 : Rat) then
-      let _ ← pyPrintNoop [pyPrintArg "The ecosystem survived!"]
+    if h_1 : wolves⦋-1⦌ > (0.1 : Rat) then 
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "The ecosystem survived!"]
     else
-      let _ ← pyPrintNoop [pyPrintArg "The wolves went extinct."]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "The wolves went extinct."]
 
 attribute [simp] main'
 
@@ -104,7 +104,7 @@ def main''rn :=
       let r_pop := __py_unpack1⦋(1 : Int)⦌
       let w := __py_unpack1⦋(2 : Int)⦌
       -- grass dynamics: logistic growth minus eaten by rabbits
-      let dgdt := r *ₚ g *ₚ ((1 : Int) -ₚ g /ₚ k) -ₚ a *ₚ g *ₚ r_pop
+      let dgdt := r *ₚ g *ₚ ((1 : Int) -ₚ PastaLean.pyFloat g /ₚ k) -ₚ a *ₚ g *ₚ r_pop
       -- rabbit dynamics: birth from grass minus death minus eaten by wolves
       let drdt := b *ₚ g *ₚ r_pop -ₚ d *ₚ r_pop -ₚ c *ₚ r_pop *ₚ w
       -- wolf dynamics: birth from rabbits minus death
@@ -125,7 +125,7 @@ def main''rn :=
     let _ ← pyPrintIO [pyPrintArg "Time | Grass | Rabbits | Wolves"]
     for i in (PastaLean.pyRange (5000 : Int) (0 : Int) (100 : Int))do
       -- bunching up printing and math
-      let mut avg := (grass⦋i⦌ +ₚ rabbits⦋i⦌ +ₚ wolves⦋i⦌) /ₚ (3.0 : Float)
+      let mut avg := PastaLean.pyFloat (grass⦋i⦌ +ₚ rabbits⦋i⦌ +ₚ wolves⦋i⦌) /ₚ (3.0 : Float)
       let mut entropy :=
         -(grass⦋i⦌ *ₚ Libraries.math.pyMathLog (grass⦋i⦌ +ₚ (1 : Int)) +ₚ
               rabbits⦋i⦌ *ₚ Libraries.math.pyMathLog (rabbits⦋i⦌ +ₚ (1 : Int)) +ₚ
@@ -140,7 +140,7 @@ def main''rn :=
                     ".2f")} | Avg: {(PastaLean.pyFormatSpec avg
                     ".2f")} | Messy Entropy: {PastaLean.pyFormatSpec entropy ".2f"}"]
     -- final check
-    if h_1 : wolves⦋-1⦌ > (0.1 : Float) then
+    if h_1 : wolves⦋-1⦌ > (0.1 : Float) then 
       let _ ← pyPrintIO [pyPrintArg "The ecosystem survived!"]
     else
       let _ ← pyPrintIO [pyPrintArg "The wolves went extinct."]
