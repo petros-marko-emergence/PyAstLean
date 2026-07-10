@@ -9,6 +9,7 @@ import PastaLean.PyGens.UseCases.Match
 import PastaLean.PyGens.UseCases.Exceptions
 import PastaLean.PyVerify.AssertTactic
 import PastaLean.PyVerify.Contracts
+import PastaLean.PyGens.Transform.ClosureConvert
 
 open Lean Meta Elab Term Qq Std
 
@@ -550,6 +551,16 @@ def buildWhileFunction (name : String) (json : Json) (sh : WhileShape) :
 def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
     | `command, json => do
+        -- A nested `def` becomes a sibling `partial def` emitted just before this one, with its
+        -- captured variables as extra parameters (`Transform/ClosureConvert.lean`). The rewritten
+        -- function has no nested defs left, so re-entering here terminates.
+        let (helpers, converted) ← closureConvertFunction json
+        if !helpers.isEmpty then
+          let mut cmds : Array (TSyntax `command) := #[]
+          for helper in helpers do
+            cmds := appendCommandSyntax cmds (← getCode helper `command)
+          cmds := appendCommandSyntax cmds (← getCode converted `command)
+          return ⟨mkNullNode (cmds.map TSyntax.raw)⟩
         let .ok rawName := json.getObjValAs? String "name" | throwError
           s!"FuncDef node does not have a 'name' field or it is not a string: {json}"
         -- Lean reserves the top-level name `main` for the program entry point and requires it to
