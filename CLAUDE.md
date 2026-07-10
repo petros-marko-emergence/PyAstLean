@@ -47,7 +47,8 @@ it (one per top-level statement), so Lean isn't restarted per node.
 root — `PastaLean/`, the Lean library, is already there, and the two names collide on
 case-insensitive filesystems.) Install it with `uv pip install -e '.[server]'`.
 
-- `cli.py` — the `pastalean` console script, also `python -m pastalean`.
+- `main.py` — **start here.** The `pastalean` console script / `python -m pastalean`; one thin
+  `cmd_*` per subcommand, delegating to `api` and `backend`.
 - `api.py` — `Session` (warm backend, many files), `translate`/`translate_file` (one-shot),
   `TranslationResult`.
 - `server.py` — `pastalean serve`, a FastAPI app over one `Session`.

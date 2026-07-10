@@ -33,7 +33,7 @@ server = [
 ]
 
 [project.scripts]
-pastalean = "pastalean.cli:main"
+pastalean = "pastalean.main:main"
 
 [tool.setuptools]
 # `src/` *is* the `pastalean` package — there is no `src/pastalean/` level. It cannot live at the

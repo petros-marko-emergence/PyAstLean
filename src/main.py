@@ -1,4 +1,4 @@
-"""`pastalean` command-line interface, also reachable as `python -m pastalean`.
+"""START HERE — the `pastalean` command-line entry point, also reachable as `python -m pastalean`.
 
     pastalean translate prog.py -o prog.lean
     pastalean check prog.py
@@ -6,6 +6,10 @@
     pastalean json prog.py
     pastalean batch example_scripts/commands -o out/
     pastalean serve --port 8000
+
+Each subcommand is a thin `cmd_*` wrapper. The work happens elsewhere: `api.Session` translates
+(via `transpile/`), `backend.lean` compiles and runs, `server` serves. Nothing here should know
+how a translation is performed.
 """
 
 from __future__ import annotations

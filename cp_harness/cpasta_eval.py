@@ -52,6 +52,7 @@ ALLOWED_IMPORTS = {"math"}   # CodeContests pre-filter: keep math-only solutions
 # program's own output, so they must be stripped before comparing.
 _LEAN_DIAG_HEADER = re.compile(r"\.lean:\d+:\d+:\s+(warning|error|info|note)\b")
 _PASSED_RE = re.compile(r"PASSED\s+(\d+)/(\d+)")
+_FAIL_RE = re.compile(r"^FAIL (\d+): got (.*)$", re.MULTILINE)
 
 CATS = ["didn't compile", "compiled · not all passed", "compiled · all passed"]
 COLORS = ["#d9534f", "#f0ad4e", "#5cb85c"]
@@ -330,10 +331,11 @@ def py_lit_to_lean(v):
 
 
 def build_test_harness(converted_lean, fn_name, cases):
-    """Append a `main` calling the computable `fn'rn` twin on each case, printing `PASSED p/t`.
-    Cases with an unrenderable argument or expected value are skipped. Returns (source, n)."""
+    """Append a `main` calling the computable `fn'rn` twin on each case, printing `PASSED p/t` and a
+    `FAIL <idx>: got <value>` line per failing case. Cases with an unrenderable argument or expected
+    value are skipped. Returns (source, runnable_indices)."""
     rn = f"{fn_name}'rn"
-    checks, n = [], 0
+    checks, runnable = [], []
     for idx, (args, expected) in enumerate(cases):
         arg_lits = [py_lit_to_lean(a) for a in args]
         exp_lit = py_lit_to_lean(expected)
@@ -341,14 +343,16 @@ def build_test_harness(converted_lean, fn_name, cases):
             continue
         call = rn + " " + " ".join(f"({a})" for a in arg_lits)
         checks.append("  _t := _t + 1")
+        # Print what Lean actually computed, so a failure is debuggable without a rerun. Every
+        # renderable expected type (Int/Float/String/Bool/List) has a `Repr` instance.
         checks.append(f'  if ({call}) == ({exp_lit}) then _p := _p + 1 '
-                      f'else IO.println "FAIL test {idx}"')
-        n += 1
+                      f'else IO.println s!"FAIL {idx}: got {{repr ({call})}}"')
+        runnable.append(idx)
     body = "\n".join(
         [converted_lean.rstrip(), "", "def main : IO Unit := do",
          "  let mut _p := 0", "  let mut _t := 0"]
         + checks + ['  IO.println s!"PASSED {_p}/{_t}"', ""])
-    return body, n
+    return body, runnable
 
 
 def load_callable(fn_src, method):
@@ -712,21 +716,23 @@ class CPastaEval:
         return (strip_lean_diagnostics(out), None) if err is None else (None, err)
 
     def run_lean_harness(self, harness_src, tmp_path):
-        """Run a function-model harness and parse its `PASSED p/t` line → ((p, t), None) | (None, err)."""
+        """Run a function-model harness. Returns `(counts, failures, error)` where `counts` is
+        `(passed, total)` or None, and `failures` maps a failing case index to what Lean computed."""
         tmp_path.write_text(harness_src)
         try:
             proc = subprocess.run(["lake", "env", "lean", "--run", str(tmp_path)],
                                   cwd=REPO_ROOT, capture_output=True, text=True, timeout=self.timeout)
         except subprocess.TimeoutExpired:
-            return None, "timeout"
+            return None, {}, "timeout"
         except Exception as e:  # noqa: BLE001
-            return None, str(e)
+            return None, {}, str(e)
         out = strip_lean_diagnostics(proc.stdout)
+        failures = {int(i): got.strip() for i, got in _FAIL_RE.findall(out)}
         if (m := _PASSED_RE.search(out)):
-            return (int(m.group(1)), int(m.group(2))), None
+            return (int(m.group(1)), int(m.group(2))), failures, None
         if proc.returncode != 0:
-            return None, f"exit {proc.returncode}: {(proc.stderr or out)[:200]}"
-        return None, "no PASSED line in output"
+            return None, failures, f"exit {proc.returncode}: {(proc.stderr or out)[:200]}"
+        return None, failures, "no PASSED line in output"
 
     def load_function_cases(self, prob_dir, params, method):
         """`(args, expected)` per test, where **expected is what the groundtruth produces** — the
@@ -756,8 +762,9 @@ class CPastaEval:
         if self.max_tests:
             cases = cases[: self.max_tests]
         report, deltas = {}, {"lean_pass": 0, "lean_total": 0, "py_pass": 0, "py_total": 0, "solutions": 0}
+        diverged = []
         if not cases:
-            return report, deltas, []
+            return report, deltas, diverged
 
         eval_dir = prob_dir / "eval"
         eval_dir.mkdir(exist_ok=True)
@@ -765,10 +772,12 @@ class CPastaEval:
             if status_path.read_text().strip() != "ok":
                 continue
             name = status_path.stem
-            harness, n = build_test_harness((lean_dir / f"{name}.lean").read_text(), method, cases)
+            harness, runnable = build_test_harness(
+                (lean_dir / f"{name}.lean").read_text(), method, cases)
+            n = len(runnable)
             print(f"[*] {prob_dir.name}/{name} (function) over {n} renderable test(s)...")
-            res, err = self.run_lean_harness(
-                harness, self.tmp_dir / f"{prob_dir.name}_{name}_harness.lean")
+            harness_path = self.tmp_dir / f"{prob_dir.name}_{name}_harness.lean"
+            res, got_by_idx, err = self.run_lean_harness(harness, harness_path)
             lean_pass, lean_total = res if res else (0, n)
 
             py_pass = py_total = 0
@@ -776,11 +785,19 @@ class CPastaEval:
                 py_src = (prob_dir / "solutions" / f"{name}.py").read_text()
                 py_pass, py_total = run_python_check(py_src, method, cases)
 
+            # Record each failing case with its input, the expected value, and what Lean computed,
+            # so a divergence is debuggable from the JSON without rerunning.
+            failures = [{"index": i, "args": cases[i][0], "expected": cases[i][1],
+                         "lean_got": got_by_idx[i]}
+                        for i in sorted(got_by_idx) if i < len(cases)]
             (eval_dir / f"{name}.json").write_text(json.dumps({
                 "model": "function", "method": method,
                 "lean": {"passed": lean_pass, "total": lean_total, "error": err},
                 "python": {"passed": py_pass, "total": py_total},
-            }, indent=2))
+                "skipped_unrenderable": len(cases) - n,
+                "harness": str(harness_path),
+                "failures": failures,
+            }, indent=2, default=str))
             report[name] = {
                 "lean": f"{lean_pass}/{lean_total}" + (f" ({err})" if err else ""),
                 "python": f"{py_pass}/{py_total}" if py_total else "skipped",
@@ -793,7 +810,18 @@ class CPastaEval:
             deltas["py_pass"] += py_pass
             deltas["py_total"] += py_total
             deltas["solutions"] += 1
-        return report, deltas, []
+
+            # A compiling solution that disagrees with CPython is a runtime/API bug — the same
+            # `lean_wrong_python_right` bucket the stdio model reports.
+            if lean_pass < py_pass or (err and py_total):
+                diverged.append({
+                    "problem": prob_dir.name, "solution": name, "model": "function",
+                    "classification": "lean_wrong_python_right",
+                    "lean": f"{lean_pass}/{lean_total}", "python": f"{py_pass}/{py_total}",
+                    "lean_error": err, "harness": str(harness_path),
+                    "failures": failures[:5],
+                })
+        return report, deltas, diverged
 
     def _evaluate_runner(self, runner, target_path, tests):
         """Run `runner` over `tests`; return (passed, total, per-test details incl. output)."""
@@ -914,8 +942,9 @@ class CPastaEval:
         for d in divergences:
             by_class[d["classification"]] = by_class.get(d["classification"], 0) + 1
         api_bugs = [d for d in divergences if d["classification"] == "lean_wrong_python_right"]
-        wrong_output = [d for d in api_bugs if d["lean_output"] is not None]
-        runtime_error = [d for d in api_bugs if d["lean_output"] is None]
+        # A `lean_error` (timeout / crash) is a runtime bug; otherwise Lean ran and answered wrong.
+        runtime_error = [d for d in api_bugs if d.get("lean_error")]
+        wrong_output = [d for d in api_bugs if not d.get("lean_error")]
         (self.dataset / "eval_divergences.json").write_text(json.dumps({
             "summary": {
                 "total_divergences": len(divergences), "by_classification": by_class,

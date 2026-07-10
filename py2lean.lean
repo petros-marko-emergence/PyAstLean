@@ -46,8 +46,10 @@ def runTranslateTask (jsonTask : Json) (ctx : Core.Context) (env : Environment) 
   -- `userNames` lists the user's functions/classes whose references should also be suffixed.
   PastaLean.runSuffixRef.set (jsonTask.getObjValAs? String "runSuffix" |>.toOption.getD "")
   PastaLean.userNamesRef.set ((jsonTask.getObjValAs? (Array String) "userNames" |>.toOption.getD #[]).toList)
-  let .ok json := jsonTask.getObjValAs? Json "ast"
-    | return errorResponse "Invalid JSON: missing 'ast' field or it is not a JSON value"
+  -- `getObjVal?`, not `getObjValAs? Json`: the latter reads a missing key as `null` and defers the
+  -- failure to codegen, which then reports a confusing "no 'node_type' field" instead.
+  let .ok json := jsonTask.getObjVal? "ast"
+    | return errorResponse "Invalid JSON: missing 'ast' field"
   let code? ← getCodeIO json target.toName ctx env checkCode
   pure <| match code? with
     | .ok code => successResponse target code
@@ -97,19 +99,11 @@ def handleTaskString (payload : String) (ctx : Core.Context) (env : Environment)
   | .ok jsonTask => handleTaskJson jsonTask ctx env
   | .error err => pure <| errorResponse s!"Error parsing JSON: {err}"
 
-partial def readLine (stdin : IO.FS.Stream) : IO String := do
-  let mut bytes := ByteArray.empty
-  while true do
-    let chunk ← stdin.read 1
-    if chunk.isEmpty then
-      break
-    if chunk[0]! == '\n'.toUInt8 then
-      break
-    bytes := bytes.append chunk
-  return String.fromUTF8? bytes |>.getD ""
-
 partial def runServerLoop (stdin stdout : IO.FS.Stream) (ctx : Core.Context) (env : Environment) : IO UInt32 := do
-  let rawLine ← readLine stdin
+  -- `getLine` keeps the trailing newline, so only end-of-stream yields `""`. A hand-rolled
+  -- byte-at-a-time reader that strips the newline cannot tell a blank line from EOF, and would
+  -- shut the server down on one.
+  let rawLine ← stdin.getLine
   if rawLine.isEmpty then
     return 0
   let line := rawLine.trimAscii.toString
