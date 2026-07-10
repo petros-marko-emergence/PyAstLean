@@ -69,7 +69,7 @@ variable" or "is this expression pure". The AST carries exactly that structure.
 ## 3. A JSON-lines IR streamed to one persistent Lean backend
 
 **The choice.** The Python side lowers each node to a small JSON object `{"node_type": "...", ...}`.
-The Python driver (`src/py2lean.py`) boots **one** long-lived Lean process and streams it
+The Python driver (`src/transpile/driver.py`) boots **one** long-lived Lean process and streams it
 **one line-delimited JSON request per top-level statement** — `{"task":"translate","ast":...}\n`
 — reading one response line back. The Lean backend turns each JSON node into Lean `Syntax`.
 
@@ -105,7 +105,7 @@ per-node error attribution, and lets the driver thread top-level state between s
 **The choice.** Before any Lean is produced, a pre-pass (`src/annotate_python.py`, built on
 `libcst` + `pyrefly` for type stubs) rewrites the Python *source* to add explicit type
 annotations to parameters, returns, and variables, using flow analysis to infer what the user
-left implicit. A second family of passes in `py2lean.py` then stamps the JSON AST with derived
+left implicit. A second family of passes in `src/transpile/driver.py` then stamps the JSON AST with derived
 facts: which names are mutated, which functions are real-valued (`_real_fn`), and each node's
 `effect_mode` (`"except"` / `"io"`).
 

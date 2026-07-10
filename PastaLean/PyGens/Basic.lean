@@ -346,6 +346,8 @@ def unaryOpApplyTerm (op : String) (operandCode : TSyntax `term) :
   | "not" => `(! $operandCode)
   | "neg" => `(- $operandCode)
   | "pos" => `($operandCode)
+  -- `~x` is Python's bitwise complement: `-x - 1` on `Int`.
+  | "invert" => `(- $operandCode - 1)
   | _ => throwError s!"Unsupported unary operator: {op}"
 
 /-- Whether a condition's IR already lowers to a `Bool` (a comparison, boolean operator,

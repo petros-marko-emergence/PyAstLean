@@ -15,10 +15,10 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pastalean
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
-PY2LEAN = REPO_ROOT / "src" / "py2lean.py"
 MODEL_PY = HERE / "pk_model.py"
 MODEL_LEAN = HERE / "pk_model.lean"
 GIF = HERE / "pk_simulation.gif"
@@ -52,12 +52,10 @@ def run_python(payload):
 
 
 def transpile_to_lean():
-    proc = subprocess.run(
-        [sys.executable, str(PY2LEAN), str(MODEL_PY), "--target", "command", "--mode", "run"],
-        capture_output=True, text=True, cwd=REPO_ROOT)
-    if proc.returncode != 0 or not proc.stdout.strip():
-        raise RuntimeError(f"Transpilation failed:\n{proc.stderr or proc.stdout}")
-    MODEL_LEAN.write_text(proc.stdout)
+    result = pastalean.translate_file(MODEL_PY, target="command", mode="run")
+    if not result.ok:
+        raise RuntimeError(f"Transpilation failed:\n{result.error}")
+    MODEL_LEAN.write_text(result.lean_code)
 
 
 def run_lean(payload):

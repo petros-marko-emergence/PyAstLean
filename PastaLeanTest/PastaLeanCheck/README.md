@@ -35,7 +35,7 @@ def sum_to_n(n):
 
 ## Directives
 
-- `TARGET: term|command|...` target passed to `src/py2lean.py` (default: `term`)
+- `TARGET: term|command|...` target passed to the transpiler (default: `term`)
 - `EXIT: <code>` expected process exit code (default: `0`)
 - `CHECK: <pattern>` ordered match in stdout
 - `CHECK-NOT: <pattern>` must not appear in stdout

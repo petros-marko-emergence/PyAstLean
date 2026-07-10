@@ -441,6 +441,13 @@ def getCodeIO (json: Json) (kind: SyntaxNodeKind) (ctx : Core.Context) (env: Env
     (checkCode : Bool := true) :
   IO <| Except String Format := do
   let code := getCodeCore json kind checkCode
+  -- Codegen runs unbounded (`maxHeartbeats := 0`): the budget exists to stop runaway *proof search*,
+  -- and there is no proof search here — just elaboration of the emitted syntax, which must scale to
+  -- arbitrarily long programs. It also has to be disabled rather than merely raised: `IO.getNumHeartbeats`
+  -- counts from thread start and `CoreM.run'` keeps the caller's `initHeartbeats`, so the persistent
+  -- backend server (`py2lean --server`) shares one budget across every request it ever serves. Once the
+  -- process crosses the ceiling, each further translation fails at `isDefEq` however small its program is.
+  let ctx := { ctx with maxHeartbeats := 0, options := ctx.options.insert `maxHeartbeats (.ofNat 0) }
   let eio := code.run' ctx {env := env}
   match ← eio.toIO' with
   | .ok code =>

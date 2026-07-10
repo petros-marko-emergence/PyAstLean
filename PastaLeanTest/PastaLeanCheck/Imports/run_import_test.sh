@@ -15,6 +15,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT"
 
+# `pastalean` is installed into the repo's uv venv; fall back to PATH for a system-wide install.
+PY="$ROOT/.venv/bin/python3"
+[ -x "$PY" ] || PY=python3
+
 DEF_PY="PastaLeanTest/PastaLeanCheck/Imports/mathlib_module.py"
 USE_PY="PastaLeanTest/PastaLeanCheck/Imports/importer.py"
 
@@ -33,7 +37,7 @@ cleanup() {
 # trap cleanup EXIT
 
 echo "[1/4] Converting defining module ($DEF_PY)..."
-python3 src/py2lean.py "$DEF_PY" --target command > "$DEF_LEAN" 2>/dev/null
+"$PY" -m pastalean translate "$DEF_PY" --target command > "$DEF_LEAN" 2>/dev/null
 if ! grep -q "private def _internal_helper" "$DEF_LEAN"; then
   echo "FAIL: expected '_internal_helper' to be lowered as 'private def'"; exit 1
 fi
@@ -46,7 +50,7 @@ fi
 echo "      privacy OK: _internal_helper and __SECRET are private; add is public."
 
 echo "[2/4] Checking importer emits 'import Mathlib_module'..."
-python3 src/py2lean.py "$USE_PY" --target command 2>/dev/null > "$USE_LEAN".gen
+"$PY" -m pastalean translate "$USE_PY" --target command 2>/dev/null > "$USE_LEAN".gen
 if ! grep -q "^import Mathlib_module" "$USE_LEAN".gen; then
   echo "FAIL: importer did not emit 'import Mathlib_module'"; cat "$USE_LEAN".gen; exit 1
 fi

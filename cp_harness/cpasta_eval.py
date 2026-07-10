@@ -37,10 +37,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
+from pastalean import Session  # `uv pip install -e .`
 
-from pastalean import Session  # noqa: E402  (needs the sys.path line above)
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 KIND_FILE = "kind"
 KIND_FUNCTION = "function"

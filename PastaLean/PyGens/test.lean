@@ -11,38 +11,30 @@ set_option mvcgen.warning false
 
 set_option maxHeartbeats 800000
 
-def factorial := fun (n : Int) ↦
-  (do
-    let mut result := (1 : Int)
-    for i in (PastaLean.pyRange (n +ₚ (1 : Int)) (1 : Int))do
-      let _ := Libraries.passta.pyPassInvariant (decide ((1 : Int) ≤ i))
-      let _ := Libraries.passta.pyPassInvariant (decide (i ≤ n +ₚ (1 : Int)))
-      let _ := Libraries.passta.pyPassInvariant (decide (result ≥ (1 : Int)))
-      let _ := Libraries.passta.pyPassDecreases (n +ₚ (1 : Int) -ₚ i)
-      result := result *ₚ i
-    return result : Id _)
-
-@[spec]
-theorem factorial_spec : ⦃⌜n ≥ (0 : Int)⌝⦄ factorial n ⦃⇓result => ⌜result ≥ (1 : Int)⌝⦄ :=
-  by
-  mvcgen [factorial, PastaLean.pyRange_forIn, PastaLean.pyRange_forIn_start] invariants
-  · ⇓⟨cur, result⟩ =>
-    ⌜let i := (cur.prefix.length : Int);
-      ((1 : Int) ≤ i ∧ i ≤ n +ₚ (1 : Int)) ∧ result ≥ (1 : Int)⌝
-  simp_all (config := { zetaDelta := true }) [taste_ingr]; sorry; sorry; omega
-
-def factorial'rn := fun (n : Int) ↦
+def maxWidthOfVerticalArea := fun (points : List (List Int)) ↦
   Id.run
     (do
-      let _ := Libraries.passta.pyPassRequires (decide (n ≥ (0 : Int)))
-      let mut result := (1 : Int)
-      for i in (PastaLean.pyRange (n +ₚ (1 : Int)) (1 : Int))do
-        let _ := Libraries.passta.pyPassInvariant (decide ((1 : Int) ≤ i))
-        let _ := Libraries.passta.pyPassInvariant (decide (i ≤ n +ₚ (1 : Int)))
-        let _ := Libraries.passta.pyPassInvariant (decide (result ≥ (1 : Int)))
-        let _ := Libraries.passta.pyPassDecreases (n +ₚ (1 : Int) -ₚ i)
-        result := result *ₚ i
-      return result)
+      let mut points := points
+      points := PastaLean.pySort points
+      let __py_ret_1 :=
+        PastaLean.pyMax
+          ((PastaLean.pyIter (Libraries.itertools.pyPairwise points)).map fun _pair_1 =>
+            let a := Prod.fst _pair_1;
+            let b := Prod.snd _pair_1;
+            b⦋(0 : Int)⦌ -ₚ a⦋(0 : Int)⦌)
+      return __py_ret_1)
 
+attribute [simp, taste_ingr] maxWidthOfVerticalArea
 
--- #eval factorial'rn 10
+def maxWidthOfVerticalArea'rn := fun (points : List (List Int)) ↦
+  Id.run
+    (do
+      let mut points := points
+      points := PastaLean.pySort points
+      let __py_ret_1 :=
+        PastaLean.pyMax
+          ((PastaLean.pyIter (Libraries.itertools.pyPairwise points)).map fun _pair_1 =>
+            let a := Prod.fst _pair_1;
+            let b := Prod.snd _pair_1;
+            b⦋(0 : Int)⦌ -ₚ a⦋(0 : Int)⦌)
+      return __py_ret_1)

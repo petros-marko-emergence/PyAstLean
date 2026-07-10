@@ -724,16 +724,15 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           let mutIdent := mkIdent mutName
           return ← mutatingMethodDoElem valueJson fun recv => `($mutIdent $recv $argCode)
 
+        -- Claim the call only when the shape matches the container mutator; a user method sharing
+        -- the name (`tree.update(i, v)`) has a different arity and belongs on the normal path.
         if let some arity := inPlaceMutatorArity? attr then
-          unless keyWordsMap.isEmpty do
-            throwError s!"{attr}() calls do not support keyword arguments."
-          let some methodName := pythonMethodMap? attr
-            | throwError s!"No runtime function is registered for '{attr}'."
-          unless argsArray.size == arity do
-            throwError s!"{attr}() expects exactly {arity} positional argument(s)."
-          let methodIdent := mkIdent methodName
-          let mutArgCodes ← argsArray.mapM (fun argJson => getCode argJson `term)
-          return ← mutatingMethodDoElem valueJson fun recv => `($methodIdent $recv $mutArgCodes*)
+          if keyWordsMap.isEmpty && argsArray.size == arity then
+            let some methodName := pythonMethodMap? attr
+              | throwError s!"No runtime function is registered for '{attr}'."
+            let methodIdent := mkIdent methodName
+            let mutArgCodes ← argsArray.mapM (fun argJson => getCode argJson `term)
+            return ← mutatingMethodDoElem valueJson fun recv => `($methodIdent $recv $mutArgCodes*)
 
         if attr == "get" then
           unless keyWordsMap.isEmpty do

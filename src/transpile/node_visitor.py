@@ -29,6 +29,7 @@ UNARYOP_MAP = {
     ast.USub: "neg",
     ast.UAdd: "pos",
     ast.Not: "not",
+    ast.Invert: "invert",   # `~x`, i.e. `-x - 1` on ints
 }
 
 COMPAREOP_MAP = {

@@ -10,16 +10,13 @@ How do we know the rewrite is correct? Two checks per case, using the REAL pass:
    guard-violating case, stayed a `While`).
 
 Together: the pass fires exactly when the conversion is semantics-preserving, and its target is
-provably equivalent on the tested inputs. Run: `python src/test_normalize_loops.py`.
+provably equivalent on the tested inputs. Run: `python tests/test_normalize_loops.py`.
 """
 import ast
 import json
 import random
-import sys
-import os
 
-sys.path.append(os.path.dirname(__file__))
-from py2lean import translate_to_json
+from pastalean.transpile.driver import translate_to_json
 
 
 def _run(src: str, fn: str, *args):

@@ -314,11 +314,14 @@ def runOneCase (pyPath : System.FilePath) : IO (Except String Unit) := do
     match parseSpecFromPython pyPath source with
     | .ok s => pure s
     | .error err => return .error err
+  -- `pastalean` is installed into the repo's uv venv; fall back to PATH for a system-wide install.
+  let venvPython := ".venv/bin/python3"
+  let python := if (← System.FilePath.pathExists venvPython) then venvPython else "python3"
   let out ← IO.Process.output {
-    cmd := "python3"
+    cmd := python
     -- `--strict` keeps golden tests deterministic: the best-effort fallback is the CLI default,
     -- but PALC must exercise real (strict) translation, incl. expected-failure cases.
-    args := #[ "src/py2lean.py", pyPathStr, "--target", spec.target, "--strict" ]
+    args := #[ "-m", "pastalean", "translate", pyPathStr, "--target", spec.target, "--strict" ]
   }
   if out.exitCode != spec.exitCode then
     return .error s!"{pyPathStr}: expected exit {spec.exitCode}, got {out.exitCode}\nSTDOUT:\n{out.stdout}\nSTDERR:\n{out.stderr}"

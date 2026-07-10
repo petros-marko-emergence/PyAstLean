@@ -4,36 +4,71 @@ PastaLean is a tool that converts Python code into Lean 4.
 
 PastaLean originates from "PyAstLean"(which mean Python to Lean via AST) but who doesn't love Pasta.
 
-## Usage
+## Install
 
-Build the project from the repository root:
+Build the Lean side from the repository root, then install the Python package:
 
 ```bash
 lake build
+uv pip install -e '.[server]'      # drop [server] if you don't want the HTTP API
 ```
 
-## Converting Python to Lean
+That puts a `pastalean` command on your PATH. `python -m pastalean` works too, and takes the
+same arguments.
 
-Use the Python wrapper `src/py2lean.py` to convert a Python file to Lean.
+## Command line
 
 ```bash
-python3 src/py2lean.py example_scripts/commands/assignment_arith.py --target command
+pastalean translate example_scripts/commands/assignment_arith.py   # Python -> Lean, on stdout
+pastalean check     prog.py                                        # translate, then `lake env lean`
+pastalean run       prog.py < input.txt                            # translate, compile, execute
+pastalean json      prog.py                                        # dump the intermediate JSON IR
+pastalean batch     example_scripts/commands -o out/ --check       # many files, one warm backend
+pastalean serve     --port 8000                                    # HTTP API
+pastalean libraries                                                # Python libs with a Lean shim
 ```
 
-That wrapper is responsible for:
+Flags shared by `translate`, `check`, `run`, `json`, and `batch`:
 
-1. Reads the Python file.
-2. Runs the annotation pre-pass from `src/annotate_python.py`.
-3. Converts the Python AST to the JSON IR in `src/node_visitor.py`.
-4. Sends JSON translation requests to the Lean backend.
-5. Reuses one persistent Lean backend process for the lifetime of the Python process, so
-   module-level translation does not restart Lean for every top-level statement.
+| Flag | Meaning |
+| --- | --- |
+| `--target command\|term` | Top-level declarations (default) or a single expression. |
+| `--mode prove\|run\|both` | Exact ℚ/ℝ (provable), `Float` (runnable), or both in one file (default). |
+| `--strict` | Fail on unsupported constructs instead of emitting `pyUnsupported(...)` placeholders. |
+| `--no-prove-asserts` | Leave each assert as `:= by taste?` rather than searching for a proof. |
+| `-v` | Dump the intermediate JSON IR and Lean syntax. |
 
+`translate`, `check`, and `run` also accept the LLM source rewrites `-r/--redesign` (restructure
+for provability) and `-c/--contracts` (insert Requires/Ensures/Invariant). Both write the
+transformed program to a sibling `.py` so you can read what the model produced.
 
-To see the intermediate steps in the code, run `--verbose` flag as shown below.
-```bash
-python3 src/py2lean.py example_scripts/commands/assignment_arith.py --target command --verbose
+## Python API
+
+```python
+import pastalean
+
+result = pastalean.translate_file("prog.py", mode="run")
+if result.ok:
+    print(result.lean_code)
+
+# Many files, one Lean boot:
+with pastalean.Session(target="command", mode="run") as session:
+    for result in session.translate_files(paths):
+        ...
 ```
+
+Booting the backend imports Mathlib and takes tens of seconds, so a `Session` is much faster
+than one process per file. `pastalean.compile_check` and `pastalean.run_program` take Lean text
+and shell out to `lake env lean`.
+
+## How a translation works
+
+1. Read the Python file.
+2. Run the annotation pre-pass (`src/transpile/annotate_python.py`).
+3. Convert the Python AST to a JSON IR (`src/transpile/node_visitor.py`).
+4. Send one JSON translation request per top-level statement to the Lean backend.
+5. Reuse a single persistent Lean process for the lifetime of the Python process, so
+   module-level translation does not restart Lean for every statement.
 
 ### Low-level Lean backend
 

@@ -52,7 +52,7 @@ and proving through `do` blocks isn't supported yet. **For today's purposes, tre
 mutation exactly like `print`/`raise`: they cost you the proof.**
 
 > Both IO and exceptions are **infectious** — one `print` or `raise` deep in the call graph turns
-> every function above it monadic. (Mechanism: `src/py2lean.py` stamps `effect_mode`
+> every function above it monadic. (Mechanism: `src/transpile/driver.py` stamps `effect_mode`
 > "io"/"except" on those nodes and their transitive callers; `PyGens/Core/Utils.lean`
 > `jsonUsesIOEffect`/`jsonUsesExceptionEffect` detect it; `PyGens/UseCases/FuncDef.lean` casts
 > the body to `IO`/`PyExcept`.)

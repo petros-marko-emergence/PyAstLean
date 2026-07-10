@@ -36,11 +36,11 @@ server = [
 pastalean = "pastalean.cli:main"
 
 [tool.setuptools]
-package-dir = { "" = "src" }
-
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["pastalean*"]
+# `src/` *is* the `pastalean` package — there is no `src/pastalean/` level. It cannot live at the
+# repo root either: `PastaLean/` (the Lean library) is already there, and the two collide on the
+# case-insensitive filesystems macOS and Windows default to.
+package-dir = { "pastalean" = "src" }
+packages = ["pastalean", "pastalean.backend", "pastalean.transpile"]
 
 [tool.pyrefly]
 project-includes = [

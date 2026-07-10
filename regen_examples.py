@@ -6,7 +6,7 @@ Groups and what happens to each:
   - Random    (PastaLeanTest/Random)                  -> .lean written IN PLACE next to the .py
   - General   (PastaLeanTest/PastaLeanCheck/General)  -> compile-checked only (temp file, no write)
 
-For each .py: run the transpiler (`src/py2lean.py --target command --mode both`), then type-check
+For each .py: run the transpiler (`pastalean translate --target command --mode both`), then type-check
 the generated Lean with `lake env lean`. Prints OK / CONVERT_FAIL / COMPILE_FAIL per file and a
 summary; exits non-zero if anything failed.
 
@@ -34,7 +34,6 @@ def extract_unsupported(lean: str) -> list[str]:
 
 REPO = Path(__file__).resolve().parent
 VENV_PY = REPO / ".venv/bin/python3"
-PY2LEAN = REPO / "src/py2lean.py"
 
 # (label, directory, write-in-place?)
 GROUPS: list[tuple[str, Path, bool]] = [
@@ -82,7 +81,7 @@ def first_error_line(text: str) -> str:
 def convert(py: Path) -> tuple[str | None, str | None]:
     """Transpile `py` to Lean text (both prove + run twins). Returns (lean, None) or (None, err)."""
     r = subprocess.run(
-        [python_bin(), str(PY2LEAN), str(py), "--target", "command", "--mode", "both"],
+        [python_bin(), "-m", "pastalean", "translate", str(py), "--target", "command", "--mode", "both"],
         capture_output=True, text=True, cwd=REPO,
     )
     if r.returncode != 0 or not r.stdout.strip():
