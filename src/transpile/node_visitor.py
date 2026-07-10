@@ -486,6 +486,18 @@ class ASTToJsonLeanVisitorBase:
                 result["float_notation"] = "scientific"
         return result
         
+    def visit_NamedExpr(self, node):
+        """Translates the walrus `x := e`. The Lean desugar pass hoists it into an assignment."""
+        return {
+            "node_type": "NamedExpr",
+            "target": self.visit(node.target),
+            "value": self.visit(node.value),
+        }
+
+    def visit_Nonlocal(self, node):
+        """Translates `nonlocal a, b`. Closure conversion threads these names through the helper."""
+        return {"node_type": "Nonlocal", "names": list(node.names)}
+
     def visit_Expr(self, node):
         """Translates ast.Expr (e.g., a standalone expression) to a JSON IR node."""
         return {

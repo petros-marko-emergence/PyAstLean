@@ -96,10 +96,10 @@ uv run pastalean serve
 In another shell you can test the API with `curl`:
 
 ```bash
-curl -s localhost:8000/translate -H 'content-type: application/json' \
+curl -s localhost:6789/translate -H 'content-type: application/json' \
      -d '{"source": "def f(x: int) -> int:\n    return x + 1\n"}'
 
-curl -s localhost:8000/run -H 'content-type: application/json' \
+curl -s localhost:6789/run -H 'content-type: application/json' \
      -d '{"source": "def main():\n    print(int(input()) + 10)\n\nif __name__ == \"__main__\":\n    main()\n",
           "stdin": "32\n", "mode": "run"}'      # -> {"stdout": "42\n", "exit_code": 0, ...}
 ```

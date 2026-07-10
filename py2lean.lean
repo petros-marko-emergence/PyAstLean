@@ -50,6 +50,11 @@ def runTranslateTask (jsonTask : Json) (ctx : Core.Context) (env : Environment) 
   -- failure to codegen, which then reports a confusing "no 'node_type' field" instead.
   let .ok json := jsonTask.getObjVal? "ast"
     | return errorResponse "Invalid JSON: missing 'ast' field"
+  -- Syntactic desugaring (nested `for` targets, walrus) runs before codegen; see
+  -- `PyGens/Transform/Desugar.lean`.
+  let json ← match PastaLean.desugarAst json with
+    | .ok desugared => pure desugared
+    | .error message => return errorResponse s!"Error generating code: {message}"
   let code? ← getCodeIO json target.toName ctx env checkCode
   pure <| match code? with
     | .ok code => successResponse target code

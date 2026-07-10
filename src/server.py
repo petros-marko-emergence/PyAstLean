@@ -3,13 +3,13 @@
     POST /translate   Python -> Lean, and compile-check it   (`pastalean translate`)
     POST /run         ... and execute the program's `main`    (`pastalean run`)
 
-    pastalean serve --port 8000
+    pastalean serve --port 6789
 
-    curl -s localhost:8000/translate -H 'content-type: application/json' \
+    curl -s localhost:6789/translate -H 'content-type: application/json' \
          -d '{"source": "def f(x):\n    return x + 1\n"}'
 
-Interactive docs at `/docs`, schema at `/openapi.json`. Requires the optional `server` extra:
-`uv pip install -e '.[server]'`.
+The web UI is at `/`, its generated reference at `/api`, the schema at `/openapi.json`. Requires the
+optional `server` extra: `uv pip install -e '.[server]'`.
 
 One Lean backend serves every request, and translation drives process-wide state, so requests are
 serialised behind a lock. This is a single-worker service by construction — run several processes
@@ -303,7 +303,7 @@ def lan_address() -> str | None:
 def serve(
     *,
     host: str = "0.0.0.0",  # noqa: S104  (LAN-reachable by default; pass "127.0.0.1" to restrict)
-    port: int = 8000,
+    port: int = 6789,
     target: str = "command",
     mode: str = "both",
     best_effort: bool = True,

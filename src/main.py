@@ -4,7 +4,7 @@
     pastalean run prog.py < input.txt
     pastalean json prog.py
     pastalean batch example_scripts/commands -o out/
-    pastalean serve --port 8000
+    pastalean serve --port 6789
 
 Each subcommand is a thin `cmd_*` wrapper. The work happens elsewhere: `api.Session` translates
 (via `transpile/`), `backend.lean` compiles and runs, `server` serves. Nothing here should know
@@ -306,7 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
                     "can run code as you — pass --no-ip to restrict it to this machine.",
     )
     p_serve.add_argument("--host", help="Explicit bind address. Overrides --no-ip.")
-    p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.add_argument("--port", type=int, default=6789)
     p_serve.add_argument(
         "--no-ip", action="store_true",
         help="Bind localhost only, so the API is not reachable from the network.",
