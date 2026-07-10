@@ -1,10 +1,32 @@
 # PastaLean
 
-PastaLean is a tool that converts Python code into Lean 4.
+<img src="./src/static/logo.png" width="200" height="200" />
 
-PastaLean originates from "PyAstLean"(which mean Python to Lean via AST) but who doesn't love Pasta.
+PastaLean is a tool that transpiles and verifies Python code into Lean 4.
+
+For an overview of the project, see the [presentation](https://anirudhg07.github.io/presentations/pastalean/).
+This work was presented at [Summer School: LeanLang for Programming 2026](https://east.emergence.ai/summerschool-july2026.html).
+
+> PastaLean originates from "PyAstLean"(which mean Python to Lean via AST) but who doesn't love Pasta.
+
+## Features
+
+- Transpiles Python code to Lean 4 code.
+- The tool gives 2 functions for the same function, one `provable` and one `computable`(marked with `'rn`).
+- Verification of the code(using assert and contract statements) using tactics like `taste?`, `mvcgen`, etc.
+
+## How it works?
 
 ## Install
+
+If you would like to use this as a Library, you can install it by adding it in your `lakefile.toml`:
+
+```toml
+[[require]]
+name = "PyAstLean"
+scope = "siddhartha-gadgil"
+rev = "v4.31.0"
+```
 
 Build the Lean side from the repository root:
 
@@ -41,21 +63,6 @@ pastalean serve                          # web playground + HTTP API
 pastalean libraries                      # Python libs with a Lean shim
 ```
 
-`translate` writes the Lean to stdout and *then* type-checks it with `lake env lean`, reporting
-diagnostics on stderr. So `pastalean translate prog.py > prog.lean` still writes clean Lean, the
-errors reach your terminal, and the exit status is non-zero if the Lean does not compile. Pass
-`--no-check` to skip the compile and get codegen only, which is much faster.
-
-Flags shared by `translate`, `run`, `json`, and `batch`:
-
-| Flag | Meaning |
-| --- | --- |
-| `--target command\|term` | Top-level declarations (default) or a single expression. |
-| `--mode prove\|run\|both` | Exact ℚ/ℝ (provable), `Float` (runnable), or both in one file (default). |
-| `--strict` | Fail on unsupported constructs instead of emitting `pyUnsupported(...)` placeholders. |
-| `--no-prove-asserts` | Leave each assert as `:= by taste?` rather than searching for a proof. |
-| `-v` | Dump the intermediate JSON IR and Lean syntax. |
-
 `translate` and `run` also accept the LLM source rewrites `-r/--redesign` (restructure for
 provability) and `-c/--contracts` (insert Requires/Ensures/Invariant). Both write the transformed
 program to a sibling `.py` so you can read what the model produced.
@@ -67,49 +74,26 @@ pastalean serve                 # reachable from the LAN; prints this machine's 
 pastalean serve --no-ip         # localhost only
 ```
 
-Opening the printed URL gives you a small web playground: paste Python, press **Translate** to see
-the generated Lean (syntax-highlighted, with compile errors if any), then **Run both** to execute
-the Python and the Lean on the same standard input and check they agree. **Insert contracts** runs
-the `--contracts` LLM pre-pass and shows the annotated Python in its own box, ready to swap in as
-the source. Provider, API key, model, and goal live under **Settings**.
+- Opening the printed URL opens a small web playground.
+- Paste Python and press **Translate** to see generated Lean with syntax highlighting and compile errors, if any.
+- Press **Run both** to execute the Python and Lean on the same standard input and verify they agree.
+- **Insert contracts** runs the `--contracts` LLM pre-pass and shows the annotated Python in its own box, ready to use as the source.
+- Provider, API key, model, and goal are available under **Settings**.
+- An API key entered in the UI stays in that browser and is sent with each request.
+- The server forwards the key to the provider and does not store or log it.
+- Leave the field blank to use the server's environment variables such as `OPENAI_API_KEY` or `GEMINI_API_KEY`.
+- The machine-readable API lives at **`/api`** and `/openapi.json`.
+- Those endpoints are authoritative; the table below is only a summary.
 
-`POST /contracts` returns `ok: false` with the source still attached when the model answers with
-something that is not parsable Python — which happens: models drift into writing
-`Ensures(Result() == <n!>)` instead of a real call. You see the pseudo-code and can retry.
+### Examples
 
-An API key given in the UI is kept in that browser and sent with each request; the server forwards
-it to the provider and neither stores nor logs it. Leave the field blank to use the server's own
-`OPENAI_API_KEY` / `GEMINI_API_KEY` / … from the environment.
+In one shell:
 
-The machine-readable side lives at **`/api`** (interactive reference, generated from the code) and
-`/openapi.json`. Those are authoritative — the table below is a summary.
+```bash
+uv run pastalean serve
+```
 
-The POST routes mirror the CLI verbs.
-
-| Route | Body | Returns |
-| --- | --- | --- |
-| `GET /` | — | the web UI |
-| `GET /health` | — | `{"status", "target", "mode"}` |
-| `GET /libraries` | — | `{"libraries": [...]}` |
-| `POST /translate` | `{"source", ...}` | `{"ok", "lean", "error", "degraded", "unsupported", "compiles", "diagnostics", "translate_seconds", "compile_seconds"}` |
-| `POST /run` | `{"source", "stdin", ...}` | `{"ok", "lean", ..., "stdout", "stderr", "exit_code", "timed_out"}` |
-| `POST /run/python` | `{"source", "stdin", ...}` | the same shape, from CPython — for comparing the two |
-| `GET /llm/providers` | — | providers, their default models, and whether the server holds a key |
-| `POST /llm/models` | `{"provider", "api_key"}` | the model ids that key can reach |
-| `POST /contracts` | `{"source", "provider", "model", "api_key", "goal"}` | `{"ok", "source", "error", "model"}` |
-
-Both bodies take `source` plus optional per-request overrides of the server's defaults: `target`,
-`mode`, `best_effort`, `prove_asserts`, `check`, `timeout`. The run routes also take `stdin`, which
-is fed to the program's standard input verbatim.
-
-`ok` reports whether the *translation* succeeded. Whether the Lean compiled is `compiles` (`null`
-if you passed `check: false`), and whether the program succeeded is `exit_code`. `/run` does not
-compile separately — `lake env lean --run` elaborates before executing, so compile errors arrive
-in `stderr`.
-
-`translate_seconds` and `compile_seconds` are measured server-side on a monotonic clock. Codegen is
-typically single-digit milliseconds; `lake env lean` is seconds, so the compile dominates whatever
-you wait for.
+In another shell you can test the API with `curl`:
 
 ```bash
 curl -s localhost:8000/translate -H 'content-type: application/json' \
@@ -123,10 +107,6 @@ curl -s localhost:8000/run -H 'content-type: application/json' \
 Invalid Python returns HTTP 400. One Lean backend serves every request and translation drives
 process-wide state, so requests are serialised behind a lock — this is a single-worker service by
 construction.
-
-**The run routes execute the caller's program, and there is no authentication.** Since the server
-binds every interface by default, anyone who can reach the port can run code as you. Pass `--no-ip`
-to restrict it to this machine.
 
 ## Python API
 
@@ -146,57 +126,6 @@ with pastalean.Session(target="command", mode="run") as session:
 Booting the backend imports Mathlib and takes tens of seconds, so a `Session` is much faster
 than one process per file. `pastalean.compile_check` and `pastalean.run_program` take Lean text
 and shell out to `lake env lean`.
-
-## How a translation works
-
-1. Read the Python file.
-2. Run the annotation pre-pass (`src/transpile/annotate_python.py`).
-3. Convert the Python AST to a JSON IR (`src/transpile/node_visitor.py`).
-4. Send one JSON translation request per top-level statement to the Lean backend.
-5. Reuse a single persistent Lean process for the lifetime of the Python process, so
-   module-level translation does not restart Lean for every statement.
-
-### Low-level Lean backend
-
-The executable defined by [py2lean.lean](/home/anirudhgupta/PastaLean/py2lean.lean:1) is the JSON backend.
-
-It expects:
-
-1. A JSON task string as the first argument.
-2. An optional target as the second argument, usually `term` or `command`.
-
-Example:
-
-```bash
-lake exe py2lean '{"task":"translate","ast":{"node_type":"Constant","value":1}}' term
-```
-
-Typical stdout:
-
-```json
-{"result": true, "lean_term": "(1 : Int)"}
-```
-
-The backend also supports a persistent server mode for tooling and performance-sensitive
-workflows:
-
-```bash
-lake env .lake/build/bin/py2lean --server
-```
-
-It accepts one compact JSON request per line on stdin and writes one compact JSON response
-per line on stdout. The Python wrapper uses this mode automatically.
-
-## Installation
-
-To install PastaLean as a dependency, add the following to your `lakefile.toml`:
-
-```toml
-[[require]]
-name = "PastaLean"
-git = "https://github.com/Siddhartha-Gadgil/PastaLean.git"
-rev = "v4.29.0"
-```
 
 ### Dependencies
 
@@ -239,3 +168,7 @@ If you want to run a specific test case, you can do so with:
 ```bash
 lake exe palc <case_file.py>
 ```
+
+## Acknowledgements
+
+This project was made possible by the support of collaboration of IISc Bengaluru and Emergence AI.

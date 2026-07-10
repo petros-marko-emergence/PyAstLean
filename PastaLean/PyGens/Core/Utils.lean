@@ -312,20 +312,26 @@ def pythonNameIsPrivate (name : String) : Bool :=
     && name != "_"                                  -- bare `_` is the wildcard
     && !(name.startsWith "__" && name.endsWith "__") -- `__dunder__` is public
 
+/-- The `visibility` slot of `declModifiers`, whose shape is
+`docComment? attributes? visibility? noncomputable? unsafe? (partial|nonrec)?`. -/
+private def declModifiersVisibilityIdx : Nat := 2
+
 /-- Splice a `private` modifier into an existing `def`/declaration command.
 
-`private` is a `declModifiers` prefix that the parser only accepts directly before a `def`
-keyword, so we cannot wrap an already-built command. Instead we harvest the `private`
-modifier node from a throwaway declaration and swap it into the target's `declModifiers`
-slot (the first child of a `Command.declaration`). Non-declaration commands are unchanged. -/
+`private` is a `declModifiers` prefix the parser only accepts directly before `def`, so we harvest
+the modifier from a throwaway declaration and set it into the target's `declModifiers`. Only the
+visibility slot is overwritten: replacing the whole node would drop `partial`/`noncomputable`.
+Non-declaration commands are unchanged. -/
 def makeCommandPrivate (cmd : TSyntax `command) : PygenM (TSyntax `command) := do
   let template ← `(command| private def __PastaLean_priv_tmpl := ())
-  let privMods := match template.raw with
-    | .node _ ``Lean.Parser.Command.declaration #[mods, _] => mods
+  let privVisibility := match template.raw with
+    | .node _ ``Lean.Parser.Command.declaration #[.node _ _ mods, _] =>
+        mods[declModifiersVisibilityIdx]!
     | _ => Syntax.missing
   match cmd.raw with
-  | .node info ``Lean.Parser.Command.declaration #[_oldMods, decl] =>
-      return ⟨.node info ``Lean.Parser.Command.declaration #[privMods, decl]⟩
+  | .node info ``Lean.Parser.Command.declaration #[.node modInfo modKind mods, decl] =>
+      let mods := mods.set! declModifiersVisibilityIdx privVisibility
+      return ⟨.node info ``Lean.Parser.Command.declaration #[.node modInfo modKind mods, decl]⟩
   | _ => return cmd
 
 /--

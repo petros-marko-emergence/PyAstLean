@@ -71,9 +71,13 @@ def comprehensionIterSyntax (compJson : Json) : PygenM (TSyntax `term) := do
     s!"comprehension node does not have an 'iter' field: {compJson}"
   comprehensionFilterOver compJson (← getCode iterJson `term)
 
-/-- Recursively lower a Python list/generator comprehension through all generators. -/
+/-- Recursively lower a Python list/generator comprehension through all generators.
+
+A comprehension is a *value*, so its element and `if` clauses must stay `Bool` even when the
+comprehension sits inside an `if`/`while` test (where comparisons otherwise lower to `Prop`).
+Without resetting, `if all(a == b for a, b in ps):` builds a `List Prop`. -/
 def lowerComprehensionClauses (eltJson : Json) (generators : List Json) :
-    PygenM (TSyntax `term) := do
+    PygenM (TSyntax `term) := withPropCondition false do
   match generators with
   | [] =>
       let eltCode ← getCode eltJson `term
