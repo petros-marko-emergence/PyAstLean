@@ -106,6 +106,26 @@ def subscriptSetDoElem (containerIdent : TSyntax `ident) (indexTerm value : TSyn
   let setItemIdent := mkIdent ``PastaLean.pySetItem
   `(doElem| $containerIdent:ident := $setItemIdent $containerIdent $indexTerm $value)
 
+/-- If `target` is `self.X` (an `Attribute` whose base is the `Name` `self`), return the attribute
+name `X`. Used to lower attribute writes inside a class method to a `self` record update. -/
+def selfAttrTarget? (target : Json) : Option String :=
+  if jsonNodeType? target == some "Attribute" then
+    match (target.getObjVal? "value").toOption, (target.getObjValAs? String "attr").toOption with
+    | some v, some attr =>
+        if jsonNodeType? v == some "Name" && v.getObjValAs? String "id" == .ok "self" then
+          some attr
+        else none
+    | _, _ => none
+  else none
+
+/-- Emit `self := { self with X := rhs }` — the value-semantics lowering of `self.X = rhs` inside a
+class method body (`self` is the method's `let mut` shadow). -/
+def selfRecordUpdateDoElem (attr : String) (rhs : TSyntax `term) : PygenM (TSyntax `doElem) := do
+  let selfId := mkIdent `self
+  let attrId := mkIdent attr.toName
+  let fields := #[← `(Lean.Parser.Term.structInstField| $attrId:ident := $rhs)]
+  `(doElem| $selfId:ident := { $selfId:term with $fields:structInstField,* })
+
 /-- Lower a possibly-nested subscript assignment `a[i]…[k] = value` to a reassignment of the
 base variable. Each level is rebuilt innermost-first with `pySetItem`: `a[i][j] = v` becomes
 `a := pySetItem a i (pySetItem (pyGetItem a i) j v)`. This mirrors Python, where mutating the
@@ -130,6 +150,13 @@ partial def nestedSubscriptSetDoElem? (target : Json) (value : TSyntax `term) :
       return some (← `(doElem| $containerIdent:ident := $newContainer))
   | some "Subscript" =>
       nestedSubscriptSetDoElem? containerJson newContainer
+  | some "Attribute" =>
+      -- `self.c[i] = v` in a class method rebuilds the field: `self := { self with c := … }`.
+      let some attr := selfAttrTarget? containerJson
+        | throwError "Subscript assignment through an attribute is only supported on `self`."
+      unless ← hasVar `self do
+        throwError "`self.X[i] = v` is only supported inside a class method body."
+      return some (← selfRecordUpdateDoElem attr newContainer)
   | _ =>
       throwError "Subscript assignment requires the base container to be a variable \
         (`a[i]…[k] = v`); got an unsupported container expression."
@@ -173,26 +200,6 @@ def sliceTargetParts? (target : Json) :
   let lowerTerm ← sliceBoundOptTerm (jsonFieldOption sliceJson "lower")
   let upperTerm ← sliceBoundOptTerm (jsonFieldOption sliceJson "upper")
   return some (containerIdent, lowerTerm, upperTerm)
-
-/-- If `target` is `self.X` (an `Attribute` whose base is the `Name` `self`), return the attribute
-name `X`. Used to lower attribute writes inside a class method to a `self` record update. -/
-def selfAttrTarget? (target : Json) : Option String :=
-  if jsonNodeType? target == some "Attribute" then
-    match (target.getObjVal? "value").toOption, (target.getObjValAs? String "attr").toOption with
-    | some v, some attr =>
-        if jsonNodeType? v == some "Name" && v.getObjValAs? String "id" == .ok "self" then
-          some attr
-        else none
-    | _, _ => none
-  else none
-
-/-- Emit `self := { self with X := rhs }` — the value-semantics lowering of `self.X = rhs` inside a
-class method body (`self` is the method's `let mut` shadow). -/
-def selfRecordUpdateDoElem (attr : String) (rhs : TSyntax `term) : PygenM (TSyntax `doElem) := do
-  let selfId := mkIdent `self
-  let attrId := mkIdent attr.toName
-  let fields := #[← `(Lean.Parser.Term.structInstField| $attrId:ident := $rhs)]
-  `(doElem| $selfId:ident := { $selfId:term with $fields:structInstField,* })
 
 /-- Simple returned expressions can stay unparenthesized; more complex or effectful ones
 keep parentheses so Lean parses multiline `return` expressions reliably. -/

@@ -60,13 +60,17 @@ case-insensitive filesystems.) Install it with `uv pip install -e '.[server]'`.
 - `paths.py` — every filesystem location, resolved from `__file__`. Never derive paths from the cwd.
 
 ```bash
-pastalean translate <file.py> --target command     # see the Lean output
+pastalean translate <file.py>                      # Lean on stdout, then compile-check it
+pastalean translate <file.py> --no-check           # codegen only (skip `lake env lean`) — faster
 pastalean translate <file.py> -v                   # + intermediate stages
-pastalean check <file.py>                          # translate, then `lake env lean`
 pastalean run <file.py> < input.txt                # translate, compile, execute
 pastalean json <file.py>                           # dump the JSON IR
 pastalean batch example_scripts/commands --check   # many files, one warm backend
+pastalean serve --lan                              # HTTP API; docs at /docs
 ```
+
+`uv run pastalean ...` works without installing anything. `uv run src/main.py` does not — the
+package uses relative imports.
 
 ```python
 from pastalean import Session

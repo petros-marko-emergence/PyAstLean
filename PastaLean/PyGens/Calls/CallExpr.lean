@@ -300,9 +300,10 @@ runtime functions return a new container, so a statement call must store the res
 and the `setMutatorName?` methods have their own branches. -/
 def inPlaceMutatorArity? (attr : String) : Option Nat :=
   match attr with
-  | "clear" | "reverse" => some 0
-  | "extend" | "update" => some 1
-  | _                   => none
+  | "clear" | "reverse"      => some 0
+  | "extend" | "update"      => some 1
+  | "appendleft"             => some 1
+  | _                        => none
 
 /-- The class to construct for a call `f(...)` whose callee is the `Name` `funcName`: a registered
 class (`C(..)`), or `cls(..)` inside a class body (classmethod sugar). `none` for ordinary calls. -/
@@ -723,6 +724,11 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           let argCode ← getCode argJson `term
           let mutIdent := mkIdent mutName
           return ← mutatingMethodDoElem valueJson fun recv => `($mutIdent $recv $argCode)
+
+        -- `d.popleft()` as a statement drops the value but must still shorten the deque.
+        if attr == "popleft" && argsArray.isEmpty && keyWordsMap.isEmpty then
+          return ← mutatingMethodDoElem valueJson fun recv =>
+            `($(mkIdent ``pyPopLeftRest) $recv)
 
         -- Claim the call only when the shape matches the container mutator; a user method sharing
         -- the name (`tree.update(i, v)`) has a different arity and belongs on the normal path.

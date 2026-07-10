@@ -92,42 +92,52 @@ def typedBinaryLambdaCode (funcJson : Json) (fallback : TSyntax `term)
     | none => `(_)
   `(fun ($arg0 : $paramTy) ↦ fun ($arg1 : $paramTy) ↦ $bodyStx)
 
-/-- Recognize a `container.pop(...)` call whose receiver is a `Name` already in scope as a
-mutable variable. Returns the container ident and the optional index argument term (`none` for
-the no-argument `pop()`). A freshly-seen receiver is not a mutation site, so it returns `none`. -/
-def popCallParts? (value : Json) : PygenM (Option (TSyntax `ident × Option (TSyntax `term))) := do
+/-- Methods that both return a value and mutate the receiver, mapped to the runtime pair
+`(value, rest)` implementing them. `pop` also accepts an optional index; `popleft` takes none. -/
+def valueAndMutateMethod? (attr : String) : Option (Lean.Name × Lean.Name × Bool) :=
+  match attr with
+  | "pop"     => some (``PastaLean.pyPopValue, ``PastaLean.pyPopRest, true)   -- optional index
+  | "popleft" => some (``PastaLean.pyPopLeftValue, ``PastaLean.pyPopLeftRest, false)
+  | _         => none
+
+/-- Recognize `container.<m>(idx?)` for a value-and-mutate method `m` on an already-declared
+mutable variable. Returns the method's runtime pair, the container ident, and the optional index.
+A freshly-seen receiver is not a mutation site, so it returns `none`. -/
+def popCallParts? (value : Json) :
+    PygenM (Option ((Lean.Name × Lean.Name) × TSyntax `ident × Option (TSyntax `term))) := do
   unless jsonNodeType? value == some "Call" do return none
   let .ok funcJson := value.getObjVal? "func" | return none
   unless jsonNodeType? funcJson == some "Attribute" do return none
-  unless funcJson.getObjValAs? String "attr" == .ok "pop" do return none
+  let .ok attr := funcJson.getObjValAs? String "attr" | return none
+  let some (valueFn, restFn, takesIndex) := valueAndMutateMethod? attr | return none
   let .ok receiverJson := funcJson.getObjVal? "value" | return none
   unless jsonNodeType? receiverJson == some "Name" do return none
   let receiverIdent ← getCode receiverJson `ident
   unless (← hasVar receiverIdent.getId) do return none
   let args := (value.getObjValAs? (Array Json) "args").toOption.getD #[]
   match args.size with
-  | 0 => return some (receiverIdent, none)
-  | 1 => return some (receiverIdent, some (← getCode args[0]! `term))
+  | 0 => return some ((valueFn, restFn), receiverIdent, none)
+  | 1 => if takesIndex
+         then return some ((valueFn, restFn), receiverIdent, some (← getCode args[0]! `term))
+         else return none
   | _ => return none
 
 /-- Lower a call that both mutates its receiver and yields a value into a `(value, update)`
-pair: `value` is the term the call returns, and `update` is the statement that applies the
-mutation. The two are written so they each read the *original* container, so the caller must
-bind `value` first and then run `update` (binding the result does not touch the container).
-
-Currently this covers `container.pop(idx?)`: the value is the popped element (`pyPopValue`) and
-the update reassigns the container to itself with that element removed (`pyPopRest`). -/
+pair. They each read the *original* container, so the caller binds `value` first, then runs
+`update`. Covers `container.pop(idx?)` and `deque.popleft()`. -/
 def mutatingCallRhsLowering? (value : Json) :
     PygenM (Option (TSyntax `term × TSyntax `doElem)) := do
   match ← popCallParts? value with
   | none => return none
-  | some (receiverIdent, index?) =>
+  | some ((valueFn, restFn), receiverIdent, index?) =>
+      let valueIdent := mkIdent valueFn
+      let restIdent := mkIdent restFn
       let valueTerm ← match index? with
-        | none => `($(mkIdent ``PastaLean.pyPopValue) $receiverIdent)
-        | some idx => `($(mkIdent ``PastaLean.pyPopValue) $receiverIdent $idx)
+        | none => `($valueIdent $receiverIdent)
+        | some idx => `($valueIdent $receiverIdent $idx)
       let update ← match index? with
-        | none => `(doElem| $receiverIdent:ident := $(mkIdent ``PastaLean.pyPopRest) $receiverIdent)
-        | some idx => `(doElem| $receiverIdent:ident := $(mkIdent ``PastaLean.pyPopRest) $receiverIdent $idx)
+        | none => `(doElem| $receiverIdent:ident := $restIdent $receiverIdent)
+        | some idx => `(doElem| $receiverIdent:ident := $restIdent $receiverIdent $idx)
       return some (valueTerm, update)
 
 end PastaLean

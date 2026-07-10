@@ -46,11 +46,23 @@ def lowerCollectionsCallTerm? (funcJson : Json) (argsArray : Array Json)
       let some argJson := argsArray[0]?
         | throwError "defaultdict() expects a default-factory argument, e.g. `defaultdict(list)`."
       match factoryName? argJson with
-      | some "list" => return some (← `($(mkIdent ``Libraries.collections.pyDefaultDictList)))
+      -- Sets are `List`-backed in the runtime, so `set` shares the empty-list default.
+      | some "list" | some "set" =>
+          return some (← `($(mkIdent ``Libraries.collections.pyDefaultDictList)))
       | some "int"  => return some (← `($(mkIdent ``Libraries.collections.pyDefaultDictInt)))
       | other =>
-          throwError s!"defaultdict({other.getD "?"}) is not supported; only `list` and `int` \
-            default factories are."
+          throwError s!"defaultdict({other.getD "?"}) is not supported; only `list`, `set` and \
+            `int` default factories are."
+  | "deque" =>
+      unless keyWordsMap.isEmpty do
+        throwError "deque() keyword arguments are not supported yet."
+      match argsArray.size with
+      | 0 => return some (← `($(mkIdent ``Libraries.collections.pyDequeEmpty)))
+      | 1 =>
+          let dequeIdent := mkIdent ``Libraries.collections.pyDeque
+          return some (← buildIOPureApplicationFromArgs argsArray argsCodes fun r => do
+            `($dequeIdent $(r[0]!)))
+      | _ => throwError "deque() expects at most one positional argument."
   | _ => return none
 
 end PastaLean

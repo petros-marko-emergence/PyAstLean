@@ -47,6 +47,12 @@ def pyCounterEmpty : PyDefaultDict κ Int := PyDefaultDict.empty 0
 def pyCounter {α : Type} [PyIterable α κ] (xs : α) : PyDefaultDict κ Int :=
   PyDefaultDict.ofIterable xs
 
+/-- `collections.deque()`. Deques are `List`-backed, so every list protocol applies to them. -/
+def pyDequeEmpty {α : Type} : List α := []
+
+/-- `collections.deque(xs)`: `pyDeque "ab" = ["a", "b"]`. -/
+def pyDeque {α β : Type} [PyIterable α β] (xs : α) : List β := pyIter xs
+
 /-- `d[k]` yields `d.dflt` when `k` is absent; unlike Python it does not insert the key. -/
 instance : PyGetItem (PyDefaultDict κ ν) κ ν where
   getItem d k := d.map.getD k d.dflt

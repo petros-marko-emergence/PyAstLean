@@ -1,15 +1,22 @@
-"""HTTP API over a warm PastaLean backend.
+"""HTTP API over a warm PastaLean backend. Two POST routes, mirroring the CLI:
+
+    POST /translate   Python -> Lean, and compile-check it   (`pastalean translate`)
+    POST /run         ... and execute the program's `main`    (`pastalean run`)
 
     pastalean serve --port 8000
 
     curl -s localhost:8000/translate -H 'content-type: application/json' \
          -d '{"source": "def f(x):\n    return x + 1\n"}'
 
-Requires the optional `server` extra:  uv pip install -e '.[server]'
+Interactive docs at `/docs`, schema at `/openapi.json`. Requires the optional `server` extra:
+`uv pip install -e '.[server]'`.
 
 One Lean backend serves every request, and translation drives process-wide state, so requests are
 serialised behind a lock. This is a single-worker service by construction — run several processes
 behind a load balancer if you need concurrency.
+
+There is no authentication, and `/run` executes the caller's program. Bind it to localhost unless
+you trust everyone who can reach the port.
 """
 
 # NOTE: no `from __future__ import annotations` here. The request models are defined inside
@@ -22,7 +29,7 @@ from contextlib import asynccontextmanager
 from typing import Literal
 
 from .api import Session, supported_libraries
-from .backend import compile_check
+from .backend import compile_check, run_program
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +57,8 @@ def create_app(
         mode: Literal["prove", "run", "both"] | None = None
         best_effort: bool | None = None
         prove_asserts: bool | None = None
+        check: bool = Field(True, description="Compile the generated Lean with `lake env lean`.")
+        timeout: float = Field(600.0, gt=0, description="Seconds allowed for the Lean step.")
 
         def overrides(self) -> dict:
             return {
@@ -63,16 +72,29 @@ def create_app(
                 if value is not None
             }
 
-    class TranslateResponse(BaseModel):
+    class RunRequest(TranslateRequest):
+        stdin: str = Field("", description="Text fed to the program's standard input.")
+
+    class Translation(BaseModel):
+        """What both routes report about the translation itself. `ok` is about *translating*, not
+        about whether the Lean compiled or the program succeeded — read `compiles` / `exit_code`."""
+
         ok: bool
         lean: str | None = None
         error: str | None = None
         degraded: bool = False
         unsupported: list[str] = []
 
-    class CheckResponse(TranslateResponse):
-        compiles: bool = False
+    class TranslateResponse(Translation):
+        # `None` when the request set check=false; otherwise whether `lake env lean` accepted it.
+        compiles: bool | None = None
         diagnostics: list[str] = []
+
+    class RunResponse(Translation):
+        stdout: str = ""
+        stderr: str = ""
+        exit_code: int | None = None
+        timed_out: bool = False
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -93,46 +115,76 @@ def create_app(
     def libraries() -> dict:
         return {"libraries": list(supported_libraries())}
 
-    @app.post("/translate", response_model=TranslateResponse)
-    def translate(request: TranslateRequest) -> TranslateResponse:
+    def _translate(request: TranslateRequest, **overrides):
+        """Translate, mapping a bad program to HTTP 400 rather than a 500."""
         try:
-            result = session.translate(request.source, **request.overrides())
+            return session.translate(request.source, **{**request.overrides(), **overrides})
         except SyntaxError as err:
             raise HTTPException(status_code=400, detail=f"invalid Python: {err}") from err
         except TypeError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
-        return TranslateResponse(
-            ok=result.ok,
-            lean=result.lean_code,
-            error=result.error,
-            degraded=result.degraded,
-            unsupported=result.unsupported,
-        )
 
-    @app.post("/check", response_model=CheckResponse)
-    def check(request: TranslateRequest) -> CheckResponse:
-        try:
-            result = session.translate(request.source, **request.overrides())
-        except SyntaxError as err:
-            raise HTTPException(status_code=400, detail=f"invalid Python: {err}") from err
+    @app.post("/translate", response_model=TranslateResponse)
+    def translate(request: TranslateRequest) -> TranslateResponse:
+        result = _translate(request)
         if not result.ok:
-            return CheckResponse(ok=False, error=result.error)
-        report = compile_check(result.lean_code)
-        return CheckResponse(
+            return TranslateResponse(ok=False, error=result.error)
+        response = TranslateResponse(
             ok=True,
             lean=result.lean_code,
             degraded=result.degraded,
             unsupported=result.unsupported,
-            compiles=report.ok,
-            diagnostics=[str(d) for d in report.diagnostics],
+        )
+        if request.check:
+            report = compile_check(result.lean_code, timeout=request.timeout)
+            response.compiles = report.ok
+            response.diagnostics = [str(d) for d in report.diagnostics]
+        return response
+
+    @app.post("/run", response_model=RunResponse)
+    def run(request: RunRequest) -> RunResponse:
+        # A runnable program needs Float semantics; 'prove' emits noncomputable declarations.
+        mode = request.mode or session.mode
+        result = _translate(request, mode="run" if mode == "prove" else mode)
+        if not result.ok:
+            return RunResponse(ok=False, error=result.error)
+
+        # No separate compile step: `lake env lean --run` elaborates before it executes, so
+        # checking first would pay for elaboration twice. Compile errors surface in `stderr`.
+        report = run_program(result.lean_code, stdin=request.stdin, timeout=request.timeout)
+        return RunResponse(
+            ok=True,
+            lean=result.lean_code,
+            degraded=result.degraded,
+            unsupported=result.unsupported,
+            stdout=report.stdout,
+            stderr=report.stderr,
+            exit_code=report.returncode,
+            timed_out=report.timed_out,
         )
 
     return app
 
 
+def lan_address() -> str | None:
+    """This machine's address on the LAN (e.g. 10.x / 192.168.x), or None if it has no route out.
+
+    Connecting a UDP socket sends no packets; it only asks the kernel which local interface it
+    *would* use to reach that address. So this works offline and needs no name resolution.
+    """
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        try:
+            probe.connect(("10.255.255.255", 1))
+            return probe.getsockname()[0]
+        except OSError:
+            return None
+
+
 def serve(
     *,
-    host: str = "127.0.0.1",
+    host: str = "0.0.0.0",  # noqa: S104  (LAN-reachable by default; pass "127.0.0.1" to restrict)
     port: int = 8000,
     target: str = "command",
     mode: str = "both",
@@ -147,5 +199,17 @@ def serve(
         ) from err
 
     app = create_app(target=target, mode=mode, best_effort=best_effort, prove_asserts=prove_asserts)
+
+    # flush=True: redirected stdout is block-buffered, so these would otherwise surface long after
+    # uvicorn's own banner — or not at all until the server exits.
+    every_interface = host == "0.0.0.0"  # noqa: S104
+    print(f"docs: http://{'127.0.0.1' if every_interface else host}:{port}/docs", flush=True)
+    if every_interface:
+        if lan := lan_address():
+            print(f"lan:  http://{lan}:{port}/docs", flush=True)
+        print("warning: reachable from the network, with no authentication, and POST /run executes "
+              "the caller's program. Anyone who can reach this port can run code as you. "
+              "Restrict it with --no-ip.", flush=True)
+
     # Single worker: the Lean backend and the transpiler's module state are per-process.
     uvicorn.run(app, host=host, port=port, workers=1)

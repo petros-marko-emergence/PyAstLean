@@ -1,7 +1,6 @@
 """START HERE — the `pastalean` command-line entry point, also reachable as `python -m pastalean`.
 
-    pastalean translate prog.py -o prog.lean
-    pastalean check prog.py
+    pastalean translate prog.py -o prog.lean    # + compile-check; --no-check to skip
     pastalean run prog.py < input.txt
     pastalean json prog.py
     pastalean batch example_scripts/commands -o out/
@@ -97,6 +96,20 @@ def _fail(result: TranslationResult) -> int:
     return 1
 
 
+def _report_compile(label: str, lean_code: str, timeout: float) -> int:
+    """Compile `lean_code` and report on stderr, so the Lean itself stays pipeable on stdout."""
+    check = lean_tools.compile_check(lean_code, timeout=timeout)
+    if check.ok:
+        print(f"ok: {label} compiles", file=sys.stderr)
+        return 0
+    print(f"compile failed: {label}", file=sys.stderr)
+    for diagnostic in check.errors:
+        print(f"  {diagnostic}", file=sys.stderr)
+    if not check.errors:
+        print(check.stderr or check.stdout, file=sys.stderr)
+    return 1
+
+
 # --------------------------------------------------------------------------------------------
 # subcommands
 
@@ -108,8 +121,12 @@ def cmd_translate(args) -> int:
     if not result.ok:
         return _fail(result)
     _warn_if_degraded(result)
+    # Emit the Lean first: when it fails to compile you want to read the code the diagnostics
+    # are talking about, and stdout is where a `> prog.lean` redirect expects it.
     _emit(result.lean_code, args.output)
-    return 0
+    if not args.check:
+        return 0
+    return _report_compile(args.file, result.lean_code, args.timeout)
 
 
 def cmd_json(args) -> int:
@@ -118,28 +135,6 @@ def cmd_json(args) -> int:
     ir = session.to_json_ir_file(args.file)
     _emit(json.dumps(ir, indent=2 if args.indent else None), args.output)
     return 0
-
-
-def cmd_check(args) -> int:
-    source = prepasses.apply(args.file, args)
-    with _session_from(args) as session:
-        result = session.translate_file(source)
-    if not result.ok:
-        return _fail(result)
-    _warn_if_degraded(result)
-    if args.output:
-        Path(args.output).write_text(result.lean_code + "\n", encoding="utf-8")
-
-    check = lean_tools.compile_check(result.lean_code, timeout=args.timeout)
-    if check.ok:
-        print(f"ok: {args.file} compiles")
-        return 0
-    print(f"compile failed: {args.file}", file=sys.stderr)
-    for diagnostic in check.errors or []:
-        print(f"  {diagnostic}", file=sys.stderr)
-    if not check.errors:
-        print(check.stderr or check.stdout, file=sys.stderr)
-    return 1
 
 
 def cmd_run(args) -> int:
@@ -227,7 +222,10 @@ def cmd_batch(args) -> int:
 def cmd_serve(args) -> int:
     from .server import serve  # imported lazily: fastapi/uvicorn are an optional extra
 
-    serve(host=args.host, port=args.port, mode=args.mode, target=args.target,
+    # Reachable from the LAN by default; --no-ip restricts it to this machine. An explicit
+    # --host beats both.
+    host = args.host or ("127.0.0.1" if args.no_ip else "0.0.0.0")  # noqa: S104
+    serve(host=host, port=args.port, mode=args.mode, target=args.target,
           best_effort=not args.strict, prove_asserts=args.prove_asserts)
     return 0
 
@@ -254,20 +252,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose debug logging.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_translate = sub.add_parser("translate", help="Translate a Python file to Lean.")
+    p_translate = sub.add_parser(
+        "translate",
+        help="Translate a Python file to Lean and compile-check it.",
+        description="Emit the Lean on stdout, then type-check it with `lake env lean`. "
+                    "Diagnostics go to stderr, after the code, so `translate prog.py > prog.lean` "
+                    "still writes clean Lean. Exits non-zero if the Lean does not compile.",
+    )
     p_translate.add_argument("file", help="Python source file.")
     p_translate.add_argument("-o", "--output", help="Write Lean here instead of stdout ('-' for stdout).")
+    p_translate.add_argument(
+        "--check", action=argparse.BooleanOptionalAction, default=True,
+        help="Compile the generated Lean. Default: on. --no-check skips it (much faster).",
+    )
+    p_translate.add_argument("--timeout", type=float, default=600.0, help="Compile timeout in seconds.")
     _add_translation_flags(p_translate)
     prepasses.add_llm_flags(p_translate)
     p_translate.set_defaults(func=cmd_translate)
-
-    p_check = sub.add_parser("check", help="Translate, then compile the Lean with `lake env lean`.")
-    p_check.add_argument("file", help="Python source file.")
-    p_check.add_argument("-o", "--output", help="Also write the generated Lean here.")
-    p_check.add_argument("--timeout", type=float, default=600.0, help="Compile timeout in seconds.")
-    _add_translation_flags(p_check)
-    prepasses.add_llm_flags(p_check)
-    p_check.set_defaults(func=cmd_check)
 
     p_run = sub.add_parser("run", help="Translate, compile, and execute the program's main.")
     p_run.add_argument("file", help="Python source file.")
@@ -296,9 +297,20 @@ def build_parser() -> argparse.ArgumentParser:
     _add_translation_flags(p_batch)
     p_batch.set_defaults(func=cmd_batch)
 
-    p_serve = sub.add_parser("serve", help="Run the HTTP translation API.")
-    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve = sub.add_parser(
+        "serve",
+        help="Run the HTTP translation API, reachable from the LAN.",
+        description="Binds every interface and prints this machine's LAN URL. Interactive docs at "
+                    "/docs, machine-readable schema at /openapi.json. There is no authentication "
+                    "and POST /run executes the caller's program, so anyone who can reach the port "
+                    "can run code as you — pass --no-ip to restrict it to this machine.",
+    )
+    p_serve.add_argument("--host", help="Explicit bind address. Overrides --no-ip.")
     p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.add_argument(
+        "--no-ip", action="store_true",
+        help="Bind localhost only, so the API is not reachable from the network.",
+    )
     _add_translation_flags(p_serve)
     p_serve.set_defaults(func=cmd_serve)
 

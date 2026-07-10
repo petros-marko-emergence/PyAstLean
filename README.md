@@ -6,29 +6,47 @@ PastaLean originates from "PyAstLean"(which mean Python to Lean via AST) but who
 
 ## Install
 
-Build the Lean side from the repository root, then install the Python package:
+Build the Lean side from the repository root:
 
 ```bash
 lake build
-uv pip install -e '.[server]'      # drop [server] if you don't want the HTTP API
 ```
 
-That puts a `pastalean` command on your PATH. `python -m pastalean` works too, and takes the
-same arguments.
+Then either let `uv` handle the Python side for you — it installs the project into `.venv/` on
+first use, so there is no separate install step:
+
+```bash
+uv run pastalean translate prog.py
+```
+
+or install it yourself, which additionally puts `pastalean` on your PATH:
+
+```bash
+uv pip install -e '.[server]'      # drop [server] if you don't want the HTTP API
+pastalean translate prog.py
+```
+
+`python -m pastalean` and `uv run -m pastalean` are equivalent to the `pastalean` command.
+(`uv run src/main.py` does *not* work — the package uses relative imports, and running a file by
+path gives it no package to be relative to.)
 
 ## Command line
 
 ```bash
-pastalean translate example_scripts/commands/assignment_arith.py   # Python -> Lean, on stdout
-pastalean check     prog.py                                        # translate, then `lake env lean`
-pastalean run       prog.py < input.txt                            # translate, compile, execute
-pastalean json      prog.py                                        # dump the intermediate JSON IR
-pastalean batch     example_scripts/commands -o out/ --check       # many files, one warm backend
-pastalean serve     --port 8000                                    # HTTP API
-pastalean libraries                                                # Python libs with a Lean shim
+pastalean translate prog.py              # Python -> Lean on stdout, then compile-check it
+pastalean run       prog.py < input.txt  # translate, compile, execute
+pastalean json      prog.py              # dump the intermediate JSON IR
+pastalean batch     example_scripts/commands -o out/ --check   # many files, one warm backend
+pastalean serve     --port 8000          # HTTP API
+pastalean libraries                      # Python libs with a Lean shim
 ```
 
-Flags shared by `translate`, `check`, `run`, `json`, and `batch`:
+`translate` writes the Lean to stdout and *then* type-checks it with `lake env lean`, reporting
+diagnostics on stderr. So `pastalean translate prog.py > prog.lean` still writes clean Lean, the
+errors reach your terminal, and the exit status is non-zero if the Lean does not compile. Pass
+`--no-check` to skip the compile and get codegen only, which is much faster.
+
+Flags shared by `translate`, `run`, `json`, and `batch`:
 
 | Flag | Meaning |
 | --- | --- |
@@ -38,9 +56,52 @@ Flags shared by `translate`, `check`, `run`, `json`, and `batch`:
 | `--no-prove-asserts` | Leave each assert as `:= by taste?` rather than searching for a proof. |
 | `-v` | Dump the intermediate JSON IR and Lean syntax. |
 
-`translate`, `check`, and `run` also accept the LLM source rewrites `-r/--redesign` (restructure
-for provability) and `-c/--contracts` (insert Requires/Ensures/Invariant). Both write the
-transformed program to a sibling `.py` so you can read what the model produced.
+`translate` and `run` also accept the LLM source rewrites `-r/--redesign` (restructure for
+provability) and `-c/--contracts` (insert Requires/Ensures/Invariant). Both write the transformed
+program to a sibling `.py` so you can read what the model produced.
+
+## HTTP API
+
+```bash
+pastalean serve --port 8000        # localhost only
+pastalean serve --lan --port 8000  # every interface; prints this machine's LAN URL
+```
+
+Interactive documentation is generated from the code and served at **`/docs`**; the machine-readable
+schema is at `/openapi.json`. Those are the authoritative reference — the table below is a summary.
+
+The two POST routes mirror the two CLI verbs.
+
+| Route | Body | Returns |
+| --- | --- | --- |
+| `GET /health` | — | `{"status", "target", "mode"}` |
+| `GET /libraries` | — | `{"libraries": [...]}` |
+| `POST /translate` | `{"source", ...}` | `{"ok", "lean", "error", "degraded", "unsupported", "compiles", "diagnostics"}` |
+| `POST /run` | `{"source", "stdin", ...}` | `{"ok", "lean", ..., "stdout", "stderr", "exit_code", "timed_out"}` |
+
+Both bodies take `source` plus optional per-request overrides of the server's defaults: `target`,
+`mode`, `best_effort`, `prove_asserts`, `check`, `timeout`. `/run` also takes `stdin`.
+
+`ok` reports whether the *translation* succeeded. Whether the Lean compiled is `compiles` (`null`
+if you passed `check: false`), and whether the program succeeded is `exit_code`. `/run` does not
+compile separately — `lake env lean --run` elaborates before executing, so compile errors arrive
+in `stderr`.
+
+```bash
+curl -s localhost:8000/translate -H 'content-type: application/json' \
+     -d '{"source": "def f(x: int) -> int:\n    return x + 1\n"}'
+
+curl -s localhost:8000/run -H 'content-type: application/json' \
+     -d '{"source": "def main():\n    print(int(input()) + 10)\n\nif __name__ == \"__main__\":\n    main()\n",
+          "stdin": "32\n", "mode": "run"}'      # -> {"stdout": "42\n", "exit_code": 0, ...}
+```
+
+Invalid Python returns HTTP 400. One Lean backend serves every request and translation drives
+process-wide state, so requests are serialised behind a lock — this is a single-worker service by
+construction.
+
+**`/run` executes the caller's program, and there is no authentication.** `--lan` therefore hands
+code execution to everyone who can reach the port. Keep it on localhost unless you trust the network.
 
 ## Python API
 

@@ -249,6 +249,25 @@ def _toplevel_binder_names(stmt):
     return set()
 
 
+def _reachable_statements(stmts, seed_names):
+    """The top-level statements of `stmts` that `seed_names` reaches transitively, in source order."""
+    binders, order = {}, []
+    for stmt in stmts:
+        names = _toplevel_binder_names(stmt)
+        if names:
+            order.append(stmt)
+            for nm in names:
+                binders[nm] = stmt
+    needed, worklist = set(), list(seed_names)
+    while worklist:
+        stmt = binders.get(worklist.pop())
+        if stmt is None or id(stmt) in needed:
+            continue
+        needed.add(id(stmt))
+        worklist.extend(_free_names(stmt))
+    return [s for s in order if id(s) in needed]
+
+
 def prompt_preamble(prompt_src, fn_src):
     """The dataset's `prompt`, verbatim, keeping every import plus only the top-level definitions
     `fn_src` reaches transitively.
@@ -260,31 +279,33 @@ def prompt_preamble(prompt_src, fn_src):
         prompt_tree = ast.parse(prompt_src)
     except SyntaxError:
         return ""
-    imports, binders, order = [], {}, []
-    for stmt in prompt_tree.body:
-        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
-            imports.append(stmt)
-            continue
-        names = _toplevel_binder_names(stmt)
-        if names:
-            order.append(stmt)
-            for nm in names:
-                binders[nm] = stmt
-    needed, worklist = set(), list(_free_names(fn_src))
-    while worklist:
-        stmt = binders.get(worklist.pop())
-        if stmt is None or id(stmt) in needed:
-            continue
-        needed.add(id(stmt))
-        worklist.extend(_free_names(stmt))
-    kept = imports + [s for s in order if id(s) in needed]
+    imports = [s for s in prompt_tree.body if isinstance(s, (ast.Import, ast.ImportFrom))]
+    kept = imports + _reachable_statements(prompt_tree.body, _free_names(fn_src))
     return "\n".join(ast.unparse(s) for s in kept)
 
 
-def self_contained_source(prompt_src, fn_src):
-    """The dataset's own preamble (pruned to what the solution uses) + the extracted function."""
-    pre = prompt_preamble(prompt_src, fn_src)
-    return (pre + "\n\n" + fn_src) if pre else fn_src
+def completion_helpers(completion_src, fn_src):
+    """The completion's own top-level helpers that the entry method needs.
+
+    A solution may define a sibling class or function beside `class Solution` (a
+    `BinaryIndexedTree`, a `SegmentTree`). Extracting only the entry method drops those and the
+    file no longer runs at all, so keep the ones it reaches.
+    """
+    try:
+        tree = ast.parse(completion_src)
+    except SyntaxError:
+        return ""
+    kept = _reachable_statements(tree.body, _free_names(fn_src))
+    return "\n\n".join(ast.unparse(s) for s in kept)
+
+
+def self_contained_source(prompt_src, completion_src, fn_src):
+    """The dataset's preamble + the completion's reachable helpers + the extracted function, each
+    pruned to what the solution actually uses."""
+    helpers = completion_helpers(completion_src, fn_src)
+    body = (helpers + "\n\n" + fn_src) if helpers else fn_src
+    pre = prompt_preamble(prompt_src, body)
+    return (pre + "\n\n" + body) if pre else body
 
 
 def param_names(fn_src):
@@ -598,7 +619,9 @@ class CPastaEval:
         # The dataset's `prompt` preamble binds `inf`, `Counter`, `List`, … which the completion
         # reads freely; without it the extracted function is not even valid Python.
         prompt = item.get("prompt", "")
-        (sols_dir / "sol_0.py").write_text(self_contained_source(prompt, fn_src) + "\n")
+        completion = item.get("completion", "")
+        (sols_dir / "sol_0.py").write_text(
+            self_contained_source(prompt, completion, fn_src) + "\n")
         (sols_dir / "_prompt.py").write_text(prompt + "\n")  # untouched, for provenance
 
         tests_dir = prob_dir / "tests"

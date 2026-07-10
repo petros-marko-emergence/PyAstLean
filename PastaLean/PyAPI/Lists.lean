@@ -157,5 +157,18 @@ theorem pyInsert_eq_append (xs : List α) (idx : Int) (elem : α) (h : idx >= xs
         simp_all only [not_le]
         rfl
 
+/-! ### `collections.deque` operations
+
+A deque is `List`-backed, so `len`/iteration/indexing/`append`/`pop` reuse the list protocols.
+Only the left-end operations need their own helpers. -/
+
+/-- `deque.appendleft(x)`: `pyAppendLeft [2, 3] 1 = [1, 2, 3]`. -/
+def pyAppendLeft (xs : List α) (x : α) : List α := x :: xs
+
+/-- The element `deque.popleft()` returns: the head, or `default` when empty. -/
+def pyPopLeftValue [Inhabited α] (xs : List α) : α := xs.headD default
+
+/-- The deque after `popleft()` removes its head. -/
+def pyPopLeftRest (xs : List α) : List α := xs.tail
 
 end PastaLean

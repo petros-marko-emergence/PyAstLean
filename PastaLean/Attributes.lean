@@ -38,6 +38,7 @@ def pythonMethodMap? (attr : String) : Option Lean.Name :=
   | "capitalize" => some ``pyStringCapitalize
   -- List Only
   | "append"     => some ``pyAppend
+  | "appendleft" => some ``pyAppendLeft
   | "extend"     => some ``pyExtend
   | "reverse"    => some ``pyReverse
   | "copy"       => some ``pyCopy
