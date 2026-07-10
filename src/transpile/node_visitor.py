@@ -753,6 +753,30 @@ class ASTToJsonLeanVisitorBase:
             return target.attr
         return None
 
+    def _inferred_type_name(self, value):
+        """The obvious type of an assignment RHS as a Python annotation string, or None.
+        `0` -> `int`, `[0]` / `[0] * n` -> `list[int]`."""
+        if isinstance(value, ast.Constant):
+            # bool before int: `bool` is a subclass of `int`.
+            for py_type, name in ((bool, "bool"), (int, "int"), (float, "float"), (str, "str")):
+                if isinstance(value.value, py_type):
+                    return name
+            return None
+        if isinstance(value, ast.List):
+            elt = self._inferred_type_name(value.elts[0]) if value.elts else None
+            return f"list[{elt}]" if elt else None
+        if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Mult):
+            for side in (value.left, value.right):
+                if isinstance(side, ast.List):
+                    return self._inferred_type_name(side)
+        return None
+
+    def _inferred_field_annotation(self, value):
+        """An annotation AST inferred from `self.x = <value>`; None when the shape is unclear.
+        Without this an unannotated field defaults to `Int`, so `self.c = [0] * n` becomes `c : Int`."""
+        name = self._inferred_type_name(value)
+        return ast.parse(name, mode="eval").body if name else None
+
     def _add_class_field(self, fields, seen, name, annotation, default):
         """Record a class field, merging type/default info if the name is already known.
 
@@ -792,11 +816,14 @@ class ASTToJsonLeanVisitorBase:
                 for tgt in stmt.targets:
                     name = self._self_attr_name(tgt)
                     if name is not None:
-                        # `self.x = x` where `x` is a typed parameter -> use the param's type.
+                        # `self.x = x` where `x` is a typed parameter -> use the param's type;
+                        # otherwise infer from the RHS shape.
                         ann = None
                         if (isinstance(stmt.value, ast.Name)
                                 and stmt.value.id in param_types):
                             ann = param_types[stmt.value.id]
+                        if ann is None:
+                            ann = self._inferred_field_annotation(stmt.value)
                         self._add_class_field(fields, seen, name, ann, None)
             elif isinstance(stmt, ast.AugAssign):
                 name = self._self_attr_name(stmt.target)

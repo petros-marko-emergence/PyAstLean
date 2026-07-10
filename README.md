@@ -37,7 +37,7 @@ pastalean translate prog.py              # Python -> Lean on stdout, then compil
 pastalean run       prog.py < input.txt  # translate, compile, execute
 pastalean json      prog.py              # dump the intermediate JSON IR
 pastalean batch     example_scripts/commands -o out/ --check   # many files, one warm backend
-pastalean serve     --port 8000          # HTTP API
+pastalean serve                          # web playground + HTTP API
 pastalean libraries                      # Python libs with a Lean shim
 ```
 
@@ -63,29 +63,53 @@ program to a sibling `.py` so you can read what the model produced.
 ## HTTP API
 
 ```bash
-pastalean serve --port 8000        # localhost only
-pastalean serve --lan --port 8000  # every interface; prints this machine's LAN URL
+pastalean serve                 # reachable from the LAN; prints this machine's URL
+pastalean serve --no-ip         # localhost only
 ```
 
-Interactive documentation is generated from the code and served at **`/docs`**; the machine-readable
-schema is at `/openapi.json`. Those are the authoritative reference — the table below is a summary.
+Opening the printed URL gives you a small web playground: paste Python, press **Translate** to see
+the generated Lean (syntax-highlighted, with compile errors if any), then **Run both** to execute
+the Python and the Lean on the same standard input and check they agree. **Insert contracts** runs
+the `--contracts` LLM pre-pass and shows the annotated Python in its own box, ready to swap in as
+the source. Provider, API key, model, and goal live under **Settings**.
 
-The two POST routes mirror the two CLI verbs.
+`POST /contracts` returns `ok: false` with the source still attached when the model answers with
+something that is not parsable Python — which happens: models drift into writing
+`Ensures(Result() == <n!>)` instead of a real call. You see the pseudo-code and can retry.
+
+An API key given in the UI is kept in that browser and sent with each request; the server forwards
+it to the provider and neither stores nor logs it. Leave the field blank to use the server's own
+`OPENAI_API_KEY` / `GEMINI_API_KEY` / … from the environment.
+
+The machine-readable side lives at **`/api`** (interactive reference, generated from the code) and
+`/openapi.json`. Those are authoritative — the table below is a summary.
+
+The POST routes mirror the CLI verbs.
 
 | Route | Body | Returns |
 | --- | --- | --- |
+| `GET /` | — | the web UI |
 | `GET /health` | — | `{"status", "target", "mode"}` |
 | `GET /libraries` | — | `{"libraries": [...]}` |
-| `POST /translate` | `{"source", ...}` | `{"ok", "lean", "error", "degraded", "unsupported", "compiles", "diagnostics"}` |
+| `POST /translate` | `{"source", ...}` | `{"ok", "lean", "error", "degraded", "unsupported", "compiles", "diagnostics", "translate_seconds", "compile_seconds"}` |
 | `POST /run` | `{"source", "stdin", ...}` | `{"ok", "lean", ..., "stdout", "stderr", "exit_code", "timed_out"}` |
+| `POST /run/python` | `{"source", "stdin", ...}` | the same shape, from CPython — for comparing the two |
+| `GET /llm/providers` | — | providers, their default models, and whether the server holds a key |
+| `POST /llm/models` | `{"provider", "api_key"}` | the model ids that key can reach |
+| `POST /contracts` | `{"source", "provider", "model", "api_key", "goal"}` | `{"ok", "source", "error", "model"}` |
 
 Both bodies take `source` plus optional per-request overrides of the server's defaults: `target`,
-`mode`, `best_effort`, `prove_asserts`, `check`, `timeout`. `/run` also takes `stdin`.
+`mode`, `best_effort`, `prove_asserts`, `check`, `timeout`. The run routes also take `stdin`, which
+is fed to the program's standard input verbatim.
 
 `ok` reports whether the *translation* succeeded. Whether the Lean compiled is `compiles` (`null`
 if you passed `check: false`), and whether the program succeeded is `exit_code`. `/run` does not
 compile separately — `lake env lean --run` elaborates before executing, so compile errors arrive
 in `stderr`.
+
+`translate_seconds` and `compile_seconds` are measured server-side on a monotonic clock. Codegen is
+typically single-digit milliseconds; `lake env lean` is seconds, so the compile dominates whatever
+you wait for.
 
 ```bash
 curl -s localhost:8000/translate -H 'content-type: application/json' \
@@ -100,8 +124,9 @@ Invalid Python returns HTTP 400. One Lean backend serves every request and trans
 process-wide state, so requests are serialised behind a lock — this is a single-worker service by
 construction.
 
-**`/run` executes the caller's program, and there is no authentication.** `--lan` therefore hands
-code execution to everyone who can reach the port. Keep it on localhost unless you trust the network.
+**The run routes execute the caller's program, and there is no authentication.** Since the server
+binds every interface by default, anyone who can reach the port can run code as you. Pass `--no-ip`
+to restrict it to this machine.
 
 ## Python API
 

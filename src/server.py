@@ -24,14 +24,20 @@ you trust everyone who can reach the port.
 # resolved from a function-local scope — FastAPI would silently treat the body model as a query
 # parameter and reject every request with 422.
 
+import ast
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Literal
 
 from .api import Session, supported_libraries
 from .backend import compile_check, run_program
+from .paths import PACKAGE_DIR
+from .pyexec import run_python
 
 logger = logging.getLogger(__name__)
+
+STATIC_DIR = PACKAGE_DIR / "static"
 
 
 def create_app(
@@ -43,6 +49,7 @@ def create_app(
 ):
     try:
         from fastapi import FastAPI, HTTPException
+        from fastapi.responses import FileResponse, HTMLResponse
         from pydantic import BaseModel, Field
     except ImportError as err:  # pragma: no cover
         raise RuntimeError(
@@ -75,6 +82,28 @@ def create_app(
     class RunRequest(TranslateRequest):
         stdin: str = Field("", description="Text fed to the program's standard input.")
 
+    class LLMRequest(BaseModel):
+        """`api_key` overrides the server's environment key, and is never logged or stored."""
+
+        provider: Literal["openai", "gemini", "openrouter", "deepinfra"] = "gemini"
+        api_key: str | None = None
+
+    class ModelsResponse(BaseModel):
+        models: list[str] = []
+
+    class ContractsRequest(LLMRequest):
+        source: str = Field(..., description="Python source to annotate with contracts.")
+        model: str | None = Field(None, description="Defaults to the provider's default chat model.")
+        goal: str | None = Field(None, description="What you want to prove; tailors the contracts.")
+
+    class ContractsResponse(BaseModel):
+        # `ok` is false when the model returned something that is not parsable Python — `source` still
+        # carries it, so the caller can look at what went wrong instead of guessing.
+        ok: bool
+        source: str | None = None
+        error: str | None = None
+        model: str | None = None
+
     class Translation(BaseModel):
         """What both routes report about the translation itself. `ok` is about *translating*, not
         about whether the Lean compiled or the program succeeded — read `compiles` / `exit_code`."""
@@ -89,6 +118,8 @@ def create_app(
         # `None` when the request set check=false; otherwise whether `lake env lean` accepted it.
         compiles: bool | None = None
         diagnostics: list[str] = []
+        translate_seconds: float | None = None
+        compile_seconds: float | None = None
 
     class RunResponse(Translation):
         stdout: str = ""
@@ -105,7 +136,21 @@ def create_app(
         yield
         session.close()
 
-    app = FastAPI(title="PastaLean", description="Python to Lean 4 transpiler.", lifespan=lifespan)
+    app = FastAPI(
+        title="PastaLean",
+        description="Python to Lean 4 transpiler.",
+        lifespan=lifespan,
+        docs_url="/api",   # `/` is the web UI; the generated reference lives at /api
+        redoc_url=None,
+    )
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def index() -> str:
+        return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/logo.png", include_in_schema=False)
+    def logo() -> FileResponse:
+        return FileResponse(STATIC_DIR / "logo.png", media_type="image/png")
 
     @app.get("/health")
     def health() -> dict:
@@ -126,17 +171,23 @@ def create_app(
 
     @app.post("/translate", response_model=TranslateResponse)
     def translate(request: TranslateRequest) -> TranslateResponse:
+        # `perf_counter`, not `time()`: a monotonic clock cannot be dragged backwards by NTP.
+        started = time.perf_counter()
         result = _translate(request)
+        translate_seconds = time.perf_counter() - started
         if not result.ok:
-            return TranslateResponse(ok=False, error=result.error)
+            return TranslateResponse(ok=False, error=result.error, translate_seconds=translate_seconds)
         response = TranslateResponse(
             ok=True,
             lean=result.lean_code,
             degraded=result.degraded,
             unsupported=result.unsupported,
+            translate_seconds=translate_seconds,
         )
         if request.check:
+            started = time.perf_counter()
             report = compile_check(result.lean_code, timeout=request.timeout)
+            response.compile_seconds = time.perf_counter() - started
             response.compiles = report.ok
             response.diagnostics = [str(d) for d in report.diagnostics]
         return response
@@ -162,6 +213,73 @@ def create_app(
             exit_code=report.returncode,
             timed_out=report.timed_out,
         )
+
+    @app.post("/run/python", response_model=RunResponse)
+    def run_the_python(request: RunRequest) -> RunResponse:
+        """Execute the *original* Python, so its output can be diffed against the Lean twin's."""
+        report = run_python(request.source, stdin=request.stdin, timeout=request.timeout)
+        return RunResponse(
+            ok=True,
+            stdout=report.stdout,
+            stderr=report.stderr,
+            exit_code=report.returncode,
+            timed_out=report.timed_out,
+        )
+
+    # -- LLM pre-passes -----------------------------------------------------------------------
+
+    @app.get("/llm/providers")
+    def llm_providers() -> dict:
+        """The providers, their default models, and whether this server already has a key for each."""
+        from .transpile import llm
+
+        return {"providers": [
+            {
+                "id": name.lower(),
+                "name": info["name"],
+                "default_model": info["default_model"],
+                "models_url": info["models_url"],
+                "has_server_key": llm.env_api_key(name) is not None,
+            }
+            for name, info in llm.provider_info.items()
+        ]}
+
+    @app.post("/llm/models", response_model=ModelsResponse)
+    def llm_models(request: LLMRequest) -> ModelsResponse:
+        """Ask the provider which models this key may use."""
+        from .transpile import llm
+
+        try:
+            return ModelsResponse(models=llm.get_supported_models(request.provider, request.api_key))
+        except llm.LLMError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @app.post("/contracts", response_model=ContractsResponse)
+    def contracts(request: ContractsRequest) -> ContractsResponse:
+        """Insert Requires/Ensures/Invariant contracts into the Python — the `--contracts` pre-pass.
+
+        Returns the annotated source; it is not translated. Feed it back to /translate to see the
+        Hoare-triple obligations it produces.
+        """
+        from .transpile import llm
+
+        model = request.model or llm.default_model_for(request.provider)
+        try:
+            annotated = llm.contract_code(request.source, provider=request.provider, model=model,
+                                          goal=request.goal, api_key=request.api_key)
+        except llm.LLMError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        except Exception as err:  # noqa: BLE001  (provider transport errors are the caller's problem)
+            return ContractsResponse(ok=False, error=str(err), model=model)
+
+        # Models do drift into pseudo-code — `Ensures(Result() == <n!>)` rather than a real call.
+        # Say so here, rather than letting the translator fail on it later.
+        try:
+            ast.parse(annotated)
+        except SyntaxError as err:
+            return ContractsResponse(ok=False, source=annotated, model=model,
+                                     error=f"the model returned code that is not valid Python: {err}")
+        return ContractsResponse(ok=True, source=annotated, model=model)
 
     return app
 
@@ -203,10 +321,12 @@ def serve(
     # flush=True: redirected stdout is block-buffered, so these would otherwise surface long after
     # uvicorn's own banner — or not at all until the server exits.
     every_interface = host == "0.0.0.0"  # noqa: S104
-    print(f"docs: http://{'127.0.0.1' if every_interface else host}:{port}/docs", flush=True)
+    local = f"http://{'127.0.0.1' if every_interface else host}:{port}"
+    print(f"ui:   {local}", flush=True)
+    print(f"api:  {local}/api", flush=True)
     if every_interface:
         if lan := lan_address():
-            print(f"lan:  http://{lan}:{port}/docs", flush=True)
+            print(f"lan:  http://{lan}:{port}", flush=True)
         print("warning: reachable from the network, with no authentication, and POST /run executes "
               "the caller's program. Anyone who can reach this port can run code as you. "
               "Restrict it with --no-ip.", flush=True)

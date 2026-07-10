@@ -51,7 +51,9 @@ case-insensitive filesystems.) Install it with `uv pip install -e '.[server]'`.
   `cmd_*` per subcommand, delegating to `api` and `backend`.
 - `api.py` — `Session` (warm backend, many files), `translate`/`translate_file` (one-shot),
   `TranslationResult`.
-- `server.py` — `pastalean serve`, a FastAPI app over one `Session`.
+- `server.py` — `pastalean serve`: a FastAPI app over one `Session`, serving the `static/` web
+  playground at `/` and its generated reference at `/api`.
+- `pyexec.py` — runs the *original* Python, so the UI can diff it against the Lean twin.
 - `backend/` — everything that talks to Lean: `client.py` (the persistent `py2lean --server`
   process) and `lean.py` (`compile_check` / `run_program` via `lake env lean`).
 - `transpile/` — everything that manipulates Python AST/IR (the three stages above, plus
@@ -66,7 +68,7 @@ pastalean translate <file.py> -v                   # + intermediate stages
 pastalean run <file.py> < input.txt                # translate, compile, execute
 pastalean json <file.py>                           # dump the JSON IR
 pastalean batch example_scripts/commands --check   # many files, one warm backend
-pastalean serve --lan                              # HTTP API; docs at /docs
+pastalean serve                                    # web UI at /, API reference at /api
 ```
 
 `uv run pastalean ...` works without installing anything. `uv run src/main.py` does not — the

@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PastaLean</title>
+<link rel="icon" href="/logo.png">
+<style>
+  :root {
+    --bg:       #faf9f6;
+    --panel:    #ffffff;
+    --sunk:     #fcfbf8;
+    --ink:      #1b1a17;
+    --muted:    #78736a;
+    --faint:    #a8a29a;
+    --line:     #e6e3dc;
+    --line-soft:#efece5;
+    --accent:   #fbce47;
+    --accent-dk:#d9a90f;
+    --ok:       #2c6e49;
+    --ok-bg:    #edf6f0;
+    --ok-line:  #cbe3d4;
+    --bad:      #a92d20;
+    --bad-bg:   #fdf0ee;
+    --bad-line: #f0cec8;
+    --warn:     #8a6100;
+    --warn-bg:  #fdf7e6;
+    --warn-line:#f0e0b4;
+    --shadow: 0 1px 2px rgba(27,26,23,.04), 0 4px 14px -8px rgba(27,26,23,.10);
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --lh: 1.65;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: #fdeaa8; }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 20px;
+    padding: 14px 32px;
+    background: rgba(255,255,255,.86); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  header img { height: 34px; width: auto; display: block; }
+  header .tag {
+    color: var(--muted); font-size: 13px; letter-spacing: .01em;
+    padding-left: 20px; border-left: 1px solid var(--line-soft);
+  }
+  header nav { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+  header nav a {
+    color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px;
+    text-decoration: none; border-bottom: 1px solid transparent; padding-bottom: 1px;
+  }
+  header nav a:hover { color: var(--ink); border-bottom-color: var(--accent); }
+  header nav svg { width: 16px; height: 16px; fill: currentColor; }
+
+  /* ---------- layout ---------- */
+  main { max-width: 1460px; margin: 0 auto; padding: 28px 32px 72px; }
+  .cols { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 26px; align-items: start; }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+  @media (max-width: 1040px) { .cols { grid-template-columns: minmax(0,1fr); } }
+
+  h2 {
+    margin: 0 0 10px; font-size: 11.5px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--faint);
+  }
+
+  /* ---------- cards ---------- */
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
+  }
+  .card > header {
+    position: static; backdrop-filter: none;
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px; background: var(--sunk);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .card > header .name { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .card > header .spacer { margin-left: auto; }
+
+  /* ---------- code ---------- */
+  textarea, .code, .editor pre {
+    font-family: var(--mono); font-size: 13px; line-height: var(--lh);
+    tab-size: 4;
+  }
+  textarea {
+    display: block; width: 100%; margin: 0; padding: 14px 16px; resize: vertical;
+    border: 0; background: var(--panel); color: var(--ink);
+  }
+  textarea:focus { outline: 0; }
+  #stdin { min-height: 72px; }
+
+  /* A textarea cannot hold coloured spans, so the highlighted copy sits *behind* it and the
+     textarea's own text is made transparent. The two must share font, padding, and line-height
+     exactly, and scroll together, or the caret drifts off the glyphs. */
+  .editor { position: relative; background: var(--panel); }
+  .editor pre {
+    margin: 0; padding: 14px 16px; overflow: hidden;
+    white-space: pre-wrap; word-break: break-word;
+    min-height: 320px; pointer-events: none;
+  }
+  .editor textarea {
+    position: absolute; inset: 0; height: 100%; resize: none; overflow: auto;
+    white-space: pre-wrap; word-break: break-word;
+    color: transparent; background: transparent; caret-color: var(--ink);
+  }
+  .editor textarea::selection { background: #fde8a2; }
+  .editor:focus-within { background: #fffdf6; }
+
+  .code { display: flex; align-items: stretch; min-height: 380px; max-height: 620px; overflow: auto; }
+  .gutter {
+    flex: 0 0 auto; padding: 14px 12px 14px 16px; text-align: right;
+    color: #c7c2b8; background: var(--sunk); border-right: 1px solid var(--line-soft);
+    user-select: none; position: sticky; left: 0;
+    /* `pre`, or the newline-separated line numbers collapse into one row. */
+    white-space: pre; font-variant-numeric: tabular-nums;
+  }
+  .code > code { display: block; padding: 14px 18px 14px 16px; white-space: pre; flex: 1 1 auto; }
+  #contract-pane { min-height: 180px; max-height: 440px; }
+  /* Empty state, per pane, from the wrapper's data-placeholder. `.is-empty` is toggled from JS
+     rather than matched with `:has(> code:empty)`: `:empty` inside `:has()` is not reliably
+     re-evaluated when the code is filled in, leaving the placeholder painted as a wide flex item
+     that shoves the real code to the right. */
+  .code.is-empty .gutter, .code.no-gutter .gutter { display: none; }
+  .code.is-empty::before {
+    content: attr(data-placeholder); padding: 14px 16px;
+    color: var(--faint); font-style: italic; font-family: inherit;
+  }
+  pre.out {
+    margin: 0; padding: 14px 16px; min-height: 96px; max-height: 260px; overflow: auto;
+    white-space: pre-wrap; word-break: break-word;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+  }
+  pre.out:empty::before { content: attr(data-placeholder); color: var(--faint); font-style: italic; }
+
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-thumb { background: #ddd8cd; border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #c9c3b6; background-clip: content-box; }
+
+  /* ---------- controls ---------- */
+  .bar { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13.5px; line-height: 1; padding: 9px 16px;
+    border-radius: 7px; border: 1px solid var(--line); background: var(--panel);
+    color: var(--ink); cursor: pointer; box-shadow: var(--shadow);
+    transition: border-color .12s, background .12s, transform .06s;
+  }
+  button:hover:not(:disabled) { border-color: #cfc9bd; background: #fffefb; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:focus-visible { outline: 2px solid var(--accent-dk); outline-offset: 2px; }
+  button.primary {
+    background: var(--accent); border-color: var(--accent-dk); font-weight: 600;
+  }
+  button.primary:hover:not(:disabled) { background: #fdd868; }
+  button:disabled { opacity: .45; cursor: progress; box-shadow: none; }
+  button.ghost {
+    box-shadow: none; border-color: transparent; background: transparent;
+    color: var(--muted); font-size: 12px; padding: 4px 8px;
+  }
+  button.ghost:hover:not(:disabled) { background: #f1eee7; border-color: transparent; color: var(--ink); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .01em;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.ok   { color: var(--ok);    background: var(--ok-bg);   border-color: var(--ok-line); }
+  .pill.bad  { color: var(--bad);   background: var(--bad-bg);  border-color: var(--bad-line); }
+  .pill.warn { color: var(--warn);  background: var(--warn-bg); border-color: var(--warn-line); }
+  .pill.idle { color: var(--faint); background: #f2efe9;        border-color: var(--line-soft); }
+  .pill.busy::before { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+
+  /* ---------- diagnostics ---------- */
+  #diags[hidden] { display: none; }
+  #diags { border-color: var(--bad-line); }
+  #diags > header { background: var(--bad-bg); border-bottom-color: var(--bad-line); }
+  #diags > header .name { color: var(--bad); }
+  #diag-list { margin: 0; padding: 0; list-style: none; }
+  #diag-list li {
+    display: flex; gap: 12px; align-items: baseline;
+    padding: 9px 14px; border-top: 1px solid var(--line-soft);
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  #diag-list li:first-child { border-top: 0; }
+  #diag-list .loc {
+    flex: 0 0 auto; color: var(--bad); background: var(--bad-bg);
+    border: 1px solid var(--bad-line); border-radius: 4px;
+    padding: 1px 6px; font-size: 11.5px; font-variant-numeric: tabular-nums;
+  }
+  #diag-list .msg { color: #4c3b38; }
+  /* Warnings only (e.g. `declaration uses 'sorry'`): the file compiled, so don't shout in red. */
+  #diags.warnbox { border-color: var(--warn-line); }
+  #diags.warnbox > header { background: var(--warn-bg); border-bottom-color: var(--warn-line); }
+  #diags.warnbox > header .name { color: var(--warn); }
+  #diag-list .sev-warning .loc { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
+  #diag-list .sev-warning .msg { color: #4a4234; }
+
+  /* ---------- verdict ---------- */
+  #verdict:empty { display: none; }
+  #verdict {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 18px; padding: 11px 15px; border-radius: 9px;
+    font-size: 13.5px; border: 1px solid var(--line); background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  #verdict.agree  { background: var(--ok-bg);  border-color: var(--ok-line); }
+  #verdict.differ { background: var(--bad-bg); border-color: var(--bad-line); }
+
+  /* ---------- settings ---------- */
+  details.settings {
+    margin-bottom: 24px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel); box-shadow: var(--shadow); overflow: hidden;
+  }
+  details.settings > summary {
+    cursor: pointer; padding: 11px 16px; font-size: 12.5px; font-weight: 600; color: var(--muted);
+    background: var(--sunk); list-style: none; display: flex; align-items: center; gap: 8px;
+  }
+  details.settings > summary::-webkit-details-marker { display: none; }
+  details.settings > summary::before { content: "▸"; color: var(--faint); font-size: 10px; }
+  details.settings[open] > summary::before { content: "▾"; }
+  details.settings > summary .hint { margin-left: auto; font-weight: 400; color: var(--faint); }
+  .settings-body {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 16px; padding: 18px 16px; border-top: 1px solid var(--line-soft);
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .field label { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); }
+  .field .note { font-size: 11.5px; color: var(--faint); }
+  input, select {
+    font: inherit; font-size: 13.5px; padding: 8px 11px; min-width: 0;
+    border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink);
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent-dk); outline-offset: -1px; }
+  input[type=password], #goal { font-family: inherit; }
+  .field .row { display: flex; gap: 8px; }
+  .field .row select, .field .row input { flex: 1 1 auto; }
+
+  /* ---------- syntax colours ---------- */
+  .tok-comment { color: #97918a; font-style: italic; }
+  .tok-keyword { color: #8338a0; }
+  .tok-type    { color: #10627f; }
+  .tok-string  { color: #2c6e49; }
+  .tok-number  { color: #a4531b; }
+  .tok-op      { color: #b4453a; }
+  .tok-builtin { color: #10627f; }
+  .tok-def     { color: #1b1a17; font-weight: 600; }
+  .tok-decor   { color: #a4531b; }
+  .tok-self    { color: #b4453a; font-style: italic; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="/logo.png" alt="PastaLean">
+  <span class="tag">Python to Lean 4</span>
+  <nav>
+    <a href="/api">API reference &rarr;</a>
+    <a href="https://github.com/AnirudhG07/PyAstLean" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </nav>
+</header>
+
+<main>
+  <details class="settings" id="settings">
+    <summary>Settings <span class="hint">provider, API key, model — used by the contracts pre-pass</span></summary>
+    <div class="settings-body">
+      <div class="field">
+        <label for="provider">Provider</label>
+        <select id="provider"></select>
+        <span class="note" id="provider-note"></span>
+      </div>
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="leave blank to use the server's key"
+               autocomplete="off" spellcheck="false">
+        <span class="note">Kept in this browser. Sent only to this server, which forwards it to the provider.</span>
+      </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <div class="row">
+          <select id="model"><option value="">provider default</option></select>
+          <button id="btn-models">Fetch</button>
+        </div>
+        <span class="note" id="model-note">Fetch lists the models your key can reach.</span>
+      </div>
+      <div class="field">
+        <label for="goal">Goal (optional)</label>
+        <input id="goal" placeholder="e.g. prove the result equals n!" spellcheck="false">
+        <span class="note">Passed to the model so the contracts target what you want to prove.</span>
+      </div>
+    </div>
+  </details>
+  <div class="cols">
+    <!-- left -->
+    <div class="stack">
+      <div>
+        <h2>Python</h2>
+        <div class="card">
+          <header>
+            <span class="name">source</span>
+            <span class="spacer"></span>
+            <button id="btn-reset" class="ghost">Reset</button>
+          </header>
+          <div class="editor">
+            <pre aria-hidden="true"><code id="source-hl"></code></pre>
+            <textarea id="source" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+          </div>
+        </div>
+        <div class="bar" style="margin-top:14px">
+          <button id="btn-translate" class="primary">Translate</button>
+          <button id="btn-translate-contracts" hidden>Translate contracts</button>
+          <span id="status" class="pill idle">idle</span>
+          <span class="spacer" style="margin-left:auto"></span>
+          <button id="btn-contracts">Insert contracts</button>
+          <span id="contract-status" class="pill idle">idle</span>
+        </div>
+      </div>
+
+      <div id="contract-card-wrap" hidden>
+        <h2>Python with contracts</h2>
+        <div class="card">
+          <header>
+            <span class="name" id="contract-model">generated</span>
+            <span class="spacer"></span>
+            <button id="btn-use-contracts" class="ghost">Use as source</button>
+            <button id="btn-copy-contracts" class="ghost">Copy</button>
+          </header>
+          <div class="code is-empty" id="contract-pane" data-placeholder="Press Insert contracts."><div class="gutter" id="contract-gutter"></div><code id="contract-code"></code></div>
+        </div>
+      </div>
+
+      <div>
+        <h2>Standard input</h2>
+        <div class="card">
+          <header><span class="name">stdin</span></header>
+          <textarea id="stdin" spellcheck="false">10
+</textarea>
+        </div>
+        <div class="bar" style="margin-top:14px">
+          <button id="btn-both" class="primary">Run both</button>
+          <button id="btn-lean">Run Lean</button>
+          <button id="btn-python">Run Python</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- right -->
+    <div class="stack">
+      <div>
+        <h2>Lean 4</h2>
+        <div class="card">
+          <header>
+            <span class="name" id="lean-origin">generated</span>
+            <span class="spacer"></span>
+            <button id="btn-copy" class="ghost">Copy</button>
+          </header>
+          <div class="code is-empty" id="lean-pane" data-placeholder="Press Translate."><div class="gutter" id="gutter"></div><code id="lean"></code></div>
+        </div>
+      </div>
+
+      <div id="diags" class="card" hidden>
+        <header><span class="name" id="diag-title">Compile errors</span></header>
+        <ul id="diag-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:30px">Output</h2>
+  <div class="cols">
+    <div class="card">
+      <header>
+        <span class="name">Python</span>
+        <span class="spacer"></span>
+        <span id="py-status" class="pill idle">idle</span>
+      </header>
+      <pre id="py-out" class="out" data-placeholder="Press Run Python, or Run both."></pre>
+    </div>
+    <div class="card">
+      <header>
+        <span class="name">Lean</span>
+        <span class="spacer"></span>
+        <span id="ln-status" class="pill idle">idle</span>
+      </header>
+      <pre id="ln-out" class="out" data-placeholder="Press Run Lean, or Run both."></pre>
+    </div>
+  </div>
+  <div id="verdict"></div>
+</main>
+
+<script>
+"use strict";
+
+const SAMPLE = `def main():
+    n = int(input())
+    total = 0
+    for i in range(1, n + 1):
+        total = total + i
+    print(total)
+
+
+if __name__ == "__main__":
+    main()
+`;
+
+// ---------------------------------------------------------------------------
+// Lean highlighting.
+//
+// highlight.js ships no Lean grammar, so bringing it in would mean a CDN fetch
+// plus a hand-written grammar anyway. This is that grammar, minus the library.
+// One pass over the source with an alternation of token patterns: a `--` comment
+// containing `def` must stay a comment, so tokens are matched in priority order
+// and never re-scanned.
+// ---------------------------------------------------------------------------
+const LEAN_TOKENS = [
+  ["comment", /--[^\n]*|\/-[\s\S]*?-\//],
+  ["string",  /"(?:[^"\\]|\\.)*"/],
+  ["keyword", /\b(?:import|open|set_option|attribute|private|noncomputable|partial|def|theorem|lemma|example|structure|instance|class|namespace|end|fun|let|mut|do|if|then|else|while|for|in|return|match|with|have|show|from|by|sorry|where|deriving|try|catch|throw|pure)\b/],
+  ["type",    /\b(?:Int|Nat|Float|String|Bool|List|Array|Rat|Real|IO|Unit|Prod|Except|Id|Char)\b|[ℤℕℚℝ]/],
+  ["number",  /\b\d+(?:\.\d+)?\b/],
+  ["op",      /[+\-*/%^]ₚ|:=|↦|←|→|⦋|⦌|<-|=>|∀|∃/],
+];
+const PYTHON_TOKENS = [
+  ["comment", /#[^\n]*/],
+  // Triple-quoted first: `"""a "b" c"""` must not end at the inner quote.
+  ["string",  /[rbfu]{0,2}(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')/],
+  ["decor",   /^[ \t]*@[\w.]+/m],
+  ["keyword", /\b(?:def|class|return|if|elif|else|for|while|in|not|and|or|is|import|from|as|with|try|except|finally|raise|assert|lambda|yield|global|nonlocal|pass|break|continue|del|await|async|None|True|False|match|case)\b/],
+  ["self",    /\bself\b/],
+  ["builtin", /\b(?:print|input|int|str|float|bool|list|dict|set|tuple|len|range|sum|min|max|abs|sorted|enumerate|zip|map|filter|round|divmod|any|all|reversed|isinstance|type)\b/],
+  ["number",  /\b(?:0[xXbBoO][0-9a-fA-F_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)\b/],
+  ["op",      /[+\-*/%<>=!&|^~@]=?|:=|->|\*\*/],
+];
+
+const compile = (tokens) => new RegExp(tokens.map(([, re]) => "(" + re.source + ")").join("|"), "gm");
+const LEAN_RE = compile(LEAN_TOKENS);
+const PYTHON_RE = compile(PYTHON_TOKENS);
+
+const escapeHtml = (s) =>
+  s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+function tokenize(code, tokens, re) {
+  let out = "", last = 0, m;
+  re.lastIndex = 0;
+  while ((m = re.exec(code)) !== null) {
+    if (m[0] === "") { re.lastIndex++; continue; }  // a zero-width match would spin forever
+    out += escapeHtml(code.slice(last, m.index));
+    // Group i+1 is non-undefined for whichever token pattern matched.
+    const kind = tokens[m.slice(1).findIndex((g) => g !== undefined)][0];
+    out += `<span class="tok-${kind}">${escapeHtml(m[0])}</span>`;
+    last = m.index + m[0].length;
+  }
+  return out + escapeHtml(code.slice(last));
+}
+
+const highlightLean   = (code) => tokenize(code, LEAN_TOKENS, LEAN_RE);
+const highlightPython = (code) => tokenize(code, PYTHON_TOKENS, PYTHON_RE);
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const BUTTONS = ["btn-translate", "btn-translate-contracts", "btn-both", "btn-lean", "btn-python",
+                 "btn-contracts", "btn-models"];
+
+const setPill = (el, cls, text) => { el.className = "pill " + cls; el.textContent = text; };
+const setBusy = (el, text) => setPill(el, "idle busy", text);
+
+let leanSource = "";
+let contractSource = "";
+let contractValid = false;   // false while the model's output is not parsable Python
+
+/** Repaint the highlight layer under the textarea, and keep the two scrolled together. */
+function syncEditor() {
+  const ta = $("source");
+  // The trailing newline gives the highlight layer the same final blank line the textarea has,
+  // so a cursor on the last line still sits over painted text.
+  $("source-hl").innerHTML = highlightPython(ta.value + "\n");
+  const pre = ta.previousElementSibling;
+  pre.scrollTop = ta.scrollTop;
+  pre.scrollLeft = ta.scrollLeft;
+}
+
+const gutterFor = (code) =>
+  code ? Array.from({ length: code.replace(/\n$/, "").split("\n").length }, (_, i) => i + 1).join("\n") : "";
+
+/** Paint highlighted code into a pane, with line numbers. Empty code shows the pane's placeholder. */
+function paintPane(paneId, codeId, gutterId, code, highlight) {
+  $(codeId).innerHTML = code ? highlight(code) : "";
+  $(gutterId).textContent = gutterFor(code);
+  $(paneId).classList.toggle("is-empty", !code);
+  $(paneId).classList.remove("no-gutter");
+}
+
+/** Show plain text (an error) in a code pane: no highlighting, no line numbers, no placeholder. */
+function paintPaneText(paneId, codeId, gutterId, text) {
+  $(codeId).textContent = text;
+  $(gutterId).textContent = "";
+  $(paneId).classList.remove("is-empty");
+  $(paneId).classList.add("no-gutter");
+}
+
+function showContracts(code, model, valid) {
+  contractSource = code || "";
+  contractValid = Boolean(valid && contractSource);
+  $("contract-card-wrap").hidden = !contractSource;
+  paintPane("contract-pane", "contract-code", "contract-gutter", contractSource, highlightPython);
+  $("contract-model").textContent = model ? `generated · ${model}` : "generated";
+  // Only offer to translate what the parser accepted; pseudo-code would just 400.
+  $("btn-translate-contracts").hidden = !contractValid;
+}
+
+function showLean(code) {
+  leanSource = code || "";
+  paintPane("lean-pane", "lean", "gutter", leanSource, highlightLean);
+}
+
+// "14:36: error: typeclass instance problem is stuck" -> {loc, severity, msg}
+function parseDiagnostic(text) {
+  const m = /^(\d+:\d+):\s*(error|warning):\s*([\s\S]*)$/.exec(text);
+  return m ? { loc: m[1], severity: m[2], msg: m[3] } : { loc: "", severity: "error", msg: text };
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function showDiagnostics(diags) {
+  $("diags").hidden = diags.length === 0;
+  if (!diags.length) return;
+
+  // Lean reports warnings here too — `declaration uses 'sorry'` is the common one, and a file full
+  // of them still compiles. Calling those "compile errors" in red would be a lie.
+  const parsed = diags.map(parseDiagnostic);
+  const errors = parsed.filter((d) => d.severity === "error").length;
+  const warnings = parsed.length - errors;
+
+  $("diags").classList.toggle("warnbox", errors === 0);
+  $("diag-title").textContent = [
+    errors && plural(errors, "compile error"),
+    warnings && plural(warnings, "warning"),
+  ].filter(Boolean).join(", ");
+
+  $("diag-list").innerHTML = parsed.map(({ loc, severity, msg }) =>
+    `<li class="sev-${severity}">${loc ? `<span class="loc">${escapeHtml(loc)}</span>` : ""}` +
+    `<span class="msg">${escapeHtml(msg)}</span></li>`).join("");
+}
+
+async function post(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await res.json();
+  if (!res.ok) throw new Error(payload.detail || `HTTP ${res.status}`);
+  return payload;
+}
+
+async function busy(fn) {
+  BUTTONS.forEach((id) => ($(id).disabled = true));
+  try { await fn(); }
+  catch (err) { setPill($("status"), "bad", String(err.message || err)); }
+  finally { BUTTONS.forEach((id) => ($(id).disabled = false)); }
+}
+
+function showTranslation(data) {
+  showLean(data.lean);
+  showDiagnostics(data.diagnostics || []);
+  if (!data.ok) {
+    setPill($("status"), "bad", data.error ? "translation failed" : "failed");
+    paintPaneText("lean-pane", "lean", "gutter", data.error || "");
+  } else if (data.compiles === false) setPill($("status"), "bad",  "does not compile");
+  else if (data.degraded)             setPill($("status"), "warn", "degraded");
+  else                                setPill($("status"), "ok",   "compiles");
+}
+
+// A program that exits non-zero, or times out, is a failure. Everything else prints.
+function showRun(outEl, pillEl, data) {
+  const text = (data.stdout || "") + (data.stderr ? "\n" + data.stderr : "");
+  outEl.textContent = text.trim() ? text : "(no output)";
+  if (data.timed_out)            setPill(pillEl, "bad", "timed out");
+  else if (data.exit_code === 0) setPill(pillEl, "ok",  "exit 0");
+  else                           setPill(pillEl, "bad", `exit ${data.exit_code}`);
+  return data;
+}
+
+function compare(py, ln) {
+  const v = $("verdict");
+  const same = (py.stdout || "") === (ln.stdout || "");
+  v.className = same ? "agree" : "differ";
+  v.innerHTML = same
+    ? `<span class="pill ok">agree</span><span>Lean and Python printed the same thing.</span>`
+    : `<span class="pill bad">differ</span><span>The two runtimes printed different output.</span>`;
+}
+
+const clearVerdict = () => { $("verdict").className = ""; $("verdict").innerHTML = ""; };
+const body = () => ({ source: $("source").value, stdin: $("stdin").value });
+
+/** Outputs describe the program that produced them. Once it changes they are a lie, so drop them. */
+function clearRuns() {
+  $("py-out").textContent = "";
+  $("ln-out").textContent = "";
+  setPill($("py-status"), "idle", "idle");
+  setPill($("ln-status"), "idle", "idle");
+  clearVerdict();
+}
+
+/** "310 ms", "3.1 s", "12 s" — enough precision to compare runs, not so much it reads as noise. */
+const fmtSeconds = (s) =>
+  s < 0.1 ? `${(s * 1000).toFixed(0)} ms` : `${s < 10 ? s.toFixed(1) : s.toFixed(0)} s`;
+
+function setLeanOrigin(origin, data) {
+  const el = $("lean-origin");
+  const t = data && data.translate_seconds;
+  const c = data && data.compile_seconds;
+  if (t == null) {
+    el.textContent = `generated · from ${origin}`;
+    el.title = "";
+    return;
+  }
+  // Headline the whole wait. Codegen is milliseconds; `lake env lean` is seconds, and reporting
+  // only the former would claim 0.00 s for a request that visibly took five.
+  el.textContent = `generated · from ${origin} (in ${fmtSeconds(t + (c || 0))})`;
+  el.title = `translated in ${fmtSeconds(t)}` + (c != null ? ` · compiled in ${fmtSeconds(c)}` : "");
+}
+
+async function translateSource(source, origin) {
+  setBusy($("status"), "translating");
+  setLeanOrigin(origin, null);
+  try {
+    const data = await post("/translate", { source });
+    showTranslation(data);
+    setLeanOrigin(origin, data);
+  } catch (err) {
+    // Invalid Python comes back as a 400. Repaint the pane: leaving the previous program's Lean
+    // under a "failed" pill reads as though that Lean is the answer.
+    const message = String(err.message || err);
+    setPill($("status"), "bad", message);
+    showDiagnostics([]);
+    paintPaneText("lean-pane", "lean", "gutter", message);
+    setLeanOrigin(origin, null);
+    leanSource = "";
+  }
+}
+
+$("btn-translate").onclick = () => busy(() => translateSource($("source").value, "source"));
+
+$("btn-translate-contracts").onclick = () => busy(() => translateSource(contractSource, "contracts"));
+
+$("btn-lean").onclick = () => busy(async () => {
+  setBusy($("ln-status"), "running"); clearVerdict();
+  showRun($("ln-out"), $("ln-status"), await post("/run", { ...body(), mode: "run" }));
+});
+
+$("btn-python").onclick = () => busy(async () => {
+  setBusy($("py-status"), "running"); clearVerdict();
+  showRun($("py-out"), $("py-status"), await post("/run/python", body()));
+});
+
+$("btn-both").onclick = () => busy(async () => {
+  setBusy($("py-status"), "running"); setBusy($("ln-status"), "running"); clearVerdict();
+  // Both hit the same single-worker backend, so they queue anyway — but the browser
+  // does not need to know that, and Python usually answers first.
+  const [py, ln] = await Promise.all([
+    post("/run/python", body()),
+    post("/run", { ...body(), mode: "run" }),
+  ]);
+  compare(showRun($("py-out"), $("py-status"), py), showRun($("ln-out"), $("ln-status"), ln));
+});
+
+function copyButton(id, get) {
+  $(id).onclick = async () => {
+    const text = get();
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    const b = $(id); b.textContent = "Copied";
+    setTimeout(() => (b.textContent = "Copy"), 1200);
+  };
+}
+copyButton("btn-copy", () => leanSource);
+copyButton("btn-copy-contracts", () => contractSource);
+
+// ---------------------------------------------------------------------------
+// Settings + the contracts pre-pass
+//
+// The API key lives in this browser's localStorage and is sent per request. The
+// server never stores it; it forwards it to the provider and forgets it.
+// ---------------------------------------------------------------------------
+const STORE = "pastalean.settings";
+let providers = [];
+
+const settings = () => ({
+  provider: $("provider").value,
+  api_key: $("api-key").value.trim() || null,
+  model: $("model").value || null,
+  goal: $("goal").value.trim() || null,
+});
+
+function saveSettings() {
+  const s = settings();
+  localStorage.setItem(STORE, JSON.stringify(s));
+  const p = providers.find((x) => x.id === s.provider);
+  $("provider-note").textContent = !p ? ""
+    : p.has_server_key ? "This server has a key for " + p.name + "."
+    : "No key on the server — enter one above.";
+}
+
+function restoreSettings() {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch { s = {}; }
+  if (s.provider && providers.some((p) => p.id === s.provider)) $("provider").value = s.provider;
+  if (s.api_key) $("api-key").value = s.api_key;
+  if (s.goal) $("goal").value = s.goal;
+  if (s.model) {
+    $("model").insertAdjacentHTML("beforeend", `<option value="${escapeHtml(s.model)}">${escapeHtml(s.model)}</option>`);
+    $("model").value = s.model;
+  }
+  saveSettings();
+}
+
+async function loadProviders() {
+  const res = await fetch("/llm/providers");
+  providers = (await res.json()).providers;
+  $("provider").innerHTML = providers
+    .map((p) => `<option value="${p.id}">${escapeHtml(p.name)} — ${escapeHtml(p.default_model)}</option>`)
+    .join("");
+  restoreSettings();
+}
+
+["provider", "api-key", "model", "goal"].forEach((id) => $(id).addEventListener("change", saveSettings));
+$("provider").addEventListener("change", () => {
+  // The old list belongs to the old provider; asking for it again is one click.
+  $("model").innerHTML = `<option value="">provider default</option>`;
+  $("model-note").textContent = "Fetch lists the models your key can reach.";
+});
+
+$("btn-models").onclick = () => busy(async () => {
+  const { provider, api_key } = settings();
+  $("model-note").textContent = "fetching…";
+  // A rejected key is a settings problem; report it under the field, not on the translate pill.
+  try {
+    const { models } = await post("/llm/models", { provider, api_key });
+    const current = $("model").value;
+    $("model").innerHTML = `<option value="">provider default</option>` +
+      models.map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("");
+    if (models.includes(current)) $("model").value = current;
+    $("model-note").textContent = `${models.length} model${models.length === 1 ? "" : "s"} available.`;
+    saveSettings();
+  } catch (err) {
+    $("model-note").textContent = String(err.message || err);
+  }
+});
+
+function contractFailure(message) {
+  setPill($("contract-status"), "bad", "failed");
+  $("contract-card-wrap").hidden = false;
+  paintPaneText("contract-pane", "contract-code", "contract-gutter", message || "no response");
+  contractSource = "";
+  contractValid = false;
+  $("btn-translate-contracts").hidden = true;
+}
+
+$("btn-contracts").onclick = () => busy(async () => {
+  setBusy($("contract-status"), "asking the model");
+  $("settings").open = false;
+  const { provider, api_key, model, goal } = settings();
+  // Errors land on the contracts pill, not the translate pill — `busy` would put them on the latter.
+  try {
+    const data = await post("/contracts", { source: $("source").value, provider, api_key, model, goal });
+    if (!data.ok && !data.source) return contractFailure(data.error);   // the call itself failed
+    showContracts(data.source, data.model, data.ok);
+    if (data.ok) {
+      setPill($("contract-status"), "ok", "contracts inserted");
+    } else {
+      // The model answered, but with something that is not Python. Show it anyway: seeing the
+      // pseudo-code is how you know to re-run or fix it by hand.
+      setPill($("contract-status"), "warn", "not valid Python");
+      $("contract-model").textContent = `${data.model} — ${data.error}`;
+    }
+  } catch (err) {
+    contractFailure(String(err.message || err));
+  }
+});
+
+$("btn-use-contracts").onclick = () => {
+  if (!contractSource) return;
+  $("source").value = contractSource;
+  syncEditor();
+  clearRuns();
+  setPill($("status"), "idle", "idle");
+};
+
+$("btn-reset").onclick = () => { $("source").value = SAMPLE; syncEditor(); clearRuns(); };
+
+$("source").addEventListener("input", () => { syncEditor(); clearRuns(); });
+$("source").addEventListener("scroll", syncEditor);
+$("stdin").addEventListener("input", clearRuns);
+
+// Ctrl/Cmd+Enter translates, wherever the cursor is.
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); $("btn-translate").click(); }
+});
+
+$("source").value = SAMPLE;
+syncEditor();
+loadProviders();
+</script>
+</body>
+</html>

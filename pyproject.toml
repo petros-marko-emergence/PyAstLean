@@ -42,6 +42,10 @@ pastalean = "pastalean.main:main"
 package-dir = { "pastalean" = "src" }
 packages = ["pastalean", "pastalean.backend", "pastalean.transpile"]
 
+[tool.setuptools.package-data]
+# The web UI `pastalean serve` hands out. Without this it is absent from a built wheel.
+pastalean = ["static/*"]
+
 [tool.pyrefly]
 project-includes = [
     "**/*.py*",
