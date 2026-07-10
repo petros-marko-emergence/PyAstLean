@@ -4,6 +4,8 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from ..paths import REPO_ROOT
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -55,9 +57,8 @@ gemini_client = OpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelangu
 openrouter_client = OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
 deepinfra_client = OpenAI(api_key=DEEPINFRA_API_KEY, base_url="https://api.deepinfra.com/v1/openai")
 
-# get prompt from docs/. Homedir is the repo root (parent of this src/ dir).
-HOMEDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DOCS_DIR = os.path.join(HOMEDIR, "docs")
+# The pre-pass prompts are checked-in documents, read from docs/ at the repo root.
+DOCS_DIR = os.path.join(REPO_ROOT, "docs")
 CONTRACT_PROMPT_SYSTEM= os.path.join(DOCS_DIR, "contract-prompt-system.md")
 VERIFIABLE_DESIGN_PROMPT = os.path.join(DOCS_DIR, "verifiable-python-design.md")
 

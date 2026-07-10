@@ -12,13 +12,9 @@ import shutil
 import sys
 from pathlib import Path
 
-# src/pastalean/paths.py -> src/pastalean -> src -> <repo root>
+# src/paths.py -> src (the `pastalean` package) -> <repo root>
 PACKAGE_DIR = Path(__file__).resolve().parent
-REPO_ROOT = PACKAGE_DIR.parent.parent
-
-# Kept as aliases: the pre-split `py2lean.py` used these names.
-HOMEDIR = REPO_ROOT
-SRC_DIR = PACKAGE_DIR
+REPO_ROOT = PACKAGE_DIR.parent
 
 # The type-annotation pre-pass runs in its own interpreter, so it is referenced by path, not import.
 ANNOTATE_SCRIPT = PACKAGE_DIR / "transpile" / "annotate_python.py"

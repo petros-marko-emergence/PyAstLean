@@ -1,4 +1,4 @@
-"""`pastalean` command-line interface.
+"""`pastalean` command-line interface, also reachable as `python -m pastalean`.
 
     pastalean translate prog.py -o prog.lean
     pastalean check prog.py
@@ -16,6 +16,7 @@ import logging
 import sys
 from pathlib import Path
 
+from . import prepasses
 from .api import Session, TranslationResult
 from .backend import lean as lean_tools
 
@@ -97,8 +98,9 @@ def _fail(result: TranslationResult) -> int:
 
 
 def cmd_translate(args) -> int:
+    source = prepasses.apply(args.file, args)
     with _session_from(args) as session:
-        result = session.translate_file(args.file)
+        result = session.translate_file(source)
     if not result.ok:
         return _fail(result)
     _warn_if_degraded(result)
@@ -115,8 +117,9 @@ def cmd_json(args) -> int:
 
 
 def cmd_check(args) -> int:
+    source = prepasses.apply(args.file, args)
     with _session_from(args) as session:
-        result = session.translate_file(args.file)
+        result = session.translate_file(source)
     if not result.ok:
         return _fail(result)
     _warn_if_degraded(result)
@@ -138,8 +141,9 @@ def cmd_check(args) -> int:
 def cmd_run(args) -> int:
     # A runnable program needs Float semantics; 'prove' emits noncomputable declarations.
     mode = args.mode if args.mode != "prove" else "run"
+    source = prepasses.apply(args.file, args)
     with _session_from(args) as session:
-        result = session.translate_file(args.file, mode=mode)
+        result = session.translate_file(source, mode=mode)
     if not result.ok:
         return _fail(result)
     _warn_if_degraded(result)
@@ -250,6 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_translate.add_argument("file", help="Python source file.")
     p_translate.add_argument("-o", "--output", help="Write Lean here instead of stdout ('-' for stdout).")
     _add_translation_flags(p_translate)
+    prepasses.add_llm_flags(p_translate)
     p_translate.set_defaults(func=cmd_translate)
 
     p_check = sub.add_parser("check", help="Translate, then compile the Lean with `lake env lean`.")
@@ -257,6 +262,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_check.add_argument("-o", "--output", help="Also write the generated Lean here.")
     p_check.add_argument("--timeout", type=float, default=600.0, help="Compile timeout in seconds.")
     _add_translation_flags(p_check)
+    prepasses.add_llm_flags(p_check)
     p_check.set_defaults(func=cmd_check)
 
     p_run = sub.add_parser("run", help="Translate, compile, and execute the program's main.")
@@ -264,6 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("-o", "--output", help="Also write the generated Lean here.")
     p_run.add_argument("--timeout", type=float, default=600.0, help="Execution timeout in seconds.")
     _add_translation_flags(p_run)
+    prepasses.add_llm_flags(p_run)
     p_run.set_defaults(func=cmd_run)
 
     p_json = sub.add_parser("json", help="Dump the intermediate JSON IR.")

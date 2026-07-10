@@ -132,21 +132,28 @@ def builtinMappedName? (name : String) : PygenM (Option Lean.Name) := do
   else
     return pythonBuiltinMap? name
 
-/-- Throw on a literal `float('inf')` / `float('-inf')` / `float('nan')` in exact mode, where the
-`ℚ` cast would degrade it to `0`. `--mode run` lowers these to `Float`, which represents them. -/
-def checkFiniteFloatLiteral (funcJson : Json) (argsArray : Array Json) : PygenM Unit := do
-  unless (← getNumericMode) == .exact do return
-  let .ok "Name" := funcJson.getObjValAs? String "node_type" | return
-  let .ok "float" := funcJson.getObjValAs? String "id" | return
-  let some argJson := argsArray[0]? | return
-  let .ok "Constant" := argJson.getObjValAs? String "node_type" | return
-  let .ok (Json.str raw) := argJson.getObjValAs? Json "value" | return
-  let normalized := raw.trim.toLower
+/-- The literal of a non-finite `float('inf')` / `float('-inf')` / `float('nan')` call. -/
+def nonFiniteFloatLiteral? (funcJson : Json) (argsArray : Array Json) : Option String := do
+  guard (funcJson.getObjValAs? String "node_type" == .ok "Name")
+  guard (funcJson.getObjValAs? String "id" == .ok "float")
+  let argJson ← argsArray[0]?
+  guard (argJson.getObjValAs? String "node_type" == .ok "Constant")
+  let .ok (Json.str raw) := argJson.getObjValAs? Json "value" | none
+  let normalized := raw.toLower.trimAscii
   let body := if normalized.startsWith "-" || normalized.startsWith "+"
     then normalized.drop 1 else normalized
-  if body == "inf" || body == "infinity" || body == "nan" then
-    throwError s!"float('{raw}') has no value in ℚ, so exact mode cannot represent it (it would \
-      silently degrade to 0). Use --mode run to model non-finite floats as Lean `Float`."
+  guard (body == "inf" || body == "infinity" || body == "nan")
+  return raw
+
+/-- In exact mode, lower a literal `float('inf')`/`float('nan')` to the `ℚ` sentinel
+`pyRatNonFinite`, because `pyRat` would silently degrade it to `0`. `none` leaves the call on its
+normal path: `--mode run` lowers `float` to `pyFloat`, and `Float` represents these exactly. -/
+def nonFiniteFloatTerm? (funcJson : Json) (argsArray : Array Json) :
+    PygenM (Option (TSyntax `term)) := do
+  unless (← getNumericMode) == .exact do return none
+  let some raw := nonFiniteFloatLiteral? funcJson argsArray | return none
+  let nonFiniteIdent := mkIdent ``PastaLean.pyRatNonFinite
+  return some (← `($nonFiniteIdent $(Syntax.mkStrLit raw)))
 
 @[pygen "Name"]
 def nameSyntax : (kind : SyntaxNodeKind) → Json →

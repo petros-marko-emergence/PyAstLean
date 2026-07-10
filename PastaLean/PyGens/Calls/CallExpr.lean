@@ -322,7 +322,8 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     let argsArray ← match argsJson with
       | .arr arr => pure arr
       | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
-    checkFiniteFloatLiteral funcJson argsArray
+    if let some nonFinite ← nonFiniteFloatTerm? funcJson argsArray then
+      return nonFinite
     let argsCodes ← argsArray.mapM (fun argJson => getCode argJson `term)
 
     let .ok keyWordsJson := json.getObjVal? "keywords" | throwError
@@ -627,7 +628,6 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     let argsArray ← match argsJson with
       | .arr arr => pure arr
       | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
-    checkFiniteFloatLiteral funcJson argsArray
     let .ok keyWordsJson := json.getObjVal? "keywords" | throwError
       s!"Call node does not have a 'keywords' field or it is not json pairs: {json}"
     let .ok keyWordsMap := keyWordsJson.getObj? | throwError

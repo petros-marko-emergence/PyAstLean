@@ -1556,6 +1556,10 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                 # Every `import` must precede the first command in a Lean file. We list the
                 # runtime imports, then the user's cross-file modules, then the `open`s.
                 crossfile_imports = _crossfile_import_lines(body)
+                # Heartbeats bound proof *search*. A program with no proof obligations is pure
+                # elaboration and must scale to any program size, so leave it unbounded (`0`).
+                proving = "taste?" in body_code or "theorem " in body_code
+                heartbeats = 800000 if proving else 0
                 preamble_lines = [
                     "import PastaLean",
                     "import Libraries",
@@ -1568,8 +1572,8 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                     "",
                     "set_option linter.all false", # shut up warnings which annoyingly popup in output
                     "set_option mvcgen.warning false",
-                    "\n"
-                    "set_option maxHeartbeats 800000",
+                    "",
+                    f"set_option maxHeartbeats {heartbeats}",
                     "\n",
                 ]
                 full_code = "\n".join(preamble_lines) + body_code
