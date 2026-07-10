@@ -15,6 +15,8 @@ from .toplevel_state import (
     annotate_if_assigned_names,
 )
 from .contract_passta import CONTRACT_FUNCS as PASSTA_STAR_MEMBERS
+from .for_unpack import desugar_nested_for_targets
+from .walrus import desugar_walrus
 from .normalize_loops import normalize_counting_loops
 from ..backend import LeanBackendClient
 from ..paths import ANNOTATE_SCRIPT, LIBRARIES_DIR, REPO_ROOT, python_executable
@@ -1025,6 +1027,11 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
     logger.debug("Source passed to Python AST parser:\n%s", source_code)
     ast_tree = ast.parse(source_code)
     _sanitize_hole_identifiers(ast_tree)
+    # `for i, (a, b) in …` binds only plain names after this.
+    desugar_nested_for_targets(ast_tree)
+    # `x := e` has no Lean form; hoist it to a preceding assignment. Before lifting, so a walrus
+    # inside a nested `def` is already gone.
+    desugar_walrus(ast_tree)
     logger.debug("Parsed Python AST:\n%s", ast.dump(ast_tree, indent=4))
     module_dir = str(Path(filepath).resolve().parent) if filepath else None
     translator = ASTToJsonLeanVisitor(

@@ -52,28 +52,48 @@ GEMINI_API_KEY = provider_info["Gemini"]["api_key"]
 OPENROUTER_API_KEY = provider_info["OpenRouter"]["api_key"]
 DEEPINFRA_API_KEY = provider_info["DeepInfra"]["api_key"]
 
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
-gemini_client = OpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
-openrouter_client = OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
-deepinfra_client = OpenAI(api_key=DEEPINFRA_API_KEY, base_url="https://api.deepinfra.com/v1/openai")
+# Every provider here speaks the OpenAI chat/models API, so one client type covers all four.
+PROVIDER_BASE_URLS = {
+    "openai": None,
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "deepinfra": "https://api.deepinfra.com/v1/openai",
+}
 
 # The pre-pass prompts are checked-in documents, read from docs/ at the repo root.
 DOCS_DIR = os.path.join(REPO_ROOT, "docs")
 CONTRACT_PROMPT_SYSTEM= os.path.join(DOCS_DIR, "contract-prompt-system.md")
 VERIFIABLE_DESIGN_PROMPT = os.path.join(DOCS_DIR, "verifiable-python-design.md")
 
-def match_provider_client(provider: str = "gemini"):
+
+class LLMError(RuntimeError):
+    """No usable API key, or the provider refused the request."""
+
+
+def env_api_key(provider: str) -> str | None:
+    """The provider's key from the environment (`.env` / `OPENAI_API_KEY` / …), or None."""
+    for name, info in provider_info.items():
+        if name.lower() == provider.lower():
+            key = info["api_key"]
+            return None if key == "Key Not Found" else key
+    return None
+
+
+def match_provider_client(provider: str = "gemini", api_key: str | None = None):
+    """A client for `provider`. `api_key` overrides the environment.
+
+    Clients are built per call rather than at import: `pastalean serve` receives a key per request,
+    and a module-level client would freeze whatever was in the environment when Python started.
+    Constructing one opens no connection, so this is cheap.
+    """
     provider = provider.lower()
-    if provider == "openai":
-        return openai_client
-    elif provider == "gemini":
-        return gemini_client
-    elif provider == "openrouter":
-        return openrouter_client
-    elif provider == "deepinfra":
-        return deepinfra_client
-    else:
-        return openai_client  # Default to OpenAI if provider is not recognized
+    if provider not in PROVIDER_BASE_URLS:
+        provider = "openai"  # Default to OpenAI if provider is not recognized
+    key = api_key or env_api_key(provider)
+    if not key:
+        raise LLMError(f"no API key for {provider}: pass one, or set {provider.upper()}_API_KEY")
+    base_url = PROVIDER_BASE_URLS[provider]
+    return OpenAI(api_key=key, base_url=base_url) if base_url else OpenAI(api_key=key)
 
 
 def default_model_for(provider: str) -> str:
@@ -86,21 +106,21 @@ def default_model_for(provider: str) -> str:
 
 
 ## Get model list supported by API KEY
-def get_supported_models(provider):
+def get_supported_models(provider, api_key: str | None = None):
     """
-    Get the list of models supported by the OpenAI API key.
+    The model ids the given API key can reach, sorted. Raises `LLMError` if the provider rejects it.
     """
-    client = match_provider_client(provider)
+    client = match_provider_client(provider, api_key)
     try:
-        models = client.models.list()
-        return [model.id for model in models.data]
-    except Exception as e:
-        print(f"Error fetching models: {e}")
-        return []
+        return sorted(model.id for model in client.models.list().data)
+    except LLMError:
+        raise
+    except Exception as err:  # noqa: BLE001  (any transport/auth failure is the caller's problem)
+        raise LLMError(f"could not list {provider} models: {err}") from err
 
-# print(get_supported_models("gemini"))
 
-def model_response_gen(prompt:str, task:str = "", provider = "gemini", model:str ="gemini-2.5-pro", json_output: bool = False):
+def model_response_gen(prompt:str, task:str = "", provider = "gemini", model:str ="gemini-2.5-pro",
+                       json_output: bool = False, api_key: str | None = None):
     """
     GPT response generator function.
     Args:
@@ -109,6 +129,7 @@ def model_response_gen(prompt:str, task:str = "", provider = "gemini", model:str
         model (str): The model to use for generating the response.
         provider (str): The provider to use for the model (e.g., "openai", "gemini", "openrouter", "deepinfra").
         json_output (bool): Request a JSON object response (`response_format={"type": "json_object"}`).
+        api_key (str): Overrides the provider's environment key.
     """
     messages = []
     if task != "":
@@ -121,7 +142,8 @@ def model_response_gen(prompt:str, task:str = "", provider = "gemini", model:str
         "content": prompt,
     })
 
-    client = match_provider_client(provider)
+    client = match_provider_client(provider, api_key)
+    # Never log `api_key`.
     log_write("llm_query", f"provider={provider} model={model} json={json_output} prompt={prompt[:60]!r}...")
     create_kwargs = {"model": model, "messages": messages}
     if json_output:
@@ -146,7 +168,7 @@ def extract_python(code: str):
         code = code[:-len("```")]
     return code.strip()
 
-def contract_code(code: str, provider = "gemini", model=None, goal=None):
+def contract_code(code: str, provider = "gemini", model=None, goal=None, api_key: str | None = None):
     """
     Insert formal-method contracts (Requires/Ensures/Invariant/Assert/…) into a Python snippet.
     Args:
@@ -170,12 +192,13 @@ def contract_code(code: str, provider = "gemini", model=None, goal=None):
             f"so that this goal becomes provable, and treat it as the function's intent:\n{goal}"
         )
 
-    response = model_response_gen(user_prompt, task=system_prompt, provider=provider, model=model)
+    response = model_response_gen(user_prompt, task=system_prompt, provider=provider, model=model,
+                                  api_key=api_key)
     if response is None:
         return "No response from model."
     return extract_python(response)
 
-def verifiable_design_code(code: str, provider = "gemini", model=None):
+def verifiable_design_code(code: str, provider = "gemini", model=None, api_key: str | None = None):
     """
     Restructure a Python snippet to maximise its provable surface, guided by the verifiable-design doc.
     Args:
@@ -195,7 +218,8 @@ def verifiable_design_code(code: str, provider = "gemini", model=None):
         f"program in a single ```python code block.\n\n```python\n{code}\n```"
     )
 
-    response = model_response_gen(user_prompt, task=system_prompt, provider=provider, model=model)
+    response = model_response_gen(user_prompt, task=system_prompt, provider=provider, model=model,
+                                  api_key=api_key)
     if response is None:
         return "No response from model."
     return extract_python(response)
