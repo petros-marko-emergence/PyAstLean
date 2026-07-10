@@ -395,10 +395,10 @@ def main' :=
         r2z := r2z +ₚ v2z *ₚ dt
         t := t +ₚ dt
         if h_1 : step %ₚ every = (0 : Int) then 
-          let mut energy :=
+          let mut energy : Rat :=
             kinetic m1 v1x v1y v1z +ₚ kinetic m2 v2x v2y v2z +ₚ spring_energy k (r1x -ₚ r2x) (r1y -ₚ r2y) (r1z -ₚ r2z)
           let mut px : Rat := m1 *ₚ v1x +ₚ m2 *ₚ v2x
-          let mut lx :=
+          let mut lx : Rat :=
             cross_x r1x r1y r1z (m1 *ₚ v1x) (m1 *ₚ v1y) (m1 *ₚ v1z) +ₚ
               cross_x r2x r2y r2z (m2 *ₚ v2x) (m2 *ₚ v2y) (m2 *ₚ v2z)
           let _ ←
@@ -457,11 +457,11 @@ def main''rn :=
         r2z := r2z +ₚ v2z *ₚ dt
         t := t +ₚ dt
         if h_1 : step %ₚ every == (0 : Int) then 
-          let mut energy :=
+          let mut energy : Float :=
             kinetic'rn m1 v1x v1y v1z +ₚ kinetic'rn m2 v2x v2y v2z +ₚ
               spring_energy'rn k (r1x -ₚ r2x) (r1y -ₚ r2y) (r1z -ₚ r2z)
           let mut px : Float := m1 *ₚ v1x +ₚ m2 *ₚ v2x
-          let mut lx :=
+          let mut lx : Float :=
             cross_x'rn r1x r1y r1z (m1 *ₚ v1x) (m1 *ₚ v1y) (m1 *ₚ v1z) +ₚ
               cross_x'rn r2x r2y r2z (m2 *ₚ v2x) (m2 *ₚ v2y) (m2 *ₚ v2z)
           let _ ←

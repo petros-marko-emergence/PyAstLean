@@ -204,9 +204,9 @@ noncomputable def main' :=
         else
           let _ := ()
         -- One forward-Euler step using the rate functions.
-        let mut d_depot := depot_rate ka depot
+        let mut d_depot : Rat := depot_rate ka depot
         let mut d_central := central_rate ka ke k12 k21 depot central periph
-        let mut d_periph := periph_rate k12 k21 central periph
+        let mut d_periph : Rat := periph_rate k12 k21 central periph
         depot := depot +ₚ d_depot *ₚ dt
         central := central +ₚ d_central *ₚ dt
         periph := periph +ₚ d_periph *ₚ dt
@@ -251,9 +251,9 @@ def main''rn :=
         else
           let _ := ()
         -- One forward-Euler step using the rate functions.
-        let mut d_depot := depot_rate'rn ka depot
+        let mut d_depot : Float := depot_rate'rn ka depot
         let mut d_central := central_rate'rn ka ke k12 k21 depot central periph
-        let mut d_periph := periph_rate'rn k12 k21 central periph
+        let mut d_periph : Float := periph_rate'rn k12 k21 central periph
         depot := depot +ₚ d_depot *ₚ dt
         central := central +ₚ d_central *ₚ dt
         periph := periph +ₚ d_periph *ₚ dt

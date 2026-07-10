@@ -235,7 +235,7 @@ def main' :=
       let mut y : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
       let mut nsteps : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
       let mut every : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut detA := det a b c d
+      let mut detA : Rat := det a b c d
       for step in (PastaLean.pyRange nsteps)do
         -- One step of the linear map (x, y) -> (a x + b y, c x + d y).
         let mut nx : Rat := a *ₚ x +ₚ b *ₚ y
@@ -260,7 +260,7 @@ def main''rn :=
       let mut y : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
       let mut nsteps : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
       let mut every : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut detA := det'rn a b c d
+      let mut detA : Float := det'rn a b c d
       for step in (PastaLean.pyRange nsteps)do
         -- One step of the linear map (x, y) -> (a x + b y, c x + d y).
         let mut nx : Float := a *ₚ x +ₚ b *ₚ y

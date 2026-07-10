@@ -41,7 +41,7 @@ noncomputable def mean_squared_error := fun (xs : List (List Rat)) ↦ fun (ys :
     (do
       let mut total : Real := (0.0 : Real)
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-        let mut diff := predict xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
+        let mut diff : Real := predict xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
         total := total +ₚ diff *ₚ diff
       let __py_ret_1 := total /ₚ PastaLean.pyLen xs
       return __py_ret_1)
@@ -54,7 +54,7 @@ def mean_squared_error'rn := fun (xs : List (List Float)) ↦ fun (ys : List Flo
     (do
       let mut total : Float := (0.0 : Float)
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-        let mut diff := predict'rn xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
+        let mut diff : Float := predict'rn xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
         total := total +ₚ diff *ₚ diff
       let __py_ret_1 := PastaLean.pyFloat total /ₚ PastaLean.pyLen xs
       return __py_ret_1)
@@ -80,14 +80,14 @@ noncomputable def main' :=
         let mut x : List Rat := xs⦋i⦌
         let mut y : Rat := ys⦋i⦌
         -- Forward pass, keeping the hidden activations for backprop.
-        let mut h0 := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
-        let mut h1 := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
-        let mut hidden := [h0, h1]
-        let mut out := sigmoid (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
+        let mut h0 : Real := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
+        let mut h1 : Real := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
+        let mut hidden : List Real := [h0, h1]
+        let mut out : Real := sigmoid (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
         -- Backward pass: gradients of 1/2 the squared error.
-        let mut d_out := (out -ₚ y) *ₚ out *ₚ ((1.0 : Real) -ₚ out)
-        let mut d_h0 := d_out *ₚ w2⦋(0 : Int)⦌⦋(0 : Int)⦌ *ₚ h0 *ₚ ((1.0 : Real) -ₚ h0)
-        let mut d_h1 := d_out *ₚ w2⦋(0 : Int)⦌⦋(1 : Int)⦌ *ₚ h1 *ₚ ((1.0 : Real) -ₚ h1)
+        let mut d_out : Real := (out -ₚ y) *ₚ out *ₚ ((1.0 : Real) -ₚ out)
+        let mut d_h0 : Real := d_out *ₚ w2⦋(0 : Int)⦌⦋(0 : Int)⦌ *ₚ h0 *ₚ ((1.0 : Real) -ₚ h0)
+        let mut d_h1 : Real := d_out *ₚ w2⦋(0 : Int)⦌⦋(1 : Int)⦌ *ₚ h1 *ₚ ((1.0 : Real) -ₚ h1)
         -- Gradient-descent step (rebuild each weight row in place).
         w2 :=
           PastaLean.pySetItem w2 (0 : Int)
@@ -108,7 +108,7 @@ noncomputable def main' :=
         let _ := ()
     let _ ← pyPrintNoop [pyPrintArg "learned predictions:"]
     for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-      let mut p := predict xs⦋i⦌ w1 b1 w2 b2
+      let mut p : Real := predict xs⦋i⦌ w1 b1 w2 b2
       let mut label : Int := if decide (p > (0.5 : Real)) then (1 : Int) else (0 : Int)
       let _ ← pyPrintNoop [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
 
@@ -136,14 +136,14 @@ def main''rn :=
         let mut x : List Float := xs⦋i⦌
         let mut y : Float := ys⦋i⦌
         -- Forward pass, keeping the hidden activations for backprop.
-        let mut h0 := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
-        let mut h1 := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
-        let mut hidden := [h0, h1]
-        let mut out := sigmoid'rn (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
+        let mut h0 : Float := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
+        let mut h1 : Float := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
+        let mut hidden : List Float := [h0, h1]
+        let mut out : Float := sigmoid'rn (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
         -- Backward pass: gradients of 1/2 the squared error.
-        let mut d_out := (out -ₚ y) *ₚ out *ₚ ((1.0 : Float) -ₚ out)
-        let mut d_h0 := d_out *ₚ w2⦋(0 : Int)⦌⦋(0 : Int)⦌ *ₚ h0 *ₚ ((1.0 : Float) -ₚ h0)
-        let mut d_h1 := d_out *ₚ w2⦋(0 : Int)⦌⦋(1 : Int)⦌ *ₚ h1 *ₚ ((1.0 : Float) -ₚ h1)
+        let mut d_out : Float := (out -ₚ y) *ₚ out *ₚ ((1.0 : Float) -ₚ out)
+        let mut d_h0 : Float := d_out *ₚ w2⦋(0 : Int)⦌⦋(0 : Int)⦌ *ₚ h0 *ₚ ((1.0 : Float) -ₚ h0)
+        let mut d_h1 : Float := d_out *ₚ w2⦋(0 : Int)⦌⦋(1 : Int)⦌ *ₚ h1 *ₚ ((1.0 : Float) -ₚ h1)
         -- Gradient-descent step (rebuild each weight row in place).
         w2 :=
           PastaLean.pySetItem w2 (0 : Int)
@@ -165,7 +165,7 @@ def main''rn :=
         let _ := ()
     let _ ← pyPrintIO [pyPrintArg "learned predictions:"]
     for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-      let mut p := predict'rn xs⦋i⦌ w1 b1 w2 b2
+      let mut p : Float := predict'rn xs⦋i⦌ w1 b1 w2 b2
       let mut label : Int := if decide (p > (0.5 : Float)) then (1 : Int) else (0 : Int)
       let _ ← pyPrintIO [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
 

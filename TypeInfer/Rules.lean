@@ -20,7 +20,12 @@ namespace TypeInfer
 
 open Lean
 
+/-- What we know about the variables in scope. -/
 abbrev Env := Std.HashMap String PyType
+
+/-- Return type of each user function, filled in by the interprocedural pass (`Solve.lean`). A
+call to a function listed here resolves to its return type instead of `unknown`. -/
+abbrev Sigs := Std.HashMap String PyType
 
 private def nodeType? (j : Json) : Option String := (j.getObjValAs? String "node_type").toOption
 private def field (j : Json) (k : String) : Option Json := (j.getObjVal? k).toOption
@@ -60,24 +65,25 @@ private def constReturnMethods : List (String × PyType) :=
 
 mutual
 
-/-- The type of an expression under the current environment. Total: `unknown` when unsure. -/
-partial def typeOfExpr (env : Env) (e : Json) : PyType :=
+/-- The type of an expression under the current environment. `sigs` gives user functions' return
+types. Total: `unknown` when unsure. -/
+partial def typeOfExpr (sigs : Sigs) (env : Env) (e : Json) : PyType :=
   match nodeType? e with
   | some "Name" => ((e.getObjValAs? String "id").toOption.bind (env.get? ·)).getD .unknown
   | some "Constant" => ofValue e
-  | some "List" => .list (PyType.joinAll ((eltsOf e).map (typeOfExpr env)))
-  | some "Set" => .set (PyType.joinAll ((eltsOf e).map (typeOfExpr env)))
-  | some "Tuple" => .tuple ((eltsOf e).map (typeOfExpr env))
+  | some "List" => .list (PyType.joinAll ((eltsOf e).map (typeOfExpr sigs env)))
+  | some "Set" => .set (PyType.joinAll ((eltsOf e).map (typeOfExpr sigs env)))
+  | some "Tuple" => .tuple ((eltsOf e).map (typeOfExpr sigs env))
   | some "Dict" =>
       let entries := ((e.getObjValAs? (Array Json) "entries").toOption.getD #[]).toList
-      let part (k : String) := entries.map fun en => (field en k).elim .unknown (typeOfExpr env)
+      let part (k : String) := entries.map fun en => (field en k).elim .unknown (typeOfExpr sigs env)
       .dict (PyType.joinAll (part "key")) (PyType.joinAll (part "value"))
   | some "Range" => .list .int
   | some "BinOp" =>
       match field e "left", field e "right" with
       | some l, some r =>
-          let lt := typeOfExpr env l
-          let rt := typeOfExpr env r
+          let lt := typeOfExpr sigs env l
+          let rt := typeOfExpr sigs env r
           match (e.getObjValAs? String "op").toOption with
           -- `[0] * n` / `n * [0]` repeats a list; every other `*` is arithmetic.
           | some "mul" =>
@@ -91,19 +97,19 @@ partial def typeOfExpr (env : Env) (e : Json) : PyType :=
       | _, _ => .unknown
   | some "UnaryOp" =>
       if (e.getObjValAs? String "op").toOption == some "not" then .bool
-      else (field e "operand").elim .unknown (typeOfExpr env)
+      else (field e "operand").elim .unknown (typeOfExpr sigs env)
   | some "Compare" => .bool
   | some "BoolOp" =>
       -- `a and b` / `a or b` evaluate to one operand, so the type is their join.
-      PyType.joinAll (((e.getObjValAs? (Array Json) "values").toOption.getD #[]).toList.map (typeOfExpr env))
+      PyType.joinAll (((e.getObjValAs? (Array Json) "values").toOption.getD #[]).toList.map (typeOfExpr sigs env))
   | some "IfExp" =>
       match field e "body", field e "orelse" with
-      | some b, some o => (typeOfExpr env b).join (typeOfExpr env o)
+      | some b, some o => (typeOfExpr sigs env b).join (typeOfExpr sigs env o)
       | _, _ => .unknown
   | some "Subscript" =>
       match field e "value" with
       | some c =>
-          let ct := typeOfExpr env c
+          let ct := typeOfExpr sigs env c
           match ct with
           -- `t[k]` for a literal index projects the k-th element; otherwise the elements join.
           | .tuple es =>
@@ -114,32 +120,36 @@ partial def typeOfExpr (env : Env) (e : Json) : PyType :=
           | .dict _ v => v
           | _ => ct.elemType
       | none => .unknown
-  | some "Call" => typeOfCall env e
+  | some "Call" => typeOfCall sigs env e
   | _ => .unknown
 
 /-- The type a call returns. -/
-partial def typeOfCall (env : Env) (e : Json) : PyType :=
+partial def typeOfCall (sigs : Sigs) (env : Env) (e : Json) : PyType :=
   let args := ((e.getObjValAs? (Array Json) "args").toOption.getD #[]).toList
   match field e "func" with
   | some func =>
       match nodeType? func with
       | some "Name" =>
           match (func.getObjValAs? String "id").toOption with
-          | some name => builtinReturn env name args
+          -- A builtin's return type wins; otherwise a user function's inferred return type.
+          | some name =>
+              match builtinReturn sigs env name args with
+              | .unknown => (sigs.get? name).getD .unknown
+              | t => t
           | none => .unknown
       | some "Attribute" =>
           match (func.getObjValAs? String "attr").toOption with
-          | some attr => methodReturn env attr (field func "value") args
+          | some attr => methodReturn sigs env attr (field func "value") args
           | none => .unknown
       | _ => .unknown
   | none => .unknown
 
-/-- Return type of a builtin `name(args)`. Unknown for user functions (P2 resolves those). -/
-partial def builtinReturn (env : Env) (name : String) (args : List Json) : PyType :=
+/-- Return type of a builtin `name(args)`; `unknown` for non-builtins. -/
+partial def builtinReturn (sigs : Sigs) (env : Env) (name : String) (args : List Json) : PyType :=
   match constReturnBuiltins.lookup name with
   | some t => t
   | none =>
-      let arg0 := args.head?.elim .unknown (typeOfExpr env)
+      let arg0 := args.head?.elim .unknown (typeOfExpr sigs env)
       match name with
       | "range" => .list .int
       | "list" | "sorted" | "reversed" => .list arg0.elemType
@@ -152,11 +162,11 @@ partial def builtinReturn (env : Env) (name : String) (args : List Json) : PyTyp
       | _ => .unknown
 
 /-- Return type of `recv.attr(args)`. -/
-partial def methodReturn (env : Env) (attr : String) (recv : Option Json) (_args : List Json) : PyType :=
+partial def methodReturn (sigs : Sigs) (env : Env) (attr : String) (recv : Option Json) (_args : List Json) : PyType :=
   match constReturnMethods.lookup attr with
   | some t => t
   | none =>
-      let recvT := recv.elim .unknown (typeOfExpr env)
+      let recvT := recv.elim .unknown (typeOfExpr sigs env)
       match attr with
       | "keys" => .list (match recvT with | .dict k _ => k | _ => .unknown)
       | "values" => .list (match recvT with | .dict _ v => v | _ => .unknown)

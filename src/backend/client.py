@@ -309,6 +309,32 @@ class LeanBackendClient:
             logger.debug("proveFile returned invalid JSON: %s", err)
             return None
 
+    def infer_types(self, ast_json, timeout=None):
+        """Run whole-module type inference in the warm backend and return the AST stamped with
+        `_ty` on its binders. Returns the original `ast_json` unchanged on any failure, so this is a
+        pure best-effort enrichment — the per-statement translate still runs its intraprocedural
+        fallback."""
+        self.start()
+        assert self.proc is not None and self.proc.stdin is not None
+        json_task = json.dumps({"task": "inferTypes", "ast": ast_json}, separators=(",", ":"))
+        try:
+            self.proc.stdin.write(json_task + "\n")
+            self.proc.stdin.flush()
+        except BrokenPipeError:
+            self.close()
+            return ast_json
+        budget = (timeout or self.request_timeout) + (0 if self._warm else self.startup_timeout)
+        line = self._read_response(budget)
+        if line is None:
+            self.close()
+            return ast_json
+        self._warm = True
+        try:
+            resp = json.loads(line)
+        except json.JSONDecodeError:
+            return ast_json
+        return resp.get("ast", ast_json) if resp.get("result") else ast_json
+
     def __enter__(self):
         self.start()
         return self

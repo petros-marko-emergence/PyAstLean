@@ -1401,20 +1401,23 @@ def _lean_ident(name):
     return name if isinstance(name, str) and name.isidentifier() else None
 
 
-def _backend_placeholder_command(stmt, idx):
+def _backend_placeholder_command(stmt, idx, suffix=""):
     """Best-effort placeholder for a top-level statement the *Lean backend* could not translate
     (e.g. a `with` statement, which `node_visitor` emits IR for but the backend has no generator
     for, so it slips past the node-level fallback). Keeps the declaration's name where possible so
-    references still resolve; the linter flags the `pyUnsupported` use."""
+    references still resolve; the linter flags the `pyUnsupported` use.
+
+    `suffix` is the run-twin suffix (`'rn`) for this pass, appended to the declared name so the twin
+    calling this def still resolves it (e.g. `main'` -> `main''rn`)."""
     node_type = stmt.get("node_type", "statement") if isinstance(stmt, dict) else "statement"
     name = stmt.get("name") if isinstance(stmt, dict) else None
     msg = f"unsupported {node_type} (backend could not translate)"
     # The main entry-point body (`main'`) is awaited by the `main` wrapper, so it must stay a
     # runnable `IO Unit` — a `pyUnsupported` *value* there would dangle the wrapper's reference.
     if name in ("main", "main'"):
-        return f'def {name} : IO Unit := do\n  let _ := pyUnsupported "{msg}"\n  pure ()'
+        return f'def {name}{suffix} : IO Unit := do\n  let _ := pyUnsupported "{msg}"\n  pure ()'
     ident = _lean_ident(name) or f"__py_unsup_backend_{idx}"
-    return f'def {ident} := pyUnsupported "{msg}"'
+    return f'def {ident}{suffix} := pyUnsupported "{msg}"'
 
 
 def _collect_user_names(body):
@@ -1461,6 +1464,12 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
     _stamp_class_dispatch(ast_json)
     client = client or _LEAN_BACKEND
 
+    # Whole-module type inference (best-effort): stamp `_ty` using interprocedural flow before the
+    # per-statement translate loop, which cannot see across functions. Ferries JSON only — the
+    # inference logic lives in Lean (`TypeInfer.inferModule`). On any failure the AST is unchanged.
+    if ast_json.get("node_type") == "Module":
+        ast_json = client.infer_types(ast_json)
+
     if ast_json.get("node_type") == "Module":
         body = ast_json.get("body", [])
         user_names = _collect_user_names(body)
@@ -1493,6 +1502,16 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                     return None
                 codes.append(r[code_key])
             return codes
+
+        def backend_placeholders(node):
+            """A `pyUnsupported` placeholder for EACH emission pass (prove + run twin), so a
+            degraded twinnable def still declares both `foo` and `foo'rn` — otherwise the run
+            twin's references to `foo'rn` dangle."""
+            parts = [
+                _backend_placeholder_command(node, backend_unsup, suffix)
+                for _nmode, suffix, _unames in node_passes(node)
+            ]
+            return "\n\n".join(parts)
 
         if target == "command":
             # Each part is (is_comment, text). Standalone comments attach to the next
@@ -1527,7 +1546,7 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                         if codes is None:
                             if best_effort:
                                 logger.warning("best-effort: backend could not translate %s; replaced with pyUnsupported placeholder", name)
-                                code_parts.append((False, _backend_placeholder_command(stmt, backend_unsup)))
+                                code_parts.append((False, backend_placeholders(stmt)))
                                 backend_unsup += 1
                                 emitted_funcs.update(group)
                                 continue
@@ -1541,7 +1560,7 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                 if codes is None:
                     if best_effort:
                         logger.warning("best-effort: backend could not translate a %s; replaced with pyUnsupported placeholder", stmt.get("node_type"))
-                        code_parts.append((False, _backend_placeholder_command(stmt, backend_unsup)))
+                        code_parts.append((False, backend_placeholders(stmt)))
                         backend_unsup += 1
                         continue
                     detail = last_backend_error["msg"]

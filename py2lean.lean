@@ -95,11 +95,20 @@ def runProveFileTask (jsonTask : Json) (env : Environment) : IO Json := do
     ("hasErrors", Json.bool hasErrors)
   ]
 
+/-- Whole-module type inference: stamp `_ty` on binders using interprocedural (return-type) flow,
+so a later per-statement `translate` sees types a single statement couldn't reveal. Returns the
+stamped AST for the driver to send back one node at a time. -/
+def runInferTypesTask (jsonTask : Json) : IO Json := do
+  let .ok ast := jsonTask.getObjVal? "ast"
+    | return errorResponse "inferTypes: missing 'ast' field"
+  pure <| Json.mkObj [("result", Json.bool true), ("ast", TypeInfer.inferModule ast)]
+
 def handleTaskJson (jsonTask : Json) (ctx : Core.Context) (env : Environment) : IO Json := do
   let .ok task := jsonTask.getObjValAs? String "task"
     | return errorResponse "Invalid JSON: missing 'task' field or it is not a string"
   match task with
   | "translate" => runTranslateTask jsonTask ctx env
+  | "inferTypes" => runInferTypesTask jsonTask
   | "proveFile" => runProveFileTask jsonTask env
   | _ => pure <| errorResponse s!"Unknown task: {task}"
 
