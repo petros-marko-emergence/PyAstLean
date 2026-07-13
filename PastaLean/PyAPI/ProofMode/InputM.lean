@@ -13,22 +13,17 @@ structure IOState where
 
 -- Manual Inhabited instance (can't derive because IOStream has a function field)
 instance : Inhabited IOState where
-  default := ⟨⟨0, fun _ => ""⟩, []⟩
-
-/-- Errors that can occur during proof-mode IO operations. -/
-inductive IOError where
-  /-- End of file / no more input available -/
-  | EndOfFile : IOError
-  /-- Generic read error with message -/
-  | ReadError : String → IOError
-  deriving Repr, BEq
+  default := {
+    input := { pos := 0, str := fun _ => IOResult.error IOError.EndOfFile }
+    output := []
+  }
 
 namespace IOError
 
 /-- Convert an IOError to a PyException for integration with Python exception handling. -/
 def toPyException : IOError → PastaLean.PyException
-  | .EndOfFile => ⟨"EOFError", "EOF when reading a line"⟩
-  | .ReadError msg => ⟨"IOError", msg⟩
+  | EndOfFile => ⟨"EOFError", "EOF when reading a line"⟩
+  | ReadError msg => ⟨"IOError", msg⟩
 
 end IOError
 
@@ -62,11 +57,18 @@ instance : MonadLift InputM PyProofM where
 
 namespace InputM
 
-/-- Low-level input operation: consume one string from the stream. -/
+/-- Low-level input operation: consume one string from the stream.
+Pattern matches on the IOResult at the current stream position:
+- On success: advances the stream and returns the string
+- On error: throws the IOError (will be converted to PyException by liftInputM) -/
 def input : InputM String := do
   let s ← get
-  set { s with input := s.input.tail }
-  return s.input.head
+  match s.input.head with
+  | IOResult.success str =>
+    set { s with input := s.input.tail }
+    return str
+  | IOResult.error err =>
+    throw err
 
 /-- Low-level print operation: append a line to the output. -/
 def print (line : String) : InputM Unit := do

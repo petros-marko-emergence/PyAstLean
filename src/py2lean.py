@@ -357,11 +357,11 @@ def _annotate_direct_io_calls(node):
             ):
                 func_id = func.get("id")
                 # In prove mode, print() is a noop (pyPrintNoop) and doesn't require IO in the type
-                # input() always needs IO, even in prove mode
+                # input() and print() always need IO effect marking
+                # (even in exact mode where they use PyProofM instead of IO)
                 if func_id == "input":
                     node.setdefault("effect_mode", "io")
-                elif func_id == "print" and _NUMERIC_MODE != "exact":
-                    # Only mark print as IO in run/approx mode
+                elif func_id == "print":
                     node.setdefault("effect_mode", "io")
         node_type = node.get("node_type")
         for key, value in node.items():
