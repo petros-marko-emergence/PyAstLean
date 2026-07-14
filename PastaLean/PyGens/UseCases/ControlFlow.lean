@@ -582,6 +582,8 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
           let ioStateIdent := mkIdent ``PastaLean.ProofMode.IOState
           let ioResultSuccessIdent := mkIdent ``PastaLean.ProofMode.IOResult.success
           let ioUserErrorIdent := mkIdent ``IO.userError
+          let outputLinesName := mkIdent `outputLines
+          let lineName := mkIdent `line
           let mainBody ← `(do
             -- Read all input from stdin and convert to stream
             -- Note: The stream produces IOResult values (success/error), not plain strings.
@@ -600,9 +602,9 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
                 pure ()
               ) : $proofMonadIdent Unit)) initState
             -- Print accumulated output to stdout
-            let outputLines := finalState.output
-            for line in outputLines do
-              IO.print line
+            let $outputLinesName := finalState.output
+            for $lineName in $outputLinesName do
+              IO.print $lineName
             -- Convert result to IO
             match result with
             | .ok _ => pure ()
