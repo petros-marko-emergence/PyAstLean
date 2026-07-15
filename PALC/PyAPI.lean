@@ -1,0 +1,9 @@
+import PALC.PyAPI.TestStrings
+import PALC.PyAPI.TestLists
+import PALC.PyAPI.TestDicts
+import PALC.PyAPI.TestCommonProtocols
+import PALC.PyAPI.TestBuiltins
+import PALC.PyAPI.TestCasting
+import PALC.PyAPI.TestPyPrint
+import PALC.PyAPI.TestPyValue
+import PALC.PyAPI.TestInput

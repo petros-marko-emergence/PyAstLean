@@ -2,7 +2,7 @@ name = "PastaLean"
 version = "0.1.0"
 keywords = ["math"]
 defaultTargets = ["PastaLean", "py2lean"]
-testDriver = "PastaLeanTest"
+testDriver = "pastacheck"
 
 [leanOptions]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
@@ -27,7 +27,7 @@ name = "Libraries"
 name = "TypeInfer"
 
 [[lean_lib]]
-name = "PastaLeanTest"
+name = "PALC"
 
 [[lean_lib]]
 name = "Slides"
@@ -44,5 +44,6 @@ name="py2lean"
 supportInterpreter = true
 
 [[lean_exe]]
-name="palc"
+name="pastacheck"
+root = "PALC.PastaCheck"
 supportInterpreter = true

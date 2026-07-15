@@ -203,6 +203,8 @@ def cmd_batch(args) -> int:
                 record["status"] = status
                 if result.unsupported:
                     record["unsupported"] = result.unsupported
+                if args.emit_lean:
+                    record["lean"] = result.lean_code
             records.append(record)
             if not args.quiet:
                 print(f"{record['status']:>13}  {path}", flush=True)
@@ -292,6 +294,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_batch.add_argument("-r", "--recursive", action="store_true", help="Recurse into directories.")
     p_batch.add_argument("--check", action="store_true", help="Also compile each generated file.")
     p_batch.add_argument("--summary", help="Write a JSON summary here.")
+    p_batch.add_argument("--emit-lean", action="store_true",
+                         help="Include each file's generated Lean in the summary records (for an "
+                              "external in-process compile-checker like `pastacheck`).")
     p_batch.add_argument("--quiet", action="store_true", help="Suppress the per-file lines.")
     p_batch.add_argument("--timeout", type=float, default=600.0, help="Per-file compile timeout.")
     _add_translation_flags(p_batch)
