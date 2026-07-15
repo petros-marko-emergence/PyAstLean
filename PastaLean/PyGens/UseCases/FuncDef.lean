@@ -50,12 +50,23 @@ partial def functionArgTypeSyntax? (annotationJson : Json) : PygenM (Option (TSy
         s!"Function argument subscript annotation is missing a 'value' field: {annotationJson}"
       let .ok sliceJson := annotationJson.getObjValAs? Json "slice" | throwError
         s!"Function argument subscript annotation is missing a 'slice' field: {annotationJson}"
-      match valueJson.getObjValAs? String "node_type", valueJson.getObjValAs? String "id" with
-      | .ok "Name", .ok "list" | .ok "Name", .ok "List" =>
+      -- Normalise `typing` container spellings to the builtin generic, so `Sequence[float]`,
+      -- `Mapping[str,int]`, `FrozenSet[int]` all lower like `list`/`dict`/`set`.
+      let container := match valueJson.getObjValAs? String "node_type", valueJson.getObjValAs? String "id" with
+        | .ok "Name", .ok id =>
+            match id with
+            | "list" | "List" | "Sequence" | "MutableSequence" | "Iterable" | "Collection" => "list"
+            | "dict" | "Dict" | "Mapping" | "MutableMapping" => "dict"
+            | "set" | "Set" | "frozenset" | "FrozenSet" => "set"
+            | other => other
+        | _, _ => ""
+      match container with
+      -- Sets are list-backed in the runtime, so `set[T]` lowers to `List T`.
+      | "list" | "set" =>
           match ← functionArgTypeSyntax? sliceJson with
           | some elemTy => return some (← `(List $elemTy))
           | none => return none
-      | .ok "Name", .ok "dict" | .ok "Name", .ok "Dict" =>
+      | "dict" =>
           match sliceJson.getObjValAs? String "node_type" with
           | .ok "Tuple" =>
               let .ok elts := sliceJson.getObjValAs? (Array Json) "elts" | throwError
@@ -67,7 +78,7 @@ partial def functionArgTypeSyntax? (annotationJson : Json) : PygenM (Option (TSy
                   | _, _ => return none
               | _, _ => return none
           | _ => return none
-      | _, _ => return none
+      | _ => return none
   | _ => return none
 
 /-- Read Python function parameters as Lean idents plus any simple type annotations we can preserve. -/

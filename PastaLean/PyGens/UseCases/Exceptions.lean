@@ -268,6 +268,15 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
           s!"Try node does not have an 'orelse' field or it is not a JSON array: {json}"
         let .ok finalbodyElems := json.getObjValAs? (Array Json) "finalbody" | throwError
           s!"Try node does not have a 'finalbody' field or it is not a JSON array: {json}"
+        -- Hoist names assigned across `try`/`except`/`finally` that are used after the block into
+        -- one enclosing `let mut … := default` (mirrors the `if` hoist in `ControlFlow.lean`), so a
+        -- variable set in the body and reassigned in a handler binds a single outer mutable.
+        let assignedNames := (json.getObjValAs? (Array String) "try_assigned_names").toOption.getD #[]
+        let mut hoistDecls : Array (TSyntax `doElem) := #[]
+        for nm in assignedNames do
+          unless (← hasVar nm.toName) do
+            hoistDecls := hoistDecls.push (← `(doElem| let mut $(mkIdent nm.toName):ident := default))
+            addVar nm.toName
         let bodyAndElse ← tryBranchBodySyntax (bodyElems ++ orelseElems)
         -- Splice body statements straight into `captureIOErrors (do …)` (no nested `do (do …)`).
         let noopElem ← noopDoElemSyntax
@@ -291,20 +300,25 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
               pure #[← `(doElem| let _ ← $wrappedBody:term)]
           else
             pure innerBodyElems
-        if finalbodyElems.isEmpty then
-          `(doElem| try
-              $[$tryBranchElems:doElem]*
-            catch $catchIdent =>
-              $catchBody:doElem)
+        let tryStx ←
+          if finalbodyElems.isEmpty then
+            `(doElem| try
+                $[$tryBranchElems:doElem]*
+              catch $catchIdent =>
+                $catchBody:doElem)
+          else
+            let finalElems ← tryBranchBodySyntax finalbodyElems
+            let finalBlock ← sequenceDoElems finalElems (← noopDoElemSyntax)
+            `(doElem| try
+                $[$tryBranchElems:doElem]*
+              catch $catchIdent =>
+                $catchBody:doElem
+              finally
+                $finalBlock:doElem)
+        if hoistDecls.isEmpty then
+          pure tryStx
         else
-          let finalElems ← tryBranchBodySyntax finalbodyElems
-          let finalBlock ← sequenceDoElems finalElems (← noopDoElemSyntax)
-          `(doElem| try
-              $[$tryBranchElems:doElem]*
-            catch $catchIdent =>
-              $catchBody:doElem
-            finally
-              $finalBlock:doElem)
+          pure ⟨mkNullNode ((hoistDecls.push tryStx).map TSyntax.raw)⟩
     | `command, _ => do
         return ⟨mkNullNode #[]⟩
     | _, _ => throwError s!"Unsupported syntax category for Try node"

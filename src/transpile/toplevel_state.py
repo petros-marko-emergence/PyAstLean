@@ -126,13 +126,22 @@ def _annotate_ifs_in_block(stmts):
     for i, stmt in enumerate(stmts):
         if not isinstance(stmt, dict):
             continue
-        if stmt.get("node_type") == "If":
+        node_type = stmt.get("node_type")
+        if node_type in ("If", "Try"):
             assigned = _block_mutated_names(stmt.get("body", []))
             assigned |= _block_mutated_names(stmt.get("orelse", []))
+            if node_type == "Try":
+                assigned |= _block_mutated_names(stmt.get("finalbody", []))
+                for handler in stmt.get("handlers", []) or []:
+                    if isinstance(handler, dict):
+                        assigned |= _block_mutated_names(handler.get("body", []))
             later = set()
             for later_stmt in stmts[i + 1:]:
                 later |= _names_referenced(later_stmt)
-            stmt["if_assigned_names"] = sorted(assigned & later)
+            # A name assigned across `try`/`except`/`finally` (or `if`/`else`) that escapes the
+            # block must be hoisted to one enclosing `let mut`, matching Python's binding.
+            key = "if_assigned_names" if node_type == "If" else "try_assigned_names"
+            stmt[key] = sorted(assigned & later)
         for key in ("body", "orelse", "finalbody"):
             _annotate_ifs_in_block(stmt.get(key, []))
         for handler in stmt.get("handlers", []) or []:

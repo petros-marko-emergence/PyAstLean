@@ -124,15 +124,59 @@ private def paramSeed (fn : Json) : Env := Id.run do
       | none => pure ()
   return env
 
+/-- What `name`'s usage in one expression tells us — but only from **unambiguous** signals: a method
+call whose name pins the receiver's type (`p.split()` → str, `p.append(x)` → list, `p.keys()` →
+dict). Ambiguous uses (`p[i]`, `for x in p`, `len(p)` — any of list/str/dict) are deliberately left
+`unknown` so a string parameter is never mis-typed as a list. -/
+private partial def usageType (name : String) (json : Json) : PyType :=
+  let here : PyType :=
+    match nodeTypeOf json with
+    | some "Call" =>
+        match getField json "func" with
+        | some func =>
+            if nodeTypeOf func != some "Attribute" then .unknown else
+            match (getField func "value").bind nameId? with
+            | some n =>
+                if n != name then .unknown else
+                match (func.getObjValAs? String "attr").toOption with
+                | some attr =>
+                    if ["split", "rsplit", "splitlines", "upper", "lower", "strip", "lstrip",
+                        "rstrip", "replace", "startswith", "endswith"].contains attr then .str
+                    else if ["append", "pop", "sort", "reverse", "insert", "extend"].contains attr then .list .unknown
+                    else if ["keys", "values", "items", "setdefault"].contains attr then .dict .unknown .unknown
+                    else if ["add", "discard"].contains attr then .set .unknown
+                    else .unknown
+                | none => .unknown
+            | none => .unknown
+        | none => .unknown
+    | _ => .unknown
+  let sub := match json with
+    | .arr xs => PyType.joinAll (xs.toList.map (usageType name))
+    | .obj fs => PyType.joinAll (fs.toList.map (fun (_, v) => usageType name v))
+    | _ => .unknown
+  here.join sub
+
+/-- Seed each unannotated parameter from unambiguous body usage (`p.split()` → str, `p.append()` →
+list, `p.keys()` → dict). This is the safe part of the use-based inference the old Python pre-pass
+did. -/
+private def paramUsageSeed (fn : Json) : Env := Id.run do
+  let body := fn.getObjValAs? (Array Json) "body" |>.toOption.getD #[]
+  let mut env : Env := {}
+  for name in paramNames fn do
+    let t := usageType name (Json.arr body)
+    if t != .unknown then env := env.insert name t
+  return env
+
 /-- Infer a type for every local in `fn`, reflowing to a fixpoint. `outer` seeds the environment
 with the enclosing scope so a nested def's captures start typed; `hints` seeds unannotated
 parameters with types learned from call sites; `sigs` resolves calls to user functions. Precedence:
-enclosing captures > annotations > call-site hints. -/
+enclosing captures > annotations > call-site hints > body-usage. -/
 partial def inferFunction (sigs : Sigs) (outer hints : Env) (fn : Json) : Env := Id.run do
   let body := (fn.getObjValAs? (Array Json) "body").toOption.getD #[]
   let stmts := flatStmts body.toList
-  -- annotations override call-site hints; enclosing captures override both.
-  let seed := (paramSeed fn).fold (fun m k v => m.insert k v) hints
+  -- body-usage is the weakest seed; call-site hints, then annotations, then captures override it.
+  let seed := (paramSeed fn).fold (fun m k v => m.insert k v)
+    (hints.fold (fun m k v => m.insert k v) (paramUsageSeed fn))
   let mut env := outer.fold (fun m k v => m.insert k v) seed
   -- Reflow until stable. The lattice climbs, so a small cap is a sound floor, not a correctness risk.
   for _ in [0:8] do
