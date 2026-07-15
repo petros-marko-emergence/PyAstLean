@@ -1,6 +1,7 @@
 import TypeInfer.PyType
 import TypeInfer.Annotation
 import TypeInfer.Value
+import Libraries.Registry
 
 /-!
 # Typing rules
@@ -138,9 +139,17 @@ partial def typeOfCall (sigs : Sigs) (env : Env) (e : Json) : PyType :=
               | t => t
           | none => .unknown
       | some "Attribute" =>
-          match (func.getObjValAs? String "attr").toOption with
-          | some attr => methodReturn sigs env attr (field func "value") args
-          | none => .unknown
+          -- A supported library call (`np.dot`, `math.pow`) resolves via the single library entry
+          -- point in `Libraries/Registry.lean` (which knows each library's return types); anything
+          -- else is a method on the receiver. TypeInfer never names a specific library.
+          match (func.getObjValAs? String "library_module").toOption,
+                (func.getObjValAs? String "library_member").toOption with
+          | some m, some mem =>
+              (Libraries.libraryMemberReturn? m mem (args.head?.elim .unknown (typeOfExpr sigs env))).getD .unknown
+          | _, _ =>
+              match (func.getObjValAs? String "attr").toOption with
+              | some attr => methodReturn sigs env attr (field func "value") args
+              | none => .unknown
       | _ => .unknown
   | none => .unknown
 
@@ -159,6 +168,9 @@ partial def builtinReturn (sigs : Sigs) (env : Env) (name : String) (args : List
       | "abs" | "min" | "max" | "sum" =>
           -- element for the container forms, else the argument itself.
           if args.length == 1 && arg0.elemType != .unknown then arg0.elemType else arg0
+      -- `zip(a, b, …)` → list of tuples of the element types; `enumerate(a)` → list[(int, elem)].
+      | "zip" => .list (.tuple (args.map (fun a => (typeOfExpr sigs env a).elemType)))
+      | "enumerate" => .list (.tuple [.int, arg0.elemType])
       | _ => .unknown
 
 /-- Return type of `recv.attr(args)`. -/

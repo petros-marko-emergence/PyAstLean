@@ -99,6 +99,37 @@ def applyStmt (sigs : Sigs) (env : Env) (s : Json) : Env :=
       | none => env
   | _ => env
 
+/-- Bind an assignment/loop/comprehension target to type `t`, distributing a tuple type over a
+tuple target (`a, b = pair`). Only joins known facts in. -/
+partial def bindTargetType (env : Env) (target : Json) (t : PyType) : Env :=
+  match nodeTypeOf target with
+  | some "Name" =>
+      match nameId? target with
+      | some n => if t == .unknown then env else env.insert n ((env.get? n |>.getD .unknown).join t)
+      | none => env
+  | some "Tuple" | some "List" =>
+      let elts := (target.getObjValAs? (Array Json) "elts").toOption.getD #[]
+      match t with
+      | .tuple es => (Array.range elts.size).foldl (fun e i => bindTargetType e elts[i]! (es[i]?.getD .unknown)) env
+      | _ => elts.foldl (fun e elt => bindTargetType e elt t.elemType) env
+  | _ => env
+
+/-- Bind every comprehension target in `json` (`[… for x in xs]`, `for a,b in zip(...)`) from its
+iterable's element type, so a call inside the comprehension sees the target typed. -/
+partial def compBindings (sigs : Sigs) (env : Env) (json : Json) : Env :=
+  let env :=
+    if ["ListComp", "SetComp", "DictComp", "GeneratorExp"].contains (nodeTypeOf json |>.getD "") then
+      let gens := (json.getObjValAs? (Array Json) "generators").toOption.getD #[]
+      gens.foldl (fun e gen =>
+        match getField gen "target", getField gen "iter" with
+        | some target, some iter => bindTargetType e target (typeOfExpr sigs e iter).elemType
+        | _, _ => e) env
+    else env
+  match json with
+  | .arr xs => xs.foldl (compBindings sigs) env
+  | .obj fs => fs.toList.foldl (fun e (_, v) => compBindings sigs e v) env
+  | _ => env
+
 /-- Every statement in a body, flattened through nested blocks but not into nested `def`s. -/
 private partial def flatStmts (stmts : List Json) : List Json :=
   stmts.foldl (fun acc s => acc ++ [s] ++ (childBlocks s).flatMap flatStmts) []
@@ -178,9 +209,10 @@ partial def inferFunction (sigs : Sigs) (outer hints : Env) (fn : Json) : Env :=
   let seed := (paramSeed fn).fold (fun m k v => m.insert k v)
     (hints.fold (fun m k v => m.insert k v) (paramUsageSeed fn))
   let mut env := outer.fold (fun m k v => m.insert k v) seed
+  let bodyJson := Json.arr body
   -- Reflow until stable. The lattice climbs, so a small cap is a sound floor, not a correctness risk.
   for _ in [0:8] do
-    let next := stmts.foldl (applyStmt sigs) env
+    let next := compBindings sigs (stmts.foldl (applyStmt sigs) env) bodyJson
     if next.size == env.size && next.fold (fun ok k v => ok && (env.get? k |>.getD .unknown) == v) true then
       env := next
       break

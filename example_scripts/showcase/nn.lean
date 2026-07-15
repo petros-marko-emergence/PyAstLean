@@ -15,7 +15,7 @@ noncomputable def sigmoid := fun (x : Real) ↦ (1.0 : Rat) /ₚ ((1.0 : Rat) +�
 
 attribute [simp] sigmoid
 
-def sigmoid'rn := fun x ↦ PastaLean.pyFloat (1.0 : Float) /ₚ ((1.0 : Float) +ₚ Libraries.math.pyMathExp (-x))
+def sigmoid'rn := fun (x : Float) ↦ PastaLean.pyFloat (1.0 : Float) /ₚ ((1.0 : Float) +ₚ Libraries.math.pyMathExp (-x))
 
 noncomputable def predict := fun (x : List Rat) ↦ fun (w1 : List (List Real)) ↦ fun (b1 : List Real) ↦
   fun (w2 : List (List Real)) ↦ fun (b2 : List Real) ↦

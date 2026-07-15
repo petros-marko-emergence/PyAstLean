@@ -15,15 +15,15 @@ def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List R
   ((do
       try
         -- Calculate mean of the dataset
-        let mut m := Libraries.numpy.pyNumpyMean data
+        let mut m : Rat := Libraries.numpy.pyNumpyMean data
         let _ ← pyPrintNoop [pyPrintArg s! "Dataset Global Mean: {m}"]
         -- Center the data by subtracting the mean
         -- (Using a manual broadcast-like subtraction for this example)
         -- Note: np.subtract is mapped to pyNumpySubtract
-        let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+        let mut centered : List (List Rat) := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
         -- Perform matrix multiplication
         -- Note: np.matmul is mapped to pyNumpyMatmul
-        let mut result := Libraries.numpy.pyNumpyMatmul centered weights
+        let mut result : List (List Rat) := Libraries.numpy.pyNumpyMatmul centered weights
         return result
       catch caught =>
         if (caught).OfKind == "ValueError" then 
@@ -38,30 +38,29 @@ def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List R
 
 attribute [simp] process_data
 
-def process_data'rn := fun (data : List (List Float)) ↦ fun (weights : List (List Float)) ↦
-  ((do
-      try
-        -- Calculate mean of the dataset
-        let mut m := Libraries.numpy.pyNumpyMean data
-        let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
-        -- Center the data by subtracting the mean
-        -- (Using a manual broadcast-like subtraction for this example)
-        -- Note: np.subtract is mapped to pyNumpySubtract
-        let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
-        -- Perform matrix multiplication
-        -- Note: np.matmul is mapped to pyNumpyMatmul
-        let mut result := Libraries.numpy.pyNumpyMatmul centered weights
-        return result
-      catch caught =>
-        if (caught).OfKind == "ValueError" then 
-          let e := caught
-          let _ ← pyPrintIO [pyPrintArg s! "Processing failed: {e}"]
-          -- Fallback to a zero matrix if dimensions fail
-          let __py_ret_1 := Libraries.numpy.pyNumpyZeros ((2 : Int), (2 : Int))
-          return __py_ret_1
-        else
-          throw caught) :
-    PastaLean.PyExcept _)
+def process_data'rn : List (List Float) → List (List Float) → PastaLean.PyExcept (List (List Float)) :=
+  fun (data : List (List Float)) ↦ fun (weights : List (List Float)) ↦ do
+  try
+    -- Calculate mean of the dataset
+    let mut m : Float := Libraries.numpy.pyNumpyMean data
+    let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
+    -- Center the data by subtracting the mean
+    -- (Using a manual broadcast-like subtraction for this example)
+    -- Note: np.subtract is mapped to pyNumpySubtract
+    let mut centered : List (List Float) := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+    -- Perform matrix multiplication
+    -- Note: np.matmul is mapped to pyNumpyMatmul
+    let mut result : List (List Float) := Libraries.numpy.pyNumpyMatmul centered weights
+    return result
+  catch caught =>
+    if (caught).OfKind == "ValueError" then 
+      let e := caught
+      let _ ← pyPrintIO [pyPrintArg s! "Processing failed: {e}"]
+      -- Fallback to a zero matrix if dimensions fail
+      let __py_ret_1 := Libraries.numpy.pyNumpyZeros ((2 : Int), (2 : Int))
+      return __py_ret_1
+    else
+      throw caught
 
 def run_example :=
   ((do
@@ -73,7 +72,7 @@ def run_example :=
       let _ ← pyPrintNoop [pyPrintArg s! "Weight Matrix: {weights}"]
       -- 1. Main Processing Pipeline
       let _ ← pyPrintNoop [pyPrintArg "\n[1] Running Data Pipeline:"]
-      let mut output := (← process_data dataset weights)
+      let mut output : List (List Rat) := (← process_data dataset weights)
       let _ ← pyPrintNoop [pyPrintArg s! "Final Result:\n{output}"]
       -- 2. Utility Operations
       let _ ← pyPrintNoop [pyPrintArg "\n[2] Structural Operations:"]
@@ -105,7 +104,7 @@ def run_example'rn :=
       let _ ← pyPrintIO [pyPrintArg s! "Weight Matrix: {weights}"]
       -- 1. Main Processing Pipeline
       let _ ← pyPrintIO [pyPrintArg "\n[1] Running Data Pipeline:"]
-      let mut output := (← process_data'rn dataset weights)
+      let mut output : List (List Float) := (← process_data'rn dataset weights)
       let _ ← pyPrintIO [pyPrintArg s! "Final Result:\n{output}"]
       -- 2. Utility Operations
       let _ ← pyPrintIO [pyPrintArg "\n[2] Structural Operations:"]

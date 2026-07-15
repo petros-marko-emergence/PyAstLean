@@ -53,4 +53,14 @@ def pythonLibraryMapExact? (moduleName member : String) : Option Lean.Name :=
   | "math" => math.pythonMathMemberMapExact? member
   | _ => none
 
+/-- Return type of a library member, for TypeInfer — the single entry point, so `TypeInfer` names no
+specific library. numpy is field-polymorphic, hence a function of the first argument's type. -/
+def libraryMemberReturn? (moduleName member : String) (arg0 : TypeInfer.PyType) :
+    Option TypeInfer.PyType :=
+  match moduleName with
+  | "math" => math.mathMemberReturn? member
+  | "scipy" => scipy.scipyMemberReturn? member
+  | "numpy" => (numpy.numpyMemberReturn? member).map (· arg0)
+  | _ => none
+
 end Libraries
