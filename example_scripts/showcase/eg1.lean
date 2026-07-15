@@ -175,7 +175,8 @@ noncomputable def main : IO Unit := do
           pure ()) :
         PastaLean.ProofMode.PyProofM Unit))
       initState
-  for line in (finalState.output)do
+  let outputLines := finalState.output
+  for line in outputLines do
     IO.print line
   match result with
   | .ok _ =>

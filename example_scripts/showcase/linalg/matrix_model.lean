@@ -227,14 +227,14 @@ theorem det_nonneg_of_symmetric_psd :
 -- ----------------------------------------------------------------------------------------------
 def main' :=
   ((do
-      let mut a := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut b := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut c := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut d := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut x := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut y := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut nsteps := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut every := PastaLean.pyInt (← PastaLean.pyInputIO "")
+      let mut a := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut b := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut c := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut d := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut x := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut y := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut nsteps := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut every := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
       let mut detA := det a b c d
       for step in (PastaLean.pyRange nsteps)do
         -- One step of the linear map (x, y) -> (a x + b y, c x + d y).
@@ -243,10 +243,12 @@ def main' :=
         x := nx
         y := ny
         if h_1 : step %ₚ every = (0 : Int) then 
-          let _ ← pyPrintNoop [pyPrintArg "S", pyPrintArg step, pyPrintArg x, pyPrintArg y, pyPrintArg detA]
+          let _ ←
+            PastaLean.ProofMode.pyPrintProof
+                [pyPrintArg "S", pyPrintArg step, pyPrintArg x, pyPrintArg y, pyPrintArg detA]
         else
           let _ := ()) :
-    IO _)
+    PastaLean.ProofMode.PyProofM _)
 
 attribute [simp] main'
 
@@ -274,8 +276,25 @@ def main''rn :=
     IO _)
 
 def main : IO Unit := do
-  let _ ← main'
-  pure ()
+  let inputText ← IO.getStdin >>= fun h => h.readToEnd
+  let inputLines := String.splitOn inputText "\n"
+  let inputStream : PastaLean.ProofMode.IOStream :=
+    ⟨0, fun i => PastaLean.ProofMode.IOResult.success (List.getD inputLines i "")⟩
+  let initState : PastaLean.ProofMode.IOState := ⟨inputStream, []⟩
+  let (result, finalState) :=
+    (((do
+          let _ ← main'
+          pure ()) :
+        PastaLean.ProofMode.PyProofM Unit))
+      initState
+  let outputLines := finalState.output
+  for line in outputLines do
+    IO.print line
+  match result with
+  | .ok _ =>
+    pure ()
+  | .error err =>
+    throw (IO.userError (toString err))
 
 def main'rn : IO Unit := do
   let _ ← main''rn

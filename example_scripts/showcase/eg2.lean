@@ -128,7 +128,8 @@ def run_example'rn :=
 def main : IO Unit := do
   let inputText ← IO.getStdin >>= fun h => h.readToEnd
   let inputLines := String.splitOn inputText "\n"
-  let inputStream : PastaLean.ProofMode.IOStream := ⟨0, fun i => .success (List.getD inputLines i "")⟩
+  let inputStream : PastaLean.ProofMode.IOStream :=
+    ⟨0, fun i => PastaLean.ProofMode.IOResult.success (List.getD inputLines i "")⟩
   let initState : PastaLean.ProofMode.IOState := ⟨inputStream, []⟩
   let (result, finalState) :=
     (((do
@@ -136,7 +137,8 @@ def main : IO Unit := do
           pure ()) :
         PastaLean.ProofMode.PyProofM Unit))
       initState
-  for line in finalState.outputdo
+  let outputLines := finalState.output
+  for line in outputLines do
     IO.print line
   match result with
   | .ok _ =>
