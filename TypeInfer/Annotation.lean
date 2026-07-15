@@ -23,10 +23,12 @@ private def canonical (name : String) : String :=
   | "Dict" | "Mapping" => "dict" | "Tuple" => "tuple" | "Sequence" | "Iterable" => "list"
   | n => n
 
-/-- Builtin annotation names. Anything else is a user class. -/
+/-- Builtin annotation names. Anything else is a user class. `Any`/`object` are the *gradual*
+dynamic type — "no static information" — so they read as `.unknown` (⊥), NOT `.any` (⊤, which means
+concrete types that genuinely conflict, e.g. an `int | str` union that must be boxed). -/
 private def baseTypes : List (String × PyType) :=
   [ ("int", .int), ("bool", .bool), ("str", .str), ("float", .float),
-    ("None", .none), ("Any", .any), ("object", .any),
+    ("None", .none), ("Any", .unknown), ("object", .unknown),
     ("list", .list .unknown), ("set", .set .unknown), ("frozenset", .set .unknown),
     ("dict", .dict .unknown .unknown), ("tuple", .tuple []) ]
 

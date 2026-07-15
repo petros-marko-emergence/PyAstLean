@@ -20,20 +20,20 @@ def sigmoid'rn := fun (x : Float) ↦ PastaLean.pyFloat (1.0 : Float) /ₚ ((1.0
 noncomputable def predict := fun (x : List Rat) ↦ fun (w1 : List (List Real)) ↦ fun (b1 : List Real) ↦
   fun (w2 : List (List Real)) ↦ fun (b2 : List Real) ↦
   -- Forward pass through a 2 -> 2 -> 1 network.
-  let h0 := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
-  let h1 := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
+  let h0 := _root_.sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
+  let h1 := _root_.sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
   let hidden := [h0, h1]
-  sigmoid (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
+  _root_.sigmoid (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
 
 attribute [simp] predict
 
 def predict'rn := fun (x : List Float) ↦ fun (w1 : List (List Float)) ↦ fun (b1 : List Float) ↦
   fun (w2 : List (List Float)) ↦ fun (b2 : List Float) ↦
   -- Forward pass through a 2 -> 2 -> 1 network.
-  let h0 := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
-  let h1 := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
+  let h0 := _root_.sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
+  let h1 := _root_.sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
   let hidden := [h0, h1]
-  sigmoid'rn (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
+  _root_.sigmoid'rn (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
 
 noncomputable def mean_squared_error := fun (xs : List (List Rat)) ↦ fun (ys : List Rat) ↦
   fun (w1 : List (List Real)) ↦ fun (b1 : List Real) ↦ fun (w2 : List (List Real)) ↦ fun (b2 : List Real) ↦
@@ -41,7 +41,7 @@ noncomputable def mean_squared_error := fun (xs : List (List Rat)) ↦ fun (ys :
     (do
       let mut total : Real := (0.0 : Real)
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-        let mut diff : Real := predict xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
+        let mut diff : Real := _root_.predict xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
         total := total +ₚ diff *ₚ diff
       let __py_ret_1 := total /ₚ PastaLean.pyLen xs
       return __py_ret_1)
@@ -54,7 +54,7 @@ def mean_squared_error'rn := fun (xs : List (List Float)) ↦ fun (ys : List Flo
     (do
       let mut total : Float := (0.0 : Float)
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-        let mut diff : Float := predict'rn xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
+        let mut diff : Float := _root_.predict'rn xs⦋i⦌ w1 b1 w2 b2 -ₚ ys⦋i⦌
         total := total +ₚ diff *ₚ diff
       let __py_ret_1 := PastaLean.pyFloat total /ₚ PastaLean.pyLen xs
       return __py_ret_1)
@@ -74,16 +74,16 @@ noncomputable def main' :=
     let mut lr : Rat := (0.5 : Rat)
     let mut epochs : Int := (4000 : Int)
     let _ ← pyPrintNoop [pyPrintArg "=== Training a neural net on XOR (NumPy + math) ==="]
-    let _ ← pyPrintNoop [pyPrintArg s! "initial loss: {mean_squared_error xs ys w1 b1 w2 b2}"]
+    let _ ← pyPrintNoop [pyPrintArg s! "initial loss: {_root_.mean_squared_error xs ys w1 b1 w2 b2}"]
     for epoch in (PastaLean.pyRange epochs)do
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
         let mut x : List Rat := xs⦋i⦌
         let mut y : Rat := ys⦋i⦌
         -- Forward pass, keeping the hidden activations for backprop.
-        let mut h0 : Real := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
-        let mut h1 : Real := sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
+        let mut h0 : Real := _root_.sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
+        let mut h1 : Real := _root_.sigmoid (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
         let mut hidden : List Real := [h0, h1]
-        let mut out : Real := sigmoid (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
+        let mut out : Real := _root_.sigmoid (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
         -- Backward pass: gradients of 1/2 the squared error.
         let mut d_out : Real := (out -ₚ y) *ₚ out *ₚ ((1.0 : Real) -ₚ out)
         let mut d_h0 : Real := d_out *ₚ w2⦋(0 : Int)⦌⦋(0 : Int)⦌ *ₚ h0 *ₚ ((1.0 : Real) -ₚ h0)
@@ -103,12 +103,14 @@ noncomputable def main' :=
               w1⦋(1 : Int)⦌⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1 *ₚ x⦋(1 : Int)⦌]
         b1 := [b1⦋(0 : Int)⦌ -ₚ lr *ₚ d_h0, b1⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1]
       if h_1 : (epoch +ₚ (1 : Int)) %ₚ (1000 : Int) = (0 : Int) then 
-        let _ ← pyPrintNoop [pyPrintArg s!"epoch {(epoch +ₚ (1 : Int))}: loss = {mean_squared_error xs ys w1 b1 w2 b2}"]
+        let _ ←
+          pyPrintNoop
+              [pyPrintArg s!"epoch {(epoch +ₚ (1 : Int))}: loss = {_root_.mean_squared_error xs ys w1 b1 w2 b2}"]
       else
         let _ := ()
     let _ ← pyPrintNoop [pyPrintArg "learned predictions:"]
     for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-      let mut p : Real := predict xs⦋i⦌ w1 b1 w2 b2
+      let mut p : Real := _root_.predict xs⦋i⦌ w1 b1 w2 b2
       let mut label : Int := if decide (p > (0.5 : Real)) then (1 : Int) else (0 : Int)
       let _ ← pyPrintNoop [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
 
@@ -130,16 +132,16 @@ def main''rn :=
     let mut lr : Float := (0.5 : Float)
     let mut epochs : Int := (4000 : Int)
     let _ ← pyPrintIO [pyPrintArg "=== Training a neural net on XOR (NumPy + math) ==="]
-    let _ ← pyPrintIO [pyPrintArg s! "initial loss: {mean_squared_error'rn xs ys w1 b1 w2 b2}"]
+    let _ ← pyPrintIO [pyPrintArg s! "initial loss: {_root_.mean_squared_error'rn xs ys w1 b1 w2 b2}"]
     for epoch in (PastaLean.pyRange epochs)do
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
         let mut x : List Float := xs⦋i⦌
         let mut y : Float := ys⦋i⦌
         -- Forward pass, keeping the hidden activations for backprop.
-        let mut h0 : Float := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
-        let mut h1 : Float := sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
+        let mut h0 : Float := _root_.sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(0 : Int)⦌ +ₚ b1⦋(0 : Int)⦌)
+        let mut h1 : Float := _root_.sigmoid'rn (Libraries.numpy.pyNumpyDot x w1⦋(1 : Int)⦌ +ₚ b1⦋(1 : Int)⦌)
         let mut hidden : List Float := [h0, h1]
-        let mut out : Float := sigmoid'rn (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
+        let mut out : Float := _root_.sigmoid'rn (Libraries.numpy.pyNumpyDot hidden w2⦋(0 : Int)⦌ +ₚ b2⦋(0 : Int)⦌)
         -- Backward pass: gradients of 1/2 the squared error.
         let mut d_out : Float := (out -ₚ y) *ₚ out *ₚ ((1.0 : Float) -ₚ out)
         let mut d_h0 : Float := d_out *ₚ w2⦋(0 : Int)⦌⦋(0 : Int)⦌ *ₚ h0 *ₚ ((1.0 : Float) -ₚ h0)
@@ -160,19 +162,20 @@ def main''rn :=
         b1 := [b1⦋(0 : Int)⦌ -ₚ lr *ₚ d_h0, b1⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1]
       if h_1 : (epoch +ₚ (1 : Int)) %ₚ (1000 : Int) == (0 : Int) then 
         let _ ←
-          pyPrintIO [pyPrintArg s!"epoch {(epoch +ₚ (1 : Int))}: loss = {mean_squared_error'rn xs ys w1 b1 w2 b2}"]
+          pyPrintIO
+              [pyPrintArg s!"epoch {(epoch +ₚ (1 : Int))}: loss = {_root_.mean_squared_error'rn xs ys w1 b1 w2 b2}"]
       else
         let _ := ()
     let _ ← pyPrintIO [pyPrintArg "learned predictions:"]
     for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
-      let mut p : Float := predict'rn xs⦋i⦌ w1 b1 w2 b2
+      let mut p : Float := _root_.predict'rn xs⦋i⦌ w1 b1 w2 b2
       let mut label : Int := if decide (p > (0.5 : Float)) then (1 : Int) else (0 : Int)
       let _ ← pyPrintIO [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]
 
 noncomputable def main : IO Unit := do
-  let _ := main'
+  let _ := _root_.main'
   pure ()
 
 def main'rn : IO Unit := do
-  let _ := main''rn
+  let _ := _root_.main''rn
   pure ()

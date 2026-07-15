@@ -17,7 +17,7 @@ from .toplevel_state import (
 from .contract_passta import CONTRACT_FUNCS as PASSTA_STAR_MEMBERS
 from .normalize_loops import normalize_counting_loops
 from ..backend import LeanBackendClient
-from ..paths import ANNOTATE_SCRIPT, LIBRARIES_DIR, REPO_ROOT, python_executable
+from ..paths import LIBRARIES_DIR, REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -1009,19 +1009,9 @@ def translate_to_json(source_code, filepath=None, best_effort=False):
     replaced by `pyUnsupported(...)` placeholders instead of aborting; dropped lines are logged
     to stderr.
     """
-    if filepath is not None:
-        logger.debug("Annotating Python source from %s before AST translation.", filepath)
-        logger.debug("Original source:\n%s", source_code)
-        annotated_code = subprocess.run(
-            [python_executable(), str(ANNOTATE_SCRIPT), "--no-write", "--file", str(filepath)],
-            text=True,
-            capture_output=True,
-        )
-        if annotated_code.returncode != 0:
-            logger.warning("Annotation failed: %s", annotated_code.stderr.strip())
-            logger.warning("Falling back to unannotated source code for translation.")
-        source_code = annotated_code.stdout if annotated_code.returncode == 0 else source_code
-
+    # Type annotation is no longer a Python pre-pass: the Lean `TypeInfer` engine infers and stamps
+    # types on the IR (`inferTypes` task), so the source is parsed as-is. `filepath` is kept only to
+    # resolve cross-file imports (`module_dir` below).
     logger.debug("Source passed to Python AST parser:\n%s", source_code)
     ast_tree = ast.parse(source_code)
     _sanitize_hole_identifiers(ast_tree)
@@ -1480,12 +1470,15 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
             """Emission passes for one top-level node: (numericMode, runSuffix, userNames). In `both`
             mode only definitions/classes and the `__main__` guard get a runnable `'rn` twin (their
             names are suffixed); top-level constants/`del`/statements emit once (an unsuffixed twin
-            would just redeclare the same global)."""
+            would just redeclare the same global). `userNames` is passed on EVERY pass (not just the
+            twin): it is what tells codegen a name is user-defined so a call to it can be
+            `_root_`-qualified against Mathlib clashes; suffixing stays gated on the (empty-here)
+            run suffix, so this does not suffix anything outside the twin."""
             nt = node.get("node_type")
             twinnable = nt in ("FunctionDef", "ClassDef", "Module") or (nt == "If" and node.get("is_main_guard"))
             if mode == "both" and twinnable:
-                return [("exact", "", []), ("approx", "'rn", user_names)]
-            return [(single, "", [])]
+                return [("exact", "", user_names), ("approx", "'rn", user_names)]
+            return [(single, "", user_names)]
 
         last_backend_error = {"msg": None}
 

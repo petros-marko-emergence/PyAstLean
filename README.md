@@ -1,21 +1,52 @@
 # PastaLean
 
+<div align="center">
 <img src="./src/static/logo.png" width="200" height="200" />
+<p>Pasta for All - Python - in Lean4</p>
+</div>
 
-PastaLean is a tool that transpiles and verifies Python code into Lean 4.
+PastaLean is a tool that transpiles and verifies Python code into Lean 4. As the name suggests, this tool is not just for a small use-case but for all(not actually all, but as much as possible) Python code and it's behaviors. Modelling Python code in Lean 4 can be extremely annoying since it's a dynamically typed and, well, Python trying to make life easy for everyday users, harder for us.
 
-For an overview of the project, see the [presentation](https://anirudhg07.github.io/presentations/pastalean/).
+For an overview of the project, see this [presentation](https://anirudhg07.github.io/presentations/pastalean/).
 This work was presented at [Summer School: LeanLang for Programming 2026](https://east.emergence.ai/summerschool-july2026.html).
 
-> PastaLean originates from "PyAstLean"(which mean Python to Lean via AST) but who doesn't love Pasta.
+> PastaLean originates from "PyAstLean"(which mean Python to Lean via AST). Who doesn't love Pasta. It's Pasta for all, which if you didn't yet guess, comes from the Lean's "for all" logo.
+
+## Table of Contents
+
+- [Features](#features)
+- [How it works?](#how-it-works)
+- [Libraries](#libraries)
+    - [How to add your own library](#how-to-add-your-own-library)
+- [Install](#install)
+- [Using PastaLean everyday](#using-pastalean-everyday)
+    - [Command line](#command-line)
+    - [HTTP API](#http-api)
+    - [Python API](#python-api)
+- [Testing](#testing)
 
 ## Features
 
 - Transpiles Python code to Lean 4 code.
-- The tool gives 2 functions for the same function, one `provable` and one `computable`(marked with `'rn`).
+- The tool gives 2 functions for the same piece of code, one `provable` and one `computable`(marked with `'rn`).
+- These functions have subtle differences in their implementation, for their respective purposes as you can guess.
 - Verification of the code(using assert and contract statements) using tactics like `taste?`, `mvcgen`, etc.
 
 ## How it works?
+
+A nice explanation of how PastaLean works can be found in the [presentation](https://anirudhg07.github.io/presentations/pastalean/). Let's give a brief overview here. 
+
+## Libraries
+
+Python libraries can be supported in PastaLean by writing Lean definitions that correspond to the Python library's API. These definitions can be made by implementing the necessary translation logic in the Lean backend, then added to PastaLean by creating a mapping using `Mapping.lean` which is simply a map from python name for a function to Your Lean definition.
+
+For example, see [math](./Libraries/math/) library, which uses Mathlib to implement some of the functions from Python's `math` module.
+
+### How to add your own library
+
+You have two options, either download a premade Lean library for that Python library(from GitHub) or write your own Lean definitions for the Python library and create Mappings for the functions you want to support.
+
+See [Libraries](./Libraries/) for examples of how to add a library and use it.
 
 ## Install
 
@@ -34,25 +65,23 @@ Build the Lean side from the repository root:
 lake build
 ```
 
-Then either let `uv` handle the Python side for you — it installs the project into `.venv/` on
-first use, so there is no separate install step:
+## Using PastaLean everyday
+
+We give a Python API for developers to run a backend server and translate Python to Lean on the fly. We use `uv` for handling the Python environment management — it installs the project, it's binaries, `.venv/` on first use, so there is no separate install step:
 
 ```bash
+uv sync
 uv run pastalean translate prog.py
 ```
 
 or install it yourself, which additionally puts `pastalean` on your PATH:
 
 ```bash
-uv pip install -e '.[server]'      # drop [server] if you don't want the HTTP API
+uv pip install -e '.[server]' # drop [server] if you don't want the HTTP API
 pastalean translate prog.py
 ```
 
-`python -m pastalean` and `uv run -m pastalean` are equivalent to the `pastalean` command.
-(`uv run src/main.py` does *not* work — the package uses relative imports, and running a file by
-path gives it no package to be relative to.)
-
-## Command line
+### Command line
 
 ```bash
 pastalean translate prog.py              # Python -> Lean on stdout, then compile-check it
@@ -67,27 +96,25 @@ pastalean libraries                      # Python libs with a Lean shim
 provability) and `-c/--contracts` (insert Requires/Ensures/Invariant). Both write the transformed
 program to a sibling `.py` so you can read what the model produced.
 
-## HTTP API
+### HTTP API
+
+We provide an HTTP API on default port `6789`:
 
 ```bash
 pastalean serve                 # reachable from the LAN; prints this machine's URL
 pastalean serve --no-ip         # localhost only
 ```
 
-- Opening the printed URL opens a small web playground.
+This provides the below features for you to use PastaLean -
+
+*Web UI*:
 - Paste Python and press **Translate** to see generated Lean with syntax highlighting and compile errors, if any.
-- Press **Run both** to execute the Python and Lean on the same standard input and verify they agree.
 - **Insert contracts** runs the `--contracts` LLM pre-pass and shows the annotated Python in its own box, ready to use as the source.
-- Provider, API key, model, and goal are available under **Settings**.
-- An API key entered in the UI stays in that browser and is sent with each request.
-- The server forwards the key to the provider and does not store or log it.
-- Leave the field blank to use the server's environment variables such as `OPENAI_API_KEY` or `GEMINI_API_KEY`.
-- The machine-readable API lives at **`/api`** and `/openapi.json`.
-- Those endpoints are authoritative; the table below is only a summary.
+- Provide an API key and select model to use for contracts. You can also write a custom prompt as a goal for LLM for what you want the contracts to achieve. The settings are available under **Settings**.
+- You can see the generated Lean code and the contracts in their own boxes, with syntax highlighting and compile errors, if any.
 
-### Examples
-
-In one shell:
+*HTTP API*:
+In one shell, you can run:
 
 ```bash
 uv run pastalean serve
@@ -108,7 +135,9 @@ Invalid Python returns HTTP 400. One Lean backend serves every request and trans
 process-wide state, so requests are serialised behind a lock — this is a single-worker service by
 construction.
 
-## Python API
+### Python API
+
+You can also use PastaLean from Python code after downloading this as a python package in your virtual environment(though you would need to install the Lean side as well, see [Install](#install)):
 
 ```python
 import pastalean
@@ -123,41 +152,12 @@ with pastalean.Session(target="command", mode="run") as session:
         ...
 ```
 
-Booting the backend imports Mathlib and takes tens of seconds, so a `Session` is much faster
-than one process per file. `pastalean.compile_check` and `pastalean.run_program` take Lean text
+Booting the backend imports Mathlib(the first run will take a lot of time, subsequent are faster), so a `Session` is much faster than one process per file. `pastalean.compile_check` and `pastalean.run_program` take Lean text
 and shell out to `lake env lean`.
-
-### Dependencies
-
-For Python-side annotation, the project uses `pyrefly` and `libcst`. Set up the Python environment with one of the following:
-
-```bash
-# If you use uv (recommended)
-uv pip install -r requirements.txt
-uv sync
-
-# If you use pip
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Libraries
-
-Python libraries can be supported in PastaLean by writing Lean definitions that correspond to the Python library's API. These definitions can be made by implementing the necessary translation logic in the Lean backend, then added to PastaLean by creating a mapping using `Mapping.lean` which is simply a map from python name for a function to Your Lean definition.
-
-For example, see [math](./Libraries/math/) library, which uses Mathlib to implement some of the functions from Python's `math` module.
-
-### How to add your own library
-
-You have two options, either download a premade Lean library for that Python library(from GitHub) or write your own Lean definitions for the Python library and create Mappings for the functions you want to support.
-
-See [Libraries](./Libraries/) for examples of how to add a library and use it.
 
 ## Testing
 
-
-PastaLeanCheck (PALC) (pronounced - "pal" + "ack" like PAL Acknowledge) is the testing framework for PastaLean. It is used to check that the generated Lean code matches the expected output. This is based on the FileCheck utility from LLVM, but with some differences to make it more suitable for our use case.
+PastaLeanCheck (PALC) (pronounced - "pal" + "ack" like PAL Acknowledge) is the testing framework for PastaLean. It is used to check that the generated Lean code matches the expected output. 
 
 To run all tests:
 ```bash

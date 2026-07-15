@@ -42,7 +42,7 @@ def depot_rate'rn := fun (ka : Float) ↦ fun (depot : Float) ↦
   -/
   -ka *ₚ depot
 
-def central_rate := fun (ka : Rat) ↦ fun ke ↦ fun (k12 : Rat) ↦ fun (k21 : Rat) ↦ fun (depot : Rat) ↦
+def central_rate := fun (ka : Rat) ↦ fun (ke : Rat) ↦ fun (k12 : Rat) ↦ fun (k21 : Rat) ↦ fun (depot : Rat) ↦
   fun (central : Rat) ↦ fun (periph : Rat) ↦
   /-
   dC/dt -- absorption in, elimination out, exchange with the peripheral compartment.
@@ -51,8 +51,8 @@ def central_rate := fun (ka : Rat) ↦ fun ke ↦ fun (k12 : Rat) ↦ fun (k21 :
 
 attribute [simp, taste_ingr] central_rate
 
-def central_rate'rn := fun (ka : Float) ↦ fun ke ↦ fun (k12 : Float) ↦ fun (k21 : Float) ↦ fun (depot : Float) ↦
-  fun (central : Float) ↦ fun (periph : Float) ↦
+def central_rate'rn := fun (ka : Float) ↦ fun (ke : Float) ↦ fun (k12 : Float) ↦ fun (k21 : Float) ↦
+  fun (depot : Float) ↦ fun (central : Float) ↦ fun (periph : Float) ↦
   /-
   dC/dt -- absorption in, elimination out, exchange with the peripheral compartment.
   -/
@@ -205,7 +205,7 @@ noncomputable def main' :=
           let _ := ()
         -- One forward-Euler step using the rate functions.
         let mut d_depot : Rat := depot_rate ka depot
-        let mut d_central := central_rate ka ke k12 k21 depot central periph
+        let mut d_central : Rat := central_rate ka ke k12 k21 depot central periph
         let mut d_periph : Rat := periph_rate k12 k21 central periph
         depot := depot +ₚ d_depot *ₚ dt
         central := central +ₚ d_central *ₚ dt
@@ -252,7 +252,7 @@ def main''rn :=
           let _ := ()
         -- One forward-Euler step using the rate functions.
         let mut d_depot : Float := depot_rate'rn ka depot
-        let mut d_central := central_rate'rn ka ke k12 k21 depot central periph
+        let mut d_central : Float := central_rate'rn ka ke k12 k21 depot central periph
         let mut d_periph : Float := periph_rate'rn k12 k21 central periph
         depot := depot +ₚ d_depot *ₚ dt
         central := central +ₚ d_central *ₚ dt

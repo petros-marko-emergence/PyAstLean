@@ -107,5 +107,28 @@ private def module (fns : List Json) : Json :=
 #guard
   let producer := funcDef "producer" [ret (listOf [const (.num 1)])]
   let consumer := funcDef "consumer" [ret (call (name "producer") [])]
-  let sigs := collectSigs (module [producer, consumer])
+  let (sigs, _) := collectSigs (module [producer, consumer])
   sigs.get? "consumer" == some (.list .int)
+
+/-! ### P2b — an argument's type flows to an unannotated parameter -/
+
+private def funcDefP (fname : String) (params : List String) (body : List Json) : Json :=
+  let args := params.toArray.map fun p => Json.mkObj [("arg", .str p), ("annotation", Json.null)]
+  Json.mkObj [("node_type", .str "FunctionDef"), ("name", .str fname),
+    ("args", Json.mkObj [("args", Json.arr args)]), ("body", Json.arr body.toArray)]
+private def exprS (v : Json) : Json := Json.mkObj [("node_type", .str "Expr"), ("value", v)]
+
+-- `caller` calls `sink(5)`; `sink`'s unannotated param `x` is refined to `int`.
+#guard
+  let sink := funcDefP "sink" ["x"] [ret (name "x")]
+  let caller := funcDefP "caller" [] [exprS (call (name "sink") [const (.num 5)])]
+  let (_, params) := collectSigs (module [sink, caller])
+  (params.get? "sink").getD #[] == #[PyType.int]
+
+-- Conflicting call sites (`sink(5)` and `sink("s")`) leave the param `any` — no wrong ascription.
+#guard
+  let sink := funcDefP "sink" ["x"] [ret (name "x")]
+  let c1 := funcDefP "c1" [] [exprS (call (name "sink") [const (.num 5)])]
+  let c2 := funcDefP "c2" [] [exprS (call (name "sink") [const (.str "s")])]
+  let (_, params) := collectSigs (module [sink, c1, c2])
+  (params.get? "sink").getD #[] == #[PyType.any]

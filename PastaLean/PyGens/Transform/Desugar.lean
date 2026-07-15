@@ -188,9 +188,30 @@ def hoistWalrus (stmts : Array Json) : DesugarM (Array Json) := do
     out := out.push stmt
   return out
 
-/-- Run both desugarings over one translation request's AST. -/
+/-! ### Chained assignment -/
+
+/-- `a = b = expr` (an `Assign` carrying a `targets` list) → evaluate `expr` once into a temporary,
+then assign that temporary to each target in turn. This keeps `expr`'s side effects single and works
+for any target shape (names, subscripts, tuples). -/
+def splitChainedAssign (stmts : Array Json) : DesugarM (Array Json) := do
+  let mut out := #[]
+  for stmt in stmts do
+    match (do
+      guard (jsonNodeType? stmt == some "Assign")
+      stmt.getObjValAs? (Array Json) "targets" |>.toOption) with
+    | some targets =>
+        let .ok value := stmt.getObjVal? "value" | out := out.push stmt; continue
+        let tmp ← freshVar "__chain_"
+        out := out.push (assignStmt (nameLoad tmp) value)
+        for target in targets do
+          out := out.push (assignStmt target (nameLoad tmp))
+    | none => out := out.push stmt
+  return out
+
+/-- Run every desugaring over one translation request's AST. -/
 def desugarAst (json : Json) : Except String Json := do
   let pass : DesugarM Json := do
+    let json ← rewriteStatementLists splitChainedAssign json
     let json ← rewriteStatementLists flattenForTargets json
     rewriteStatementLists hoistWalrus json
   return (← pass.run 0).1

@@ -5,4 +5,5 @@ import PastaLeanTest.PyAPI.TestCommonProtocols
 import PastaLeanTest.PyAPI.TestBuiltins
 import PastaLeanTest.PyAPI.TestCasting
 import PastaLeanTest.PyAPI.TestPyPrint
+import PastaLeanTest.PyAPI.TestPyValue
 import PastaLeanTest.PyAPI.TestInput

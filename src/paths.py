@@ -16,29 +16,9 @@ from pathlib import Path
 PACKAGE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_DIR.parent
 
-# The type-annotation pre-pass runs in its own interpreter, so it is referenced by path, not import.
-ANNOTATE_SCRIPT = PACKAGE_DIR / "transpile" / "annotate_python.py"
-
 LIBRARIES_DIR = REPO_ROOT / "Libraries"
 LAKE_BIN_DIR = REPO_ROOT / ".lake" / "build" / "bin"
 BACKEND_BINARY = LAKE_BIN_DIR / "py2lean"
-
-
-def python_executable() -> str:
-    """Interpreter used to run the `annotate_python.py` pre-pass in a subprocess.
-
-    Prefers the repo's uv venv, then the running interpreter. `annotate_python.py` needs the
-    project's dependencies (libcst, pyrefly), so a bare `python3` off PATH is the last resort.
-    """
-    override = os.environ.get("PASTALEAN_PYTHON")
-    if override:
-        return override
-    venv_python = REPO_ROOT / ".venv" / "bin" / "python"
-    if venv_python.exists():
-        return str(venv_python)
-    if sys.executable:
-        return sys.executable
-    return shutil.which("python3") or "python3"
 
 
 def lake_executable() -> str:

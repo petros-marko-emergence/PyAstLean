@@ -166,7 +166,17 @@ def nameSyntax : (kind : SyntaxNodeKind) → Json →
           s!"Name node does not have an 'id' field or it is not a string: {json}"
         -- In a run-twin, a reference to a user function/class is suffixed (`bar` → `bar'rn`,
         -- `CNN` → `CNN'rn`); locals and library names are left as-is.
-        return mkIdent (← suffixIfUserName id).toName
+        let suffixed ← suffixIfUserName id
+        -- A reference to a user-defined top-level function/class is `_root_`-qualified ONLY when the
+        -- name actually collides with an existing global (`dist`, `gcd`, …), so it resolves to the
+        -- user's own definition rather than a Mathlib export — the endless-clash fix, no namespace.
+        -- A local shadows the global, and a non-clashing name (e.g. a recursive self-reference not
+        -- yet in the environment) is left bare so its reference still resolves.
+        if (← userNamesRef.get).contains id && !(← hasVar id.toName)
+            && !(← resolveGlobalName id.toName).isEmpty then
+          return mkIdent (`_root_ ++ suffixed.toName)
+        else
+          return mkIdent suffixed.toName
   | `ident, json => do
     match ← jsonLibraryMappedName? json with
     | some leanName => pure (mkIdent leanName)

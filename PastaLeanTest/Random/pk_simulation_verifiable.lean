@@ -64,8 +64,9 @@ def system_deriv := fun (state : List Rat) ↦ fun (t : Rat) ↦
   /-
   Derivative function for the ODE system. Pure (Tier 0).
   -/
-  [grass_rate state⦋(0 : Int)⦌ state⦋(1 : Int)⦌, rabbit_rate state⦋(0 : Int)⦌ state⦋(1 : Int)⦌ state⦋(2 : Int)⦌,
-    wolf_rate state⦋(1 : Int)⦌ state⦋(2 : Int)⦌]
+  [_root_.grass_rate state⦋(0 : Int)⦌ state⦋(1 : Int)⦌,
+    _root_.rabbit_rate state⦋(0 : Int)⦌ state⦋(1 : Int)⦌ state⦋(2 : Int)⦌,
+    _root_.wolf_rate state⦋(1 : Int)⦌ state⦋(2 : Int)⦌]
 
 attribute [simp, taste_ingr] system_deriv
 
@@ -73,8 +74,9 @@ def system_deriv'rn := fun (state : List Float) ↦ fun (t : Float) ↦
   /-
   Derivative function for the ODE system. Pure (Tier 0).
   -/
-  [grass_rate'rn state⦋(0 : Int)⦌ state⦋(1 : Int)⦌, rabbit_rate'rn state⦋(0 : Int)⦌ state⦋(1 : Int)⦌ state⦋(2 : Int)⦌,
-    wolf_rate'rn state⦋(1 : Int)⦌ state⦋(2 : Int)⦌]
+  [_root_.grass_rate'rn state⦋(0 : Int)⦌ state⦋(1 : Int)⦌,
+    _root_.rabbit_rate'rn state⦋(0 : Int)⦌ state⦋(1 : Int)⦌ state⦋(2 : Int)⦌,
+    _root_.wolf_rate'rn state⦋(1 : Int)⦌ state⦋(2 : Int)⦌]
 
 def calc_avg := fun (g : Rat) ↦ fun (r_p : Rat) ↦ fun (w : Rat) ↦ (g +ₚ r_p +ₚ w) /ₚ (3.0 : Rat)
 

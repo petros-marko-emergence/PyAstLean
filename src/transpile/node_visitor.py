@@ -961,13 +961,19 @@ class ASTToJsonLeanVisitorBase:
         }
 
     def visit_Assign(self, node):
-        """Translates ast.Assign (e.g., x = y) to a JSON IR node."""
-        if len(node.targets) != 1:
-            raise NotImplementedError("Multiple assignment targets are not supported.")
+        """Translates ast.Assign to a JSON IR node. A single target keeps the `target` field; a
+        chained assignment (`a = b = v`, multiple targets) is emitted faithfully as a `targets`
+        list and split into sequential assignments by the Lean desugar pass."""
+        if len(node.targets) == 1:
+            return {
+                "node_type": "Assign",
+                "target": self.visit(node.targets[0]),
+                "value": self.visit(node.value),
+            }
         return {
             "node_type": "Assign",
-            "target": self.visit(node.targets[0]),
-            "value": self.visit(node.value)
+            "targets": [self.visit(t) for t in node.targets],
+            "value": self.visit(node.value),
         }
     
     def visit_AnnAssign(self, node):

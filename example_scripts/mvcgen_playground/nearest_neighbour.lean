@@ -57,7 +57,7 @@ noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (data
   (do
     try
       -- Distances to every point via a list comprehension over a raising function
-      let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance target point)
+      let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => _root_.euclidean_distance target point)
       let mut min_dist := PastaLean.pyMin distances
       -- The minimum is one of the computed distances.
       let _ := Libraries.passta.pyPassAssert (PastaLean.pyContains distances min_dist)
@@ -96,7 +96,7 @@ def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List 
       let _ := Libraries.passta.pyPassRequires (decide (PastaLean.pyLen dataset > (0 : Int)))
       try
         -- Distances to every point via a list comprehension over a raising function
-        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance'rn target point)
+        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => _root_.euclidean_distance'rn target point)
         let mut min_dist := PastaLean.pyMin distances
         -- The minimum is one of the computed distances.
         let _ := Libraries.passta.pyPassAssert (PastaLean.pyContains distances min_dist)

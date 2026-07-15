@@ -72,7 +72,7 @@ def run_example :=
       let _ ← pyPrintNoop [pyPrintArg s! "Weight Matrix: {weights}"]
       -- 1. Main Processing Pipeline
       let _ ← pyPrintNoop [pyPrintArg "\n[1] Running Data Pipeline:"]
-      let mut output := (← process_data dataset weights)
+      let mut output := (← _root_.process_data dataset weights)
       let _ ← pyPrintNoop [pyPrintArg s! "Final Result:\n{output}"]
       -- 2. Utility Operations
       let _ ← pyPrintNoop [pyPrintArg "\n[2] Structural Operations:"]
@@ -86,7 +86,7 @@ def run_example :=
       let _ ← pyPrintNoop [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
       let mut invalid_data : List (List Rat) := [[(1.0 : Rat), (2.0 : Rat), (3.0 : Rat)]]
       -- This should trigger the ValueError in np.matmul(1x3, 2x2)
-      let _ ← process_data invalid_data weights) :
+      let _ ← _root_.process_data invalid_data weights) :
     PastaLean.PyExceptId _)
 
 attribute [simp] run_example
@@ -101,7 +101,7 @@ def run_example'rn :=
       let _ ← pyPrintIO [pyPrintArg s! "Weight Matrix: {weights}"]
       -- 1. Main Processing Pipeline
       let _ ← pyPrintIO [pyPrintArg "\n[1] Running Data Pipeline:"]
-      let mut output := (← process_data'rn dataset weights)
+      let mut output := (← _root_.process_data'rn dataset weights)
       let _ ← pyPrintIO [pyPrintArg s! "Final Result:\n{output}"]
       -- 2. Utility Operations
       let _ ← pyPrintIO [pyPrintArg "\n[2] Structural Operations:"]
@@ -115,13 +115,13 @@ def run_example'rn :=
       let _ ← pyPrintIO [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
       let mut invalid_data : List (List Float) := [[(1.0 : Float), (2.0 : Float), (3.0 : Float)]]
       -- This should trigger the ValueError in np.matmul(1x3, 2x2)
-      let _ ← process_data'rn invalid_data weights) :
+      let _ ← _root_.process_data'rn invalid_data weights) :
     PastaLean.PyExcept _)
 
 def main : IO Unit := do
   let result :=
     (((do
-          let _ ← run_example
+          let _ ← _root_.run_example
           pure ()) :
         PastaLean.PyExceptId Unit)).run
   match result with
@@ -133,7 +133,7 @@ def main : IO Unit := do
 def main'rn : IO Unit := do
   let result ←
     (((do
-            let _ ← run_example'rn
+            let _ ← _root_.run_example'rn
             pure ()) :
           PastaLean.PyExcept Unit)).run
   match result with

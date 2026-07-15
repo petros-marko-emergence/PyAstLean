@@ -234,6 +234,42 @@ Still to come, in order:
 - **Coercions** — insert the small conversions Python does implicitly (`bool` used as an `int`,
   unwrapping an `Optional`, projecting a tuple element).
 
+## When a value has no single type
+
+Some Python values genuinely don't have one static type — a function that returns a string on one
+branch and a number on another:
+
+```python
+def classify(x):
+    if x > 0:
+        return "positive"
+    return 0
+```
+
+There is no Lean type that is both `String` and `Int`, so PastaLean boxes the result as `PyValue` —
+a single runtime type that holds any Python value. The function compiles as returning `PyValue`, and
+`classify(5)` prints `positive`, `classify(-3)` prints `0`, exactly like Python. This is the *total
+fallback*: inference makes it rare, but when a value really is dynamic, boxing means the program
+still compiles instead of failing. (A boxed value can't be reasoned about by the prover, so it's a
+last resort.)
+
+## Is any of this *correct*?
+
+Because the engine is written in Lean, we don't just test it — we **prove** its core is sound.
+`Lattice.lean` proves, with no `sorry`:
+
+- **`join` is a bounded join-semilattice** — commutative, associative, idempotent, with `unknown` as
+  bottom and `any` as top. The induced order is a partial order and `join` computes its *least* upper
+  bound. This is what **guarantees the fixpoint terminates**: every reflow step moves strictly up a
+  partial order, so it can't loop forever.
+- **`consistent` is a genuine gradual-typing relation** (Siek & Taha) — reflexive, symmetric, with
+  the *gradual guarantee* (`unknown` is consistent with everything) and, crucially, **provably not
+  transitive**. Non-transitivity is the exact property that separates gradual typing from subtyping:
+  a boxed value may flow anywhere, but that never makes two unrelated concrete types interchangeable.
+
+The universal laws are proved on a faithful model; the same facts are then checked on the *actual*
+production functions with `native_decide`.
+
 ## The files
 
 | file | what's in it |
@@ -244,6 +280,8 @@ Still to come, in order:
 | `Emit.lean` | `toTypeSyntax?` — `PyType` → Lean type text |
 | `Rules.lean` | `typeOfExpr` / `applyStmt` — the type of an expression, and how a statement updates what's known |
 | `Solve.lean` | `inferFunction` (the per-function fixpoint), `collectSigs` / `inferModule` (the cross-function pass), and `stampNode` (write `_ty` back onto the IR) |
+| `Lattice.lean` | the proofs: the lattice laws, the partial order, and gradual-typing consistency |
 
-Tests are in `PastaLeanTest/TypeInfer/TestLattice.lean` and `TestInfer.lean` (unit checks on the
-lattice and the rules) and `PastaLeanTest/PastaLeanCheck/Typing/` (worked programs).
+The `PyValue` runtime fallback lives in `PastaLean/PyAPI/PyValue.lean`. Tests are in
+`PastaLeanTest/TypeInfer/TestLattice.lean` and `TestInfer.lean` (unit checks on the lattice and the
+rules) and `PastaLeanTest/PastaLeanCheck/Typing/` (worked programs).

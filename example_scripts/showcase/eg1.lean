@@ -51,7 +51,7 @@ noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (data
   ((do
       try
         -- Calculate distances using list comprehension
-        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance target point)
+        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => _root_.euclidean_distance target point)
         -- Find the minimum distance
         let mut min_dist := PastaLean.pyMin distances
         -- Find the index of the minimum distance
@@ -83,7 +83,7 @@ def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List 
   ((do
       try
         -- Calculate distances using list comprehension
-        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => euclidean_distance'rn target point)
+        let mut distances := (← (PastaLean.pyIter dataset).mapM fun point => _root_.euclidean_distance'rn target point)
         -- Find the minimum distance
         let mut min_dist := PastaLean.pyMin distances
         -- Find the index of the minimum distance
@@ -119,7 +119,7 @@ noncomputable def run_example :=
       let _ ← pyPrintNoop [pyPrintArg "Dataset:", pyPrintArg dataset]
       let _ ← pyPrintNoop [pyPrintArg "Target Point:", pyPrintArg target_point]
       -- Valid Case
-      let __unpack_value_1 ← find_nearest_neighbor target_point dataset
+      let __unpack_value_1 ← _root_.find_nearest_neighbor target_point dataset
       let __unpack_pair_1 := __unpack_value_1
       let mut dist := Prod.fst __unpack_pair_1
       let mut nearest := Prod.snd __unpack_pair_1
@@ -128,7 +128,7 @@ noncomputable def run_example :=
       let _ ← pyPrintNoop [pyPrintArg "Distance:", pyPrintArg dist]
       -- Invalid Case
       let _ ← pyPrintNoop [pyPrintArg "\nTesting Invalid Point:"]
-      let __unpack_value_2 ← find_nearest_neighbor invalid_point dataset
+      let __unpack_value_2 ← _root_.find_nearest_neighbor invalid_point dataset
       let __unpack_pair_2 := __unpack_value_2
       let mut dist_inv := Prod.fst __unpack_pair_2
       let mut nearest_inv := Prod.snd __unpack_pair_2
@@ -147,7 +147,7 @@ def run_example'rn :=
       let _ ← pyPrintIO [pyPrintArg "Dataset:", pyPrintArg dataset]
       let _ ← pyPrintIO [pyPrintArg "Target Point:", pyPrintArg target_point]
       -- Valid Case
-      let __unpack_value_1 ← find_nearest_neighbor'rn target_point dataset
+      let __unpack_value_1 ← _root_.find_nearest_neighbor'rn target_point dataset
       let __unpack_pair_1 := __unpack_value_1
       let mut dist := Prod.fst __unpack_pair_1
       let mut nearest := Prod.snd __unpack_pair_1
@@ -156,7 +156,7 @@ def run_example'rn :=
       let _ ← pyPrintIO [pyPrintArg "Distance:", pyPrintArg dist]
       -- Invalid Case
       let _ ← pyPrintIO [pyPrintArg "\nTesting Invalid Point:"]
-      let __unpack_value_2 ← find_nearest_neighbor'rn invalid_point dataset
+      let __unpack_value_2 ← _root_.find_nearest_neighbor'rn invalid_point dataset
       let __unpack_pair_2 := __unpack_value_2
       let mut dist_inv := Prod.fst __unpack_pair_2
       let mut nearest_inv := Prod.snd __unpack_pair_2
@@ -166,7 +166,7 @@ def run_example'rn :=
 noncomputable def main : IO Unit := do
   let result :=
     (((do
-          let _ ← run_example
+          let _ ← _root_.run_example
           pure ()) :
         PastaLean.PyExceptId Unit)).run
   match result with
@@ -178,7 +178,7 @@ noncomputable def main : IO Unit := do
 def main'rn : IO Unit := do
   let result ←
     (((do
-            let _ ← run_example'rn
+            let _ ← _root_.run_example'rn
             pure ()) :
           PastaLean.PyExcept Unit)).run
   match result with

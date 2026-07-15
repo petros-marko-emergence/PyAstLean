@@ -135,7 +135,11 @@ partial def annotationMentionsFloat (json : Json) : Bool :=
 
 /-- Read a Python function return annotation when it maps cleanly to a Lean runtime type. -/
 def functionReturnTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
-  match jsonFieldOption json "returns" with
+  -- A boxed function (returns disagree in type) returns `PyValue` regardless of any union annotation.
+  if json.getObjValAs? Bool "_box_return" == .ok true then
+    return some (mkIdent ``PastaLean.PyValue)
+  -- The explicit `returns` annotation wins; else the type inferred by `TypeInfer` (`_ret_ty`).
+  match (jsonFieldOption json "returns").orElse (fun _ => jsonFieldOption json "_ret_ty") with
   | some returnJson =>
       -- In exact mode a `float`-involving return is left UNASCRIBED so Lean infers `ℚ` (a rational
       -- function) or `ℝ` (a transcendental one); a fixed `ℚ` would clash with an `ℝ` body.
@@ -226,7 +230,8 @@ The body is lowered against a fresh variable set (`withFreshVariables`) so local
 inside a nested function do not leak into the enclosing scope's `let`/`let mut` tracking — a
 leak would otherwise cause a later same-named outer assignment to be emitted as a reassignment
 of a variable that was never declared `let mut`. -/
-def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) (bodyElems : Array Json) :
+def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) (bodyElems : Array Json)
+    (boxReturn : Bool := false) :
     PygenM (TSyntax `term) := withFreshVariables do
   let usesExceptions := bodyNeedsExceptionMonad bodyElems
   let usesRealIO := bodyNeedsIOMonad bodyElems
@@ -279,8 +284,12 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     else
       mkLambda ioBody
   else
+    -- A boxed function's returns disagree in type, so ascribe the result to `PyValue`; each branch
+    -- then coerces (`return 1` / `return "neg"` both become `PyValue`).
+    let boxTy := mkIdent ``PastaLean.PyValue
     try
       let bodyStx ← pureFunctionBodySyntax bodyElems
+      let bodyStx ← if boxReturn then `(($bodyStx : $boxTy)) else pure bodyStx
       if argInfos.isEmpty then
         pure bodyStx
       else
@@ -289,14 +298,14 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
       IO.eprintln s!"Could not generate pure function term: {← e.toMessageData.toString}"
       let bodyStxArray ← monadicFunctionBodySyntax bodyElems
       let idRunIdent := mkIdent ``Id.run
-      if argInfos.isEmpty then
-        `($idRunIdent do
+      let runBody ← `($idRunIdent do
             $[$paramPrelude:doElem]*
             $[$bodyStxArray:doElem]*)
+      let runBody ← if boxReturn then `(($runBody : $boxTy)) else pure runBody
+      if argInfos.isEmpty then
+        pure runBody
       else
-        mkLambda (← `($idRunIdent do
-            $[$paramPrelude:doElem]*
-            $[$bodyStxArray:doElem]*))
+        mkLambda runBody
 
 /-- Build a lambda-wrapped monadic body term without adding an inner effect cast. -/
 def functionMonadicValueNoCast (argInfos : Array (TSyntax `ident × Option (TSyntax `term)))
@@ -656,6 +665,9 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         -- and real local literals are lowered under a per-assignment `withRealContext`; the function
         -- is NOT blanket-lifted, so its `ℚ` locals stay `ℚ`.
         let isReal := (← getNumericMode) == .exact && json.getObjValAs? Bool "_real_fn" == .ok true
+        -- The inference pass marks a function whose returns disagree in type; its result is boxed as
+        -- `PyValue`, which is not provable — so it never gets the `[simp, taste_ingr]` tag below.
+        let boxReturn := json.getObjValAs? Bool "_box_return" == .ok true
         let argInfos ← functionArgInfos json
         let effectCmd? ← functionCommandWithEffectSignature? nameIdent argInfos json isReal
         -- Drop any `Ensures(Result() …)`/`Assert(Result() …)` markers: they are verification-only
@@ -668,7 +680,7 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         let cmd ← match effectCmd? with
           | some cmd => pure cmd
           | none =>
-              let valueStx ← functionValueSyntax argInfos bodyElems
+              let valueStx ← functionValueSyntax argInfos bodyElems boxReturn
               -- take care of recursion function Type
               if isRecursive then
                 let fullTy? ← match ← functionReturnTypeSyntax? json with
@@ -693,7 +705,7 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         if (← getNumericMode) == .exact && !isRecursive then
           let isEffectful := bodyNeedsExceptionMonad bodyElems || bodyNeedsIOMonad bodyElems
           let hasAssert := bodyArr.any (jsonNodeType? · == some "Assert")
-          let attrCmd ← if !isEffectful && !hasAssert && !nc
+          let attrCmd ← if !isEffectful && !hasAssert && !nc && !boxReturn
             then `(command| attribute [simp, taste_ingr] $nameIdent)
             else `(command| attribute [simp] $nameIdent)
           return ⟨mkNullNode #[finalCmd.raw, attrCmd.raw]⟩

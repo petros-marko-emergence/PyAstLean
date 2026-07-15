@@ -103,7 +103,16 @@ def applyStmt (sigs : Sigs) (env : Env) (s : Json) : Env :=
 private partial def flatStmts (stmts : List Json) : List Json :=
   stmts.foldl (fun acc s => acc ++ [s] ++ (childBlocks s).flatMap flatStmts) []
 
-/-- Parameter name → annotated type for a `FunctionDef`. -/
+/-- The declared parameter names of `fn`, in order. -/
+def paramNames (fn : Json) : Array String := Id.run do
+  let mut names := #[]
+  let .ok args := fn.getObjVal? "args" | return names
+  let .ok argsArr := args.getObjValAs? (Array Json) "args" | return names
+  for arg in argsArr do
+    if let .ok name := arg.getObjValAs? String "arg" then names := names.push name
+  return names
+
+/-- Parameter name → annotated type for a `FunctionDef` (annotated params only). -/
 private def paramSeed (fn : Json) : Env := Id.run do
   let mut env : Env := {}
   let .ok args := fn.getObjVal? "args" | return env
@@ -116,12 +125,15 @@ private def paramSeed (fn : Json) : Env := Id.run do
   return env
 
 /-- Infer a type for every local in `fn`, reflowing to a fixpoint. `outer` seeds the environment
-with the enclosing scope so a nested def's captures start typed; `sigs` resolves calls to user
-functions. -/
-partial def inferFunction (sigs : Sigs) (outer : Env) (fn : Json) : Env := Id.run do
+with the enclosing scope so a nested def's captures start typed; `hints` seeds unannotated
+parameters with types learned from call sites; `sigs` resolves calls to user functions. Precedence:
+enclosing captures > annotations > call-site hints. -/
+partial def inferFunction (sigs : Sigs) (outer hints : Env) (fn : Json) : Env := Id.run do
   let body := (fn.getObjValAs? (Array Json) "body").toOption.getD #[]
   let stmts := flatStmts body.toList
-  let mut env := outer.fold (fun m k v => m.insert k v) (paramSeed fn)
+  -- annotations override call-site hints; enclosing captures override both.
+  let seed := (paramSeed fn).fold (fun m k v => m.insert k v) hints
+  let mut env := outer.fold (fun m k v => m.insert k v) seed
   -- Reflow until stable. The lattice climbs, so a small cap is a sound floor, not a correctness risk.
   for _ in [0:8] do
     let next := stmts.foldl (applyStmt sigs) env
@@ -133,8 +145,8 @@ partial def inferFunction (sigs : Sigs) (outer : Env) (fn : Json) : Env := Id.ru
 
 /-- The type `fn` returns: the join of every `return <e>` under its inferred environment. A bare
 `return` (no value) or falling off the end contributes `None`. -/
-partial def returnTypeOf (sigs : Sigs) (fn : Json) : PyType := Id.run do
-  let env := inferFunction sigs {} fn
+partial def returnTypeOf (sigs : Sigs) (hints : Env) (fn : Json) : PyType := Id.run do
+  let env := inferFunction sigs {} hints fn
   let body := (fn.getObjValAs? (Array Json) "body").toOption.getD #[]
   let mut ret : PyType := .unknown
   for s in flatStmts body.toList do
@@ -178,28 +190,75 @@ private def stampParams (env : Env) (fn : Json) : Json :=
                   | some a => !a.isNull
                   | none => false
                 if annotated || (getField arg "_ty").isSome then arg
-                else match (env.get? name).bind toAnnotation? with
-                  | some ann => arg.setObjVal! "_ty" ann
+                else match env.get? name with
+                  -- A parameter used at genuinely different types (`.any`, e.g. `add(a,b)` called
+                  -- with ints and strings) is boxed as `PyValue` so one definition dispatches on the
+                  -- runtime tag. A fully-known type is stamped normally.
+                  | some (.any) => arg.setObjVal! "_ty" (Json.mkObj [("node_type", .str "Name"), ("id", .str "PyValue")])
+                  | some t => match toAnnotation? t with
+                      | some ann => arg.setObjVal! "_ty" ann
+                      | none => arg
                   | none => arg
             | _ => arg
           fn.setObjVal! "args" (args.setObjVal! "args" (Json.arr argsArr))
       | _ => fn
   | _ => fn
 
+/-- Mark every `t[k]` where `t` is a pair-typed name (`tuple[a, b]`) with `_PastaLean_pair`, so the
+subscript codegen projects `.1`/`.2` instead of `pyGetItem` (which has no instance for a
+heterogeneous product). Does not descend into a nested `def` (separate scope, its own env). -/
+partial def markTuples (env : Env) (json : Json) : Json :=
+  if nodeTypeOf json == some "FunctionDef" then json
+  else
+    let json :=
+      if nodeTypeOf json == some "Subscript" then
+        match getField json "value" with
+        | some v =>
+            match (nameId? v).bind (env.get? ·) with
+            | some (.tuple es) =>
+                if es.length == 2 then json.setObjVal! "value" (v.setObjVal! "_PastaLean_pair" (Json.bool true))
+                else json
+            | _ => json
+        | none => json
+      else json
+    match json with
+    | .arr xs => Json.arr (xs.map (markTuples env))
+    | .obj fs => Json.mkObj (fs.toList.map (fun (k, v) => (k, markTuples env v)))
+    | _ => json
+
 mutual
 
-/-- Infer types for `fn` (seeded by `outer`, resolving calls with `sigs`), stamp its params and
-every binder in its body, and recurse into nested defs with the now-known environment. -/
-partial def stampFunction (sigs : Sigs) (outer : Env) (fn : Json) : Json :=
-  let env := inferFunction sigs outer fn
+/-- Infer types for `fn` (seeded by `outer` captures and `hints` for unannotated params, resolving
+calls with `sigs`), stamp its params and every binder in its body, and recurse into nested defs.
+A function whose returns disagree (`.any`) and that has no return annotation is marked `_box_return`
+so codegen boxes its result as `PyValue`. -/
+partial def stampFunction (sigs : Sigs) (outer hints : Env) (fn : Json) : Json :=
+  let env := inferFunction sigs outer hints fn
   let fn := stampParams env fn
+  let fn := match fn.getObjValAs? String "name" with
+    | .ok name =>
+        -- The return type from its annotation if it has one (a union like `int | str` reads as
+        -- `.any`), else the inferred one. `.any` means the returns genuinely disagree → box; a fully
+        -- known type is stamped as `_ret_ty` so codegen can ascribe it (a recursive or effectful def
+        -- needs its return type in the signature — this is what annotate_python's `-> T` provided).
+        let annotated := match getField fn "returns" with | some r => !r.isNull | none => false
+        let retType := if annotated then ofAnnotation ((getField fn "returns").getD Json.null)
+                       else (sigs.get? name).getD .unknown
+        if retType == (.any : PyType) then fn.setObjVal! "_box_return" (Json.bool true)
+        else if !annotated && retType.isKnown then
+          match toAnnotation? retType with
+          | some ann => fn.setObjVal! "_ret_ty" ann
+          | none => fn
+        else fn
+    | _ => fn
   match fn.getObjValAs? (Array Json) "body" with
-  | .ok body => fn.setObjVal! "body" (Json.arr (body.map (stampStmt sigs env)))
+  | .ok body => fn.setObjVal! "body" (Json.arr ((body.map (stampStmt sigs env)).map (markTuples env)))
   | _ => fn
 
 /-- Stamp one statement: its target, its nested blocks, and any nested def. -/
 partial def stampStmt (sigs : Sigs) (env : Env) (s : Json) : Json :=
-  if nodeTypeOf s == some "FunctionDef" then stampFunction sigs env s
+  -- A nested def's params come from its own annotations or captured `outer`, not call-site hints.
+  if nodeTypeOf s == some "FunctionDef" then stampFunction sigs env {} s
   else Id.run do
     let mut s := s
     match nodeTypeOf s with
@@ -219,56 +278,110 @@ partial def stampStmt (sigs : Sigs) (env : Env) (s : Json) : Json :=
 
 end
 
-/-! ### Interprocedural: a function's return type flows to its call sites -/
+/-! ### Interprocedural: return types flow to call sites, argument types flow to parameters -/
+
+/-- Inferred type of each parameter of each user function, by position. -/
+abbrev ParamSigs := Std.HashMap String (Array PyType)
 
 /-- Every top-level `FunctionDef` in a module or mutual group, in order. -/
 private def topFunctions (module : Json) : Array Json :=
   ((module.getObjValAs? (Array Json) "body").toOption.getD #[]).filter
     (nodeTypeOf · == some "FunctionDef")
 
-/-- Compute each function's return type, reflowing to a fixpoint so a caller sees a callee's type.
-Return types only climb the lattice, so this settles. -/
-partial def collectSigs (module : Json) : Sigs := Id.run do
+/-- The hint environment for `fn`'s parameters from `params` (its inferred per-position types). -/
+private def hintsFor (params : ParamSigs) (fn : Json) : Env := Id.run do
+  let names := paramNames fn
+  let types := (params.get? ((fn.getObjValAs? String "name").toOption.getD "")).getD #[]
+  let mut env : Env := {}
+  for i in [0:names.size] do
+    if let some t := types[i]? then if t != .unknown then env := env.insert names[i]! t
+  return env
+
+/-- Collect `(calleeName, argumentTypes)` for every direct call `foo(a, b, …)` in `json`, typing the
+arguments under `env`. Nested calls are included; method calls are ignored (no positional callee). -/
+private partial def collectCalls (sigs : Sigs) (env : Env) (json : Json) : Array (String × Array PyType) :=
+  let here : Array (String × Array PyType) :=
+    if nodeTypeOf json == some "Call" then
+      match getField json "func" with
+      | some func =>
+          match (nodeTypeOf func, (func.getObjValAs? String "id").toOption) with
+          | (some "Name", some name) =>
+              let args := ((json.getObjValAs? (Array Json) "args").toOption.getD #[]).map (typeOfExpr sigs env)
+              #[(name, args)]
+          | _ => #[]
+      | none => #[]
+    else #[]
+  let sub := match json with
+    | .arr xs => xs.foldl (fun acc x => acc ++ collectCalls sigs env x) #[]
+    | .obj fs => fs.toList.foldl (fun acc (_, v) => acc ++ collectCalls sigs env v) #[]
+    | _ => #[]
+  here ++ sub
+
+/-- Join `argTypes` into `params[name]` position-by-position (missing positions start `unknown`). -/
+private def refineParams (params : ParamSigs) (name : String) (arity : Nat) (argTypes : Array PyType) : ParamSigs :=
+  let cur := (params.get? name).getD (Array.replicate arity .unknown)
+  let next := (Array.range cur.size).map fun i =>
+    (cur[i]!).join (argTypes[i]?.getD .unknown)
+  params.insert name next
+
+/-- Co-evolve every function's return type AND its parameter types to a fixpoint: a callee's return
+flows to its callers, and a caller's argument types flow to the callee's parameters. Both only climb
+the lattice, so this settles. -/
+partial def collectSigs (module : Json) : Sigs × ParamSigs := Id.run do
   let fns := topFunctions module
+  -- Seed each function's parameters with their annotations (unknown where unannotated).
+  let mut params : ParamSigs := {}
+  for fn in fns do
+    if let .ok name := fn.getObjValAs? String "name" then
+      let seed := paramSeed fn
+      params := params.insert name ((paramNames fn).map fun p => (seed.get? p).getD .unknown)
   let mut sigs : Sigs := {}
   for _ in [0:6] do
-    let mut next := sigs
+    let mut nextSigs := sigs
+    let mut nextParams := params
     for fn in fns do
       if let .ok name := fn.getObjValAs? String "name" then
-        next := next.insert name (returnTypeOf sigs fn)
-    if next.size == sigs.size && next.fold (fun ok k v => ok && (sigs.get? k |>.getD .unknown) == v) true then
-      sigs := next
-      break
-    sigs := next
-  return sigs
+        let hints := hintsFor params fn
+        nextSigs := nextSigs.insert name (returnTypeOf sigs hints fn)
+        -- refine callees' params from this function's call sites, typed under its own env.
+        let env := inferFunction sigs {} hints fn
+        for (callee, argTypes) in collectCalls sigs env fn do
+          if params.contains callee then
+            nextParams := refineParams nextParams callee argTypes.size argTypes
+    let stable := nextSigs.size == sigs.size
+      && nextSigs.fold (fun ok k v => ok && (sigs.get? k |>.getD .unknown) == v) true
+      && nextParams.fold (fun ok k v => ok && (params.get? k |>.getD #[]) == v) true
+    sigs := nextSigs; params := nextParams
+    if stable then break
+  return (sigs, params)
 
-/-- Stamp `_ty` across one top-level node, resolving calls with `sigs`. The driver sends one
-statement per request; a `FunctionDef`, a `ClassDef` (each method) or a `Module` (a mutual group)
-is stamped, anything else is returned unchanged. -/
-partial def stampNodeWith (sigs : Sigs) (s : Json) : Json :=
+/-- Stamp `_ty` across one top-level node, resolving calls with `sigs` and seeding each function's
+unannotated params from `params`. The driver sends one statement per request; a `FunctionDef`, a
+`ClassDef` (each method) or a `Module` (a mutual group) is stamped, anything else is unchanged. -/
+partial def stampNodeWith (sigs : Sigs) (params : ParamSigs) (s : Json) : Json :=
   match nodeTypeOf s with
-  | some "FunctionDef" => stampFunction sigs {} s
+  | some "FunctionDef" => stampFunction sigs {} (hintsFor params s) s
   | some "ClassDef" =>
       match s.getObjValAs? (Array Json) "body" with
       | .ok methods => s.setObjVal! "body" (Json.arr (methods.map fun m =>
-          if nodeTypeOf m == some "FunctionDef" then stampFunction sigs {} m else m))
+          if nodeTypeOf m == some "FunctionDef" then stampFunction sigs {} (hintsFor params m) m else m))
       | _ => s
   | some "Module" =>
       match s.getObjValAs? (Array Json) "body" with
-      | .ok body => s.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs)))
+      | .ok body => s.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs params)))
       | _ => s
   | _ => s
 
 /-- Intraprocedural stamping of a single node (no cross-function info). Used per-request as a
 fallback; `inferModule` supersedes it when the whole module is available. -/
-partial def stampNode (s : Json) : Json := stampNodeWith {} s
+partial def stampNode (s : Json) : Json := stampNodeWith {} {} s
 
-/-- Whole-module inference: compute every function's return type to a fixpoint, then stamp each
+/-- Whole-module inference: co-evolve return and parameter types to a fixpoint, then stamp each
 top-level node with that knowledge. This is what the `inferTypes` backend task runs. -/
 def inferModule (module : Json) : Json :=
-  let sigs := collectSigs module
+  let (sigs, params) := collectSigs module
   match module.getObjValAs? (Array Json) "body" with
-  | .ok body => module.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs)))
-  | _ => stampNodeWith sigs module
+  | .ok body => module.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs params)))
+  | _ => stampNodeWith sigs params module
 
 end TypeInfer

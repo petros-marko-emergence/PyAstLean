@@ -86,7 +86,12 @@ private def tuple (elts : List Json) : Json :=
 
 #guard ofAnnotation (name "int") == PyType.int
 #guard ofAnnotation (name "TreeNode") == .cls "TreeNode"
-#guard ofAnnotation (name "Any") == PyType.any
+-- `Any` is the gradual dynamic type ("no info"), not a conflict — so it reads as `unknown`.
+#guard ofAnnotation (name "Any") == PyType.unknown
+-- …but a concrete union `int | str` genuinely conflicts, so it reads as `any` (→ boxed).
+#guard ofAnnotation (Json.mkObj
+    [("node_type", .str "BinOp"), ("op", .str "bitor"), ("left", name "int"), ("right", name "str")])
+  == PyType.any
 #guard ofAnnotation (subscript (name "list") (name "str")) == .list .str
 -- `List[List[int]]` — the pre-pass lowercases `List`, but accept both spellings.
 #guard ofAnnotation (subscript (name "List") (subscript (name "list") (name "int")))

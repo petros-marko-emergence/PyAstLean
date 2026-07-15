@@ -20,9 +20,9 @@ def main''rn : IO Unit := do
   pure ()
 
 noncomputable def main : IO Unit := do
-  let _ := main'
+  let _ := _root_.main'
   pure ()
 
 def main'rn : IO Unit := do
-  let _ := main''rn
+  let _ := _root_.main''rn
   pure ()

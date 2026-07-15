@@ -312,6 +312,27 @@ def constructorClassOfName? (funcName : String) : PygenM (Option String) := do
   if funcName == "cls" then return (← get).currentClass
   return none
 
+/-- True when `name` already resolves to some existing global (a Mathlib/Lean/PastaLean
+declaration) — i.e. a bare reference to it would be an ambiguous clash. A fresh user name (a
+recursive helper, an ordinary function) resolves to nothing here, since user defs are not in the
+codegen environment. -/
+def nameClashesWithGlobal (name : String) : PygenM Bool :=
+  return !(← resolveGlobalName name.toName).isEmpty
+
+/-- The Lean callee term for a call to the user function `funcName` (after run-suffix + `leanName`).
+Only when the name *actually collides* with an existing global (`dist` → `Dist.dist`, `gcd` → …) is
+it `_root_`-qualified, so it resolves to the user's own definition rather than the Mathlib export.
+A non-clashing name (including a recursive self-call like `fibonacci`, which is not yet in the
+environment) is left bare — qualifying it would break the recursive reference. This is the general
+fix for user-name-vs-Mathlib clashes, without wrapping the program in a namespace. -/
+def userCallIdent (funcName : String) : PygenM (TSyntax `term) := do
+  let mapped ← leanName (← suffixIfUserName funcName).toName
+  if (← userNamesRef.get).contains funcName && !(← hasVar funcName.toName)
+      && (← nameClashesWithGlobal funcName) then
+    return (mkIdent (`_root_ ++ mapped) : TSyntax `term)
+  else
+    return (mkIdent mapped : TSyntax `term)
+
 @[pygen "Call"]
 def callSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
@@ -599,8 +620,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
             else match ← builtinMappedName? funcName with
             | some mappedName => funcIdent := (mkIdent mappedName : TSyntax `term)
             | none =>
-                let mappedName ← leanName (← suffixIfUserName funcName).toName
-                funcIdent := (mkIdent mappedName : TSyntax `term)
+                funcIdent ← userCallIdent funcName
         | _, _ =>
             funcIdent ← getCode funcJson `term
 
@@ -931,8 +951,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
             match ← builtinMappedName? funcName with
             | some mappedName => funcIdent := (mkIdent mappedName : TSyntax `term)
             | none =>
-                let mappedName ← leanName (← suffixIfUserName funcName).toName
-                funcIdent := (mkIdent mappedName : TSyntax `term)
+                funcIdent ← userCallIdent funcName
         | _, _ =>
             funcIdent ← getCode funcJson `term
 
