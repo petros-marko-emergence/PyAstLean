@@ -1,5 +1,9 @@
 import PastaLean.PyAPI.PyPrint
 import PastaLean.PyAPI.CommonProtocols.Truthy
+import PastaLean.PyAPI.CommonProtocols.GetItem
+import PastaLean.PyAPI.CommonProtocols.SetItem
+import PastaLean.PyAPI.CommonProtocols.Length
+import PastaLean.PyAPI.CommonProtocols.Iterable
 import PastaLean.PyAPI.Operators
 
 /-!
@@ -118,6 +122,37 @@ end PyValue
 instance : PyHAdd PyValue PyValue PyValue where hAdd := PyValue.add
 instance : PyHSub PyValue PyValue PyValue where hSub := PyValue.sub
 instance : PyHMul PyValue PyValue PyValue where hMul := PyValue.mul
+
+/-! ### Container protocols — delegate to the boxed value's own instance
+
+A boxed slot that is indexed, iterated, or `len`-ed dispatches on the runtime tag and reuses the
+concrete `List`/`String` instance (no reimplementation); the element is reboxed as `PyValue`. This
+is why an un-inferred parameter can still be subscripted (`x[i]`, `x[i]=v`), looped, or measured. -/
+
+instance : PyGetItem PyValue Int PyValue where
+  getItem v i :=
+    match v with
+    | .list xs => pyListGetItem xs i
+    | .str s => .str (pyStringGetItemStr s i)
+    | _ => .none
+
+instance : PySetItem PyValue Int PyValue where
+  setItem v i x :=
+    match v with
+    | .list xs => .list (pySetItem xs i x)
+    | _ => v
+
+instance : PyLen PyValue where
+  pyLen
+    | .list xs => xs.length
+    | .str s => s.length
+    | _ => 0
+
+instance : PyIterable PyValue PyValue where
+  toPyList
+    | .list xs => xs
+    | .str s => s.toList.map (fun c => .str c.toString)
+    | _ => []
 
 instance : PyPrintable PyValue where pyStringify := PyValue.toStr false
 instance : PyTruthy PyValue where

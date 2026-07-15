@@ -252,9 +252,36 @@ partial def stampTarget (env : Env) (target : Json) : Json :=
       | _ => target
   | _ => target
 
+/-- Does parameter `name` appear in a position that `PyValue` can serve but an un-inferred type
+leaves Lean's instance search stuck on? Containers — `x[i]`, `x[i]=v`, `for _ in x`, `len(x)` — and
+truthy contexts — `x and y`, `not x`, `if x`, `while x` (all `PyTruthy`). Boxing such a param as
+`PyValue` (which delegates to the runtime tag) turns a compile error into a total, running program.
+Does not descend into nested defs (separate scope). -/
+partial def usedInPyValuePosition (name : String) (json : Json) : Bool :=
+  if nodeTypeOf json == some "FunctionDef" then false
+  else
+    let isName (field : String) : Bool := (getField json field).bind nameId? == some name
+    let hitHere : Bool := match nodeTypeOf json with
+      | some "Subscript" => isName "value"
+      | some "For" => isName "iter"
+      | some "If" | some "While" => isName "test"
+      | some "UnaryOp" => (json.getObjValAs? String "op").toOption == some "not" && isName "operand"
+      | some "BoolOp" =>
+          ((json.getObjValAs? (Array Json) "values").toOption.getD #[]).any (fun v => nameId? v == some name)
+      | some "Call" =>
+          (getField json "func").bind nameId? == some "len" &&
+            ((json.getObjValAs? (Array Json) "args").toOption.getD #[]).any (fun a => nameId? a == some name)
+      | _ => false
+    hitHere || (match json with
+      | .arr xs => xs.any (usedInPyValuePosition name)
+      | .obj fs => fs.toList.any (fun (_, v) => usedInPyValuePosition name v)
+      | _ => false)
+
 /-- Add `_ty` to each unannotated parameter we could type (a nested capture, or a rare
 un-hinted param). An explicit annotation, or an existing `_ty`, always wins. -/
 private def stampParams (env : Env) (fn : Json) : Json :=
+  let body := (fn.getObjValAs? (Array Json) "body").toOption.getD #[]
+  let pyValueTy := Json.mkObj [("node_type", .str "Name"), ("id", .str "PyValue")]
   match fn.getObjVal? "args" with
   | .ok args =>
       match args.getObjValAs? (Array Json) "args" with
@@ -266,15 +293,23 @@ private def stampParams (env : Env) (fn : Json) : Json :=
                   | some a => !a.isNull
                   | none => false
                 if annotated || (getField arg "_ty").isSome then arg
-                else match env.get? name with
+                else
+                  -- A residual-unknown param is boxed as `PyValue` only when it is used in a
+                  -- container-dispatch position (else it would compile-error); otherwise it is left
+                  -- bare for Lean's own body unification, which keeps it provable.
+                  let boxIfStuck := fun () =>
+                    if body.any (usedInPyValuePosition name) then arg.setObjVal! "_ty" pyValueTy else arg
+                  match env.get? name with
                   -- A parameter used at genuinely different types (`.any`, e.g. `add(a,b)` called
-                  -- with ints and strings) is boxed as `PyValue` so one definition dispatches on the
-                  -- runtime tag. A fully-known type is stamped normally.
-                  | some (.any) => arg.setObjVal! "_ty" (Json.mkObj [("node_type", .str "Name"), ("id", .str "PyValue")])
-                  | some t => match toAnnotation? t with
-                      | some ann => arg.setObjVal! "_ty" ann
-                      | none => arg
-                  | none => arg
+                  -- with ints and strings) is always boxed so one definition dispatches on the tag.
+                  | some (.any) => arg.setObjVal! "_ty" pyValueTy
+                  | some t =>
+                      if t.isKnown then
+                        match toAnnotation? t with
+                        | some ann => arg.setObjVal! "_ty" ann
+                        | none => arg
+                      else boxIfStuck ()
+                  | none => boxIfStuck ()
             | _ => arg
           fn.setObjVal! "args" (args.setObjVal! "args" (Json.arr argsArr))
       | _ => fn
@@ -364,6 +399,12 @@ private def topFunctions (module : Json) : Array Json :=
   ((module.getObjValAs? (Array Json) "body").toOption.getD #[]).filter
     (nodeTypeOf · == some "FunctionDef")
 
+/-- Module top-level statements that are not function defs (e.g. `print(add(3, 4))` at module scope):
+their call sites refine callee params too, so `add` boxes whether it is called from a def or not. -/
+private def topLevelStmts (module : Json) : Array Json :=
+  ((module.getObjValAs? (Array Json) "body").toOption.getD #[]).filter
+    (nodeTypeOf · != some "FunctionDef")
+
 /-- The hint environment for `fn`'s parameters from `params` (its inferred per-position types). -/
 private def hintsFor (params : ParamSigs) (fn : Json) : Env := Id.run do
   let names := paramNames fn
@@ -424,6 +465,11 @@ partial def collectSigs (module : Json) : Sigs × ParamSigs := Id.run do
         for (callee, argTypes) in collectCalls sigs env fn do
           if params.contains callee then
             nextParams := refineParams nextParams callee argTypes.size argTypes
+    -- Module top-level call sites (outside any def), typed under an empty env (literal args).
+    for stmt in topLevelStmts module do
+      for (callee, argTypes) in collectCalls sigs {} stmt do
+        if params.contains callee then
+          nextParams := refineParams nextParams callee argTypes.size argTypes
     let stable := nextSigs.size == sigs.size
       && nextSigs.fold (fun ok k v => ok && (sigs.get? k |>.getD .unknown) == v) true
       && nextParams.fold (fun ok k v => ok && (params.get? k |>.getD #[]) == v) true
