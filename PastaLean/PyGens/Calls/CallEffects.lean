@@ -431,10 +431,14 @@ def buildIOPureApplicationFromArgs (argJsons : Array Json) (argCodes : Array (TS
   let resultTerm ← mkResult resolvedArgs
   if bindings.isEmpty then
     return resultTerm
-  let ioIdent := mkIdent ``IO
+  -- Choose monad type: PyProofM in proof mode, IO in run mode
+  let monadType ← if (← shouldUseProofMonad) then
+      `(PastaLean.ProofMode.PyProofM)
+    else
+      `(IO)
   `(((do
         $[$bindings:doElem]*
-        return $resultTerm:term) : $ioIdent _))
+        return $resultTerm:term) : $monadType _))
 
 /-- Lift an `IO`-returning application when some arguments are already monadic. -/
 def buildIOActionApplicationFromArgs (argJsons : Array Json) (argCodes : Array (TSyntax `term))
@@ -462,10 +466,14 @@ def buildIOActionApplicationFromArgs (argJsons : Array Json) (argCodes : Array (
   let actionTerm ← mkAction resolvedArgs
   if bindings.isEmpty then
     return actionTerm
-  let ioIdent := mkIdent ``IO
+  -- Choose monad type: PyProofM in proof mode, IO in run mode
+  let monadType ← if (← shouldUseProofMonad) then
+      `(PastaLean.ProofMode.PyProofM)
+    else
+      `(IO)
   `(((do
         $[$bindings:doElem]*
         let __py_result ← $actionTerm:term
-        return __py_result) : $ioIdent _))
+        return __py_result) : $monadType _))
 
 end PastaLean
