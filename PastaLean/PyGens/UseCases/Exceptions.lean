@@ -206,17 +206,30 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
   -- body performs IO — there an IO error (e.g. `EOFError` from `input()` at end of input) must be
   -- turned into a catchable `PyException`; that case keeps the wrapper (and binds/returns the value).
   let needsIO := bodyNeedsIOMonad (bodyElems ++ orelseElems)
-  -- Pin the exception monad. Mirror `functionValueSyntax`'s choice so a `try` term and its enclosing
-  -- function always agree: use the pure `PyExceptId` (`ExceptT PyException Id`) only in exact/prove
-  -- mode with no real IO; otherwise `PyExcept` (`ExceptT PyException IO`). In run/approx mode the
-  -- whole program is `IO`-backed, so a nested pure `try` must stay `PyExcept` to lift into it.
-  let usePureExcept := (← getNumericMode) == .exact && !needsIO
-  let exceptIdent := mkIdent (if usePureExcept then ``PastaLean.PyExceptId else ``PastaLean.PyExcept)
+  -- Pin the exception monad based on mode and effects.
+  -- Proof mode (exact + IO/exceptions) uses PyProofM (state monad with Python exceptions).
+  -- Exact mode without proof uses PyExceptId (pure exceptions, no IO).
+  -- Run mode uses PyExcept (IO + exceptions).
+  let useProofMonad ← shouldUseProofMonad
+  let usePureExcept := !useProofMonad && (← getNumericMode) == .exact && !needsIO
+  let exceptIdent ←
+    if useProofMonad then
+      pure (mkIdent ``PastaLean.ProofMode.PyProofM)
+    else if usePureExcept then
+      pure (mkIdent ``PastaLean.PyExceptId)
+    else
+      pure (mkIdent ``PastaLean.PyExcept)
   let bodyYieldsValue :=
     statementListMayYieldValue (bodyElems ++ orelseElems)
       || handlersListMayYieldValue handlersElems
   let tryBranchElems : Array (TSyntax `doElem) ←
-    if needsIO then do
+    if needsIO && useProofMonad then do
+      -- Proof mode with IO: no captureIOErrors wrapper needed!
+      -- pyInputProof already converts IOError to PyException via liftInputM,
+      -- so we can just splice the body directly (preserving let mut scope)
+      pure innerBodyElems
+    else if needsIO then do
+      -- Run mode with IO: keep existing captureIOErrors wrapping
       let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
       let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
       if bodyYieldsValue then do
@@ -225,6 +238,7 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
       else
         pure #[← `(doElem| let _ ← $wrappedBody:term)]
     else
+      -- No IO: splice directly
       pure innerBodyElems
   if finalbodyElems.isEmpty then
     `(((do
@@ -283,14 +297,20 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
         let innerBodyElems := if bodyAndElse.isEmpty then #[noopElem] else bodyAndElse
         let catchIdent := mkIdent `caught
         let catchBody ← exceptHandlersDoElemSyntax catchIdent handlersElems.toList
-        -- Splice the body straight into `try` so a `let mut` in it mutates the enclosing scope; only
-        -- wrap in `captureIOErrors` when the body does IO (to turn an `EOFError` etc. into a catchable
-        -- `PyException`). See `tryExceptTerm` for the full rationale.
+        -- Splice the body straight into `try` so a `let mut` in it mutates the enclosing scope.
+        -- In proof mode, no captureIOErrors wrapper is needed (pyInputProof already converts IOError).
+        -- In run mode with IO, wrap with captureIOErrors to convert IO.Error to PyException.
+        let needsIO := bodyNeedsIOMonad (bodyElems ++ orelseElems)
+        let useProofMonad ← shouldUseProofMonad
         let bodyYieldsValue :=
           statementListMayYieldValue (bodyElems ++ orelseElems)
             || handlersListMayYieldValue handlersElems
         let tryBranchElems : Array (TSyntax `doElem) ←
-          if bodyNeedsIOMonad (bodyElems ++ orelseElems) then do
+          if needsIO && useProofMonad then do
+            -- Proof mode with IO: splice directly (no wrapper needed)
+            pure innerBodyElems
+          else if needsIO then do
+            -- Run mode with IO: wrap with captureIOErrors
             let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
             let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
             if bodyYieldsValue then do
@@ -299,6 +319,7 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
             else
               pure #[← `(doElem| let _ ← $wrappedBody:term)]
           else
+            -- No IO: splice directly
             pure innerBodyElems
         let tryStx ←
           if finalbodyElems.isEmpty then

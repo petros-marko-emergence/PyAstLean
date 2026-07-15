@@ -349,24 +349,24 @@ theorem spring_force_is_central :
 -- ----------------------------------------------------------------------------------------------
 def main' :=
   ((do
-      let mut k : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut m1 : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut m2 : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut r1x : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut r1y : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut r1z : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut r2x : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut r2y : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut r2z : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut v1x : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut v1y : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut v1z : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut v2x : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut v2y : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut v2z : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut dt : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut nsteps : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut every : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
+      let mut k : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut m1 : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut m2 : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r1x : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r1y : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r1z : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r2x : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r2y : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r2z : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v1x : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v1y : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v1z : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v2x : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v2y : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v2z : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut dt : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut nsteps : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut every : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
       let mut t : Rat := (0.0 : Rat)
       for step in (PastaLean.pyRange nsteps)do
         -- Hooke spring (rest length 0): force F = -k (r1 - r2) on body 1, +k (r1 - r2) on body 2.
@@ -402,10 +402,11 @@ def main' :=
             cross_x r1x r1y r1z (m1 *ₚ v1x) (m1 *ₚ v1y) (m1 *ₚ v1z) +ₚ
               cross_x r2x r2y r2z (m2 *ₚ v2x) (m2 *ₚ v2y) (m2 *ₚ v2z)
           let _ ←
-            pyPrintNoop [pyPrintArg "S", pyPrintArg step, pyPrintArg t, pyPrintArg energy, pyPrintArg px, pyPrintArg lx]
+            PastaLean.ProofMode.pyPrintProof
+                [pyPrintArg "S", pyPrintArg step, pyPrintArg t, pyPrintArg energy, pyPrintArg px, pyPrintArg lx]
         else
           let _ := ()) :
-    IO _)
+    PastaLean.ProofMode.PyProofM _)
 
 attribute [simp] main'
 
@@ -471,8 +472,25 @@ def main''rn :=
     IO _)
 
 def main : IO Unit := do
-  let _ ← main'
-  pure ()
+  let inputText ← IO.getStdin >>= fun h => h.readToEnd
+  let inputLines := String.splitOn inputText "\n"
+  let inputStream : PastaLean.ProofMode.IOStream :=
+    ⟨0, fun i => PastaLean.ProofMode.IOResult.success (List.getD inputLines i "")⟩
+  let initState : PastaLean.ProofMode.IOState := ⟨inputStream, []⟩
+  let (result, finalState) :=
+    (((do
+          let _ ← main'
+          pure ()) :
+        PastaLean.ProofMode.PyProofM Unit))
+      initState
+  let outputLines := finalState.output
+  for line in outputLines do
+    IO.print line
+  match result with
+  | .ok _ =>
+    pure ()
+  | .error err =>
+    throw (IO.userError (toString err))
 
 def main'rn : IO Unit := do
   let _ ← main''rn

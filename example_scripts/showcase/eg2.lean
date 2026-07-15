@@ -15,8 +15,8 @@ def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List R
   ((do
       try
         -- Calculate mean of the dataset
-        let mut m : Rat := Libraries.numpy.pyNumpyMean data
-        let _ ← pyPrintNoop [pyPrintArg s! "Dataset Global Mean: {m}"]
+        let mut m := Libraries.numpy.pyNumpyMean data
+        let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Dataset Global Mean: {m}"]
         -- Center the data by subtracting the mean
         -- (Using a manual broadcast-like subtraction for this example)
         -- Note: np.subtract is mapped to pyNumpySubtract
@@ -28,30 +28,34 @@ def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List R
       catch caught =>
         if (caught).OfKind == "ValueError" then 
           let e := caught
-          let _ ← pyPrintNoop [pyPrintArg s! "Processing failed: {e}"]
+          let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Processing failed: {e}"]
           -- Fallback to a zero matrix if dimensions fail
           let __py_ret_1 := Libraries.numpy.pyNumpyZeros ((2 : Int), (2 : Int))
           return __py_ret_1
         else
           throw caught) :
-    PastaLean.PyExceptId _)
+    PastaLean.ProofMode.PyProofM _)
 
 attribute [simp] process_data
 
 def process_data'rn : List (List Float) → List (List Float) → PastaLean.PyExcept (List (List Float)) :=
   fun (data : List (List Float)) ↦ fun (weights : List (List Float)) ↦ do
   try
-    -- Calculate mean of the dataset
-    let mut m : Float := Libraries.numpy.pyNumpyMean data
-    let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
-    -- Center the data by subtracting the mean
-    -- (Using a manual broadcast-like subtraction for this example)
-    -- Note: np.subtract is mapped to pyNumpySubtract
-    let mut centered : List (List Float) := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
-    -- Perform matrix multiplication
-    -- Note: np.matmul is mapped to pyNumpyMatmul
-    let mut result : List (List Float) := Libraries.numpy.pyNumpyMatmul centered weights
-    return result
+    let __py_try_val_1 ←
+      PastaLean.PyExcept.captureIOErrors
+          (do
+            -- Calculate mean of the dataset
+            let mut m := Libraries.numpy.pyNumpyMean data
+            let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
+            -- Center the data by subtracting the mean
+            -- (Using a manual broadcast-like subtraction for this example)
+            -- Note: np.subtract is mapped to pyNumpySubtract
+            let mut centered : List (List Float) := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+            -- Perform matrix multiplication
+            -- Note: np.matmul is mapped to pyNumpyMatmul
+            let mut result : List (List Float) := Libraries.numpy.pyNumpyMatmul centered weights
+            return result)
+    return __py_try_val_1
   catch caught =>
     if (caught).OfKind == "ValueError" then 
       let e := caught
@@ -67,30 +71,33 @@ def run_example :=
       -- Define a 2x2 dataset and a 2x2 weight matrix
       let mut dataset : List (List Rat) := [[(1.0 : Rat), (2.0 : Rat)], [(3.0 : Rat), (4.0 : Rat)]]
       let mut weights : List (List Rat) := [[(0.5 : Rat), (0.5 : Rat)], [(1.0 : Rat), (2.0 : Rat)]]
-      let _ ← pyPrintNoop [pyPrintArg "=== PastaLean NumPy Showcase ==="]
-      let _ ← pyPrintNoop [pyPrintArg s! "Input Data: {dataset}"]
-      let _ ← pyPrintNoop [pyPrintArg s! "Weight Matrix: {weights}"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "=== PastaLean NumPy Showcase ==="]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Input Data: {dataset}"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Weight Matrix: {weights}"]
       -- 1. Main Processing Pipeline
-      let _ ← pyPrintNoop [pyPrintArg "\n[1] Running Data Pipeline:"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\n[1] Running Data Pipeline:"]
       let mut output : List (List Rat) := (← process_data dataset weights)
-      let _ ← pyPrintNoop [pyPrintArg s! "Final Result:\n{output}"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Final Result:\n{output}"]
       -- 2. Utility Operations
-      let _ ← pyPrintNoop [pyPrintArg "\n[2] Structural Operations:"]
-      let _ ← pyPrintNoop [pyPrintArg s! "Identity Matrix (2x2):\n{Libraries.numpy.pyNumpyEye (2 : Int)}"]
-      let _ ← pyPrintNoop [pyPrintArg s! "Flattened Weights: {Libraries.numpy.pyNumpyFlatten weights}"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\n[2] Structural Operations:"]
+      let _ ←
+        PastaLean.ProofMode.pyPrintProof
+            [pyPrintArg s! "Identity Matrix (2x2):\n{Libraries.numpy.pyNumpyEye (2 : Int)}"]
+      let _ ←
+        PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Flattened Weights: {Libraries.numpy.pyNumpyFlatten weights}"]
       -- 3. Shape Info
       -- Note: np.shape returns (rows, cols)
       let __unpack_value_1 := Libraries.numpy.pyNumpyShape dataset
       let __unpack_pair_1 := __unpack_value_1
       let mut rows := Prod.fst __unpack_pair_1
       let mut cols := Prod.snd __unpack_pair_1
-      let _ ← pyPrintNoop [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
       -- 4. Error Handling Simulation
-      let _ ← pyPrintNoop [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
       let mut invalid_data : List (List Rat) := [[(1.0 : Rat), (2.0 : Rat), (3.0 : Rat)]]
       -- This should trigger the ValueError in np.matmul(1x3, 2x2)
       let _ ← process_data invalid_data weights) :
-    PastaLean.PyExceptId _)
+    PastaLean.ProofMode.PyProofM _)
 
 attribute [simp] run_example
 
@@ -125,11 +132,20 @@ def run_example'rn :=
     PastaLean.PyExcept _)
 
 def main : IO Unit := do
-  let result :=
+  let inputText ← IO.getStdin >>= fun h => h.readToEnd
+  let inputLines := String.splitOn inputText "\n"
+  let inputStream : PastaLean.ProofMode.IOStream :=
+    ⟨0, fun i => PastaLean.ProofMode.IOResult.success (List.getD inputLines i "")⟩
+  let initState : PastaLean.ProofMode.IOState := ⟨inputStream, []⟩
+  let (result, finalState) :=
     (((do
           let _ ← run_example
           pure ()) :
-        PastaLean.PyExceptId Unit)).run
+        PastaLean.ProofMode.PyProofM Unit))
+      initState
+  let outputLines := finalState.output
+  for line in outputLines do
+    IO.print line
   match result with
   | .ok _ =>
     pure ()

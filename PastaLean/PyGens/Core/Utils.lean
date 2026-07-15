@@ -284,6 +284,13 @@ def bodyNeedsIOMonad (bodyElems : Array Json) : Bool :=
 def jsonUsesMonadicEffect (json : Json) : Bool :=
   jsonUsesExceptionEffect json || jsonUsesIOEffect json
 
+/-- Check if we should use the proof monad (PyProofM) instead of IO.
+In exact mode, we want to generate code that uses the proof-oriented state monad
+for IO operations, making input/output observable and provable. -/
+def shouldUseProofMonad : PygenM Bool := do
+  let numMode ← getNumericMode
+  return numMode == .exact
+
 /-- Sequence a list of `doElem`s into one `doElem`, using `fallback` for the empty case. -/
 def sequenceDoElems (elems : Array (TSyntax `doElem)) (fallback : TSyntax `doElem) :
     PygenM (TSyntax `doElem) := do

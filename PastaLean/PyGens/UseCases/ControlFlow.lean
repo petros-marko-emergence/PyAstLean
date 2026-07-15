@@ -573,9 +573,49 @@ def ifSyntax : (kind : SyntaxNodeKind) → Json →
         let isReal := (← getNumericMode) == .exact && json.getObjValAs? Bool "_real_fn" == .ok true
         let usesExceptions := bodyNeedsExceptionMonad bodyElems
         let usesIO := bodyNeedsIOMonad bodyElems
-        -- Determine if we need PyExceptId (pure exceptions in prove mode)
-        let usesPureExceptions := (← getNumericMode) == .exact && usesExceptions && !usesIO
-        if usesExceptions then
+        let useProofMonad ← shouldUseProofMonad
+        -- Determine monad type based on mode
+        let usesProofMode := useProofMonad && (usesExceptions || usesIO)
+        let usesPureExceptions := !useProofMonad && (← getNumericMode) == .exact && usesExceptions && !usesIO
+        if usesProofMode then
+          -- Proof mode: Run PyProofM with input from stdin, then print output to stdout
+          -- PyProofM α = ExceptT PyException (StateM IOState) α
+          -- Running it: IOState → (Except PyException α × IOState)
+          let proofMonadIdent := mkIdent ``PastaLean.ProofMode.PyProofM
+          let ioStreamIdent := mkIdent ``PastaLean.ProofMode.IOStream
+          let ioStateIdent := mkIdent ``PastaLean.ProofMode.IOState
+          let ioResultSuccessIdent := mkIdent ``PastaLean.ProofMode.IOResult.success
+          let ioUserErrorIdent := mkIdent ``IO.userError
+          let outputLinesName := mkIdent `outputLines
+          let lineName := mkIdent `line
+          let mainBody ← `(do
+            -- Read all input from stdin and convert to stream
+            -- Note: The stream produces IOResult values (success/error), not plain strings.
+            -- This infinite-success pattern is suitable for competitive programming where
+            -- input() should never fail. For finite input with EOF:
+            --   let inputStream := ⟨0, fun i => if i < inputLines.length
+            --                                    then IOResult.success (inputLines.get! i)
+            --                                    else IOResult.error IOError.EndOfFile⟩
+            let inputText ← IO.getStdin >>= fun h => h.readToEnd
+            let inputLines := String.splitOn inputText "\n"
+            let inputStream : $ioStreamIdent := ⟨0, fun i => $ioResultSuccessIdent (List.getD inputLines i "")⟩
+            let initState : $ioStateIdent := ⟨inputStream, []⟩
+            -- Run the PyProofM computation
+            let (result, finalState) := (((do
+                $[$bodyStxArray:doElem]*
+                pure ()
+              ) : $proofMonadIdent Unit)) initState
+            -- Print accumulated output to stdout
+            let $outputLinesName := finalState.output
+            for $lineName in $outputLinesName do
+              IO.print $lineName
+            -- Convert result to IO
+            match result with
+            | .ok _ => pure ()
+            | .error err => throw ($ioUserErrorIdent (toString err)))
+          if isReal then `(command| noncomputable def $mainIdent : IO Unit := $mainBody)
+          else `(command| def $mainIdent : IO Unit := $mainBody)
+        else if usesExceptions then
           -- Exception handling path - convert PyExcept/PyExceptId result to IO
           let exceptIdent := mkIdent (if usesPureExceptions then ``PastaLean.PyExceptId else ``PastaLean.PyExcept)
           let ioUserErrorIdent := mkIdent ``IO.userError

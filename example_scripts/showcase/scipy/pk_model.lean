@@ -177,17 +177,17 @@ theorem total_nonincreasing :
 
 noncomputable def main' :=
   ((do
-      let mut ka : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut ke : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut k12 : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut k21 : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut vol : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut dose : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut dt : Rat := PastaLean.pyRat (← PastaLean.pyInputIO "")
-      let mut dose_step : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut ndoses : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut nsteps : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut every : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
+      let mut ka : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut ke : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut k12 : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut k21 : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut vol : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut dose : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut dt : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut dose_step : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut ndoses : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut nsteps : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut every : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
       let mut depot : Rat := (0.0 : Rat)
       let mut central : Rat := (0.0 : Rat)
       let mut periph : Rat := (0.0 : Rat)
@@ -213,12 +213,12 @@ noncomputable def main' :=
         t := t +ₚ dt
         if h_2 : step %ₚ every = (0 : Int) then 
           let _ ←
-            pyPrintNoop
+            PastaLean.ProofMode.pyPrintProof
                 [pyPrintArg "S", pyPrintArg step, pyPrintArg t, pyPrintArg (concentration central vol),
                   pyPrintArg (concentration periph vol), pyPrintArg depot, pyPrintArg (body_load depot central periph)]
         else
           let _ := ()) :
-    IO _)
+    PastaLean.ProofMode.PyProofM _)
 
 attribute [simp] main'
 
@@ -269,8 +269,25 @@ def main''rn :=
     IO _)
 
 noncomputable def main : IO Unit := do
-  let _ ← main'
-  pure ()
+  let inputText ← IO.getStdin >>= fun h => h.readToEnd
+  let inputLines := String.splitOn inputText "\n"
+  let inputStream : PastaLean.ProofMode.IOStream :=
+    ⟨0, fun i => PastaLean.ProofMode.IOResult.success (List.getD inputLines i "")⟩
+  let initState : PastaLean.ProofMode.IOState := ⟨inputStream, []⟩
+  let (result, finalState) :=
+    (((do
+          let _ ← main'
+          pure ()) :
+        PastaLean.ProofMode.PyProofM Unit))
+      initState
+  let outputLines := finalState.output
+  for line in outputLines do
+    IO.print line
+  match result with
+  | .ok _ =>
+    pure ()
+  | .error err =>
+    throw (IO.userError (toString err))
 
 def main'rn : IO Unit := do
   let _ ← main''rn
