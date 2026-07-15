@@ -27,7 +27,7 @@ noncomputable def euclidean_distance := fun (p1 : List Int) ↦ fun (p2 : List I
           Libraries.math.pyMathPowExact (a -ₚ b) (2 : Int)
       let __py_ret_1 := Libraries.math.pyMathSqrtR (PastaLean.pySum sq_diffs)
       return __py_ret_1) :
-    PastaLean.PyExceptId _)
+    PastaLean.ProofMode.PyProofM _)
 
 attribute [simp] euclidean_distance
 
@@ -70,12 +70,12 @@ noncomputable def find_nearest_neighbor := fun (target : List Int) ↦ fun (data
       catch caught =>
         if (caught).OfKind == "ValueError" then 
           let e := caught
-          let _ ← pyPrintNoop [pyPrintArg s! "Error calculating distances: {e}"]
+          let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Error calculating distances: {e}"]
           let __py_ret_2 := (-(1.0 : Real), [])
           return __py_ret_2
         else
           throw caught) :
-    PastaLean.PyExceptId _)
+    PastaLean.ProofMode.PyProofM _)
 
 attribute [simp] find_nearest_neighbor
 
@@ -116,24 +116,24 @@ noncomputable def run_example :=
           [(2 : Int), (1 : Int), (4 : Int)]]
       let mut target_point := [(2 : Int), (3 : Int), (4 : Int)]
       let mut invalid_point := [(1 : Int), (2 : Int)]
-      let _ ← pyPrintNoop [pyPrintArg "Dataset:", pyPrintArg dataset]
-      let _ ← pyPrintNoop [pyPrintArg "Target Point:", pyPrintArg target_point]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Dataset:", pyPrintArg dataset]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Target Point:", pyPrintArg target_point]
       -- Valid Case
       let __unpack_value_1 ← find_nearest_neighbor target_point dataset
       let __unpack_pair_1 := __unpack_value_1
       let mut dist := Prod.fst __unpack_pair_1
       let mut nearest := Prod.snd __unpack_pair_1
-      let _ ← pyPrintNoop [pyPrintArg "Nearest Neighbor to Target:"]
-      let _ ← pyPrintNoop [pyPrintArg "Point:", pyPrintArg nearest]
-      let _ ← pyPrintNoop [pyPrintArg "Distance:", pyPrintArg dist]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Nearest Neighbor to Target:"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Point:", pyPrintArg nearest]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Distance:", pyPrintArg dist]
       -- Invalid Case
-      let _ ← pyPrintNoop [pyPrintArg "\nTesting Invalid Point:"]
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\nTesting Invalid Point:"]
       let __unpack_value_2 ← find_nearest_neighbor invalid_point dataset
       let __unpack_pair_2 := __unpack_value_2
       let mut dist_inv := Prod.fst __unpack_pair_2
       let mut nearest_inv := Prod.snd __unpack_pair_2
-      let _ ← pyPrintNoop [pyPrintArg "Fallback Distance:", pyPrintArg dist_inv]) :
-    PastaLean.PyExceptId _)
+      let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Fallback Distance:", pyPrintArg dist_inv]) :
+    PastaLean.ProofMode.PyProofM _)
 
 attribute [simp] run_example
 
@@ -164,11 +164,20 @@ def run_example'rn :=
     PastaLean.PyExcept _)
 
 noncomputable def main : IO Unit := do
-  let result :=
+  let inputText ← IO.getStdin >>= fun h => h.readToEnd
+  let inputLines := String.splitOn inputText "\n"
+  let inputStream : PastaLean.ProofMode.IOStream :=
+    ⟨0, fun i => PastaLean.ProofMode.IOResult.success (List.getD inputLines i "")⟩
+  let initState : PastaLean.ProofMode.IOState := ⟨inputStream, []⟩
+  let (result, finalState) :=
     (((do
           let _ ← run_example
           pure ()) :
-        PastaLean.PyExceptId Unit)).run
+        PastaLean.ProofMode.PyProofM Unit))
+      initState
+  let outputLines := finalState.output
+  for line in outputLines do
+    IO.print line
   match result with
   | .ok _ =>
     pure ()

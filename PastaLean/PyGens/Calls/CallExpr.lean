@@ -406,11 +406,15 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
             for (kwName, _) in keyWordsMap.toList do
               unless supportedKeywords.contains kwName do
                 throwError s!"print() keyword argument '{kwName}' is not supported yet."
-            -- In `prove` (exact) mode `print` is a no-op (theorems, not output), but we still emit
-            -- the full rendered line so it stays visible and type-checked — `pyPrintNoop` takes the
-            -- same arguments as `pyPrintIO` and discards them. IO-effect args (`input()`) are still
-            -- hoisted and run by `buildIOActionApplicationFromArgs` either way.
-            let printFn := mkIdent (if (← getNumericMode) == .exact then `pyPrintNoop else `pyPrintIO)
+            -- Mode-dependent print: proof mode uses pyPrintProof (accumulates output to state),
+            -- run mode uses pyPrintIO (real IO), and fallback exact mode uses pyPrintNoop (discards).
+            -- IO-effect args (`input()`) are still hoisted and run by `buildIOActionApplicationFromArgs`.
+            let printFn ← if (← shouldUseProofMonad) then
+                pure (mkIdent ``PastaLean.ProofMode.pyPrintProof)
+              else if (← getNumericMode) == .exact then
+                pure (mkIdent `pyPrintNoop)
+              else
+                pure (mkIdent `pyPrintIO)
             return ← buildIOActionApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               let printArgs ← buildPrintArgsList argsArray resolvedArgs
               match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
@@ -429,13 +433,17 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
               throwError "input() keyword arguments are not supported yet."
             unless argsArray.size ≤ 1 do
               throwError "input() expects zero or one positional argument."
-            let pyInputIOIdent := mkIdent ``pyInputIO
+            -- Choose between proof mode (PyProofM) and run mode (IO) input
+            let inputIdent ← if (← shouldUseProofMonad) then
+                pure (mkIdent ``PastaLean.ProofMode.pyInputProof)
+              else
+                pure (mkIdent ``pyInputIO)
             return ← buildIOActionApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               match resolvedArgs.size with
-              | 0 => `($pyInputIOIdent "")
+              | 0 => `($inputIdent "")
               | 1 =>
                   let arg0 := resolvedArgs[0]!
-                  `($pyInputIOIdent $arg0)
+                  `($inputIdent $arg0)
               | _ => throwError "input() expects zero or one positional argument."
         | .ok "Name", .ok "int" => do
             unless keyWordsMap.isEmpty do
@@ -758,9 +766,14 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
             for (kwName, _) in keyWordsMap.toList do
               unless supportedKeywords.contains kwName do
                 throwError s!"print() keyword argument '{kwName}' is not supported yet."
-            -- `prove` mode swaps in `pyPrintNoop` (same args as `pyPrintIO`, discarded — the line
-            -- stays visible); see the other print site. IO-effect args are hoisted either way.
-            let printFn := mkIdent (if (← getNumericMode) == .exact then `pyPrintNoop else `pyPrintIO)
+            -- Mode-dependent print: proof mode uses pyPrintProof, run mode uses pyPrintIO,
+            -- fallback exact mode uses pyPrintNoop. IO-effect args are hoisted either way.
+            let printFn ← if (← shouldUseProofMonad) then
+                pure (mkIdent ``PastaLean.ProofMode.pyPrintProof)
+              else if (← getNumericMode) == .exact then
+                pure (mkIdent `pyPrintNoop)
+              else
+                pure (mkIdent `pyPrintIO)
             let t ← buildIOActionApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               let printArgs ← buildPrintArgsList argsArray resolvedArgs
               match keyWordsMap.get? "sep", keyWordsMap.get? "end" with
@@ -780,13 +793,17 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
               throwError "input() keyword arguments are not supported yet."
             unless argsArray.size ≤ 1 do
               throwError "input() expects zero or one positional argument."
-            let pyInputIOIdent := mkIdent ``pyInputIO
+            -- Choose between proof mode (PyProofM) and run mode (IO) input
+            let inputIdent ← if (← shouldUseProofMonad) then
+                pure (mkIdent ``PastaLean.ProofMode.pyInputProof)
+              else
+                pure (mkIdent ``pyInputIO)
             let t ← buildIOActionApplicationFromArgs argsArray argsCodes fun resolvedArgs => do
               match resolvedArgs.size with
-              | 0 => `($pyInputIOIdent "")
+              | 0 => `($inputIdent "")
               | 1 =>
                   let arg0 := resolvedArgs[0]!
-                  `($pyInputIOIdent $arg0)
+                  `($inputIdent $arg0)
               | _ => throwError "input() expects zero or one positional argument."
             return ← `(doElem| let _ ← $t:term)
         | .ok "Name", .ok "int" => do

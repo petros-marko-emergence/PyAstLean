@@ -3,6 +3,7 @@ import PastaLean.Codegen
 import PastaLean.PyGens.Basic
 import PastaLean.PyGens.Attributes
 import PastaLean.PyGens.Core.Subscript
+import PastaLean.PyGens.Core.Utils
 
 open Lean Meta Elab Term Qq Std
 
@@ -119,12 +120,16 @@ partial def inlineIOTerm (json : Json) : PygenM (TSyntax `term) := do
             throwError "input() keyword arguments are not supported yet."
           unless argsArray.size ≤ 1 do
             throwError "input() expects zero or one positional argument."
-          let pyInputIOIdent := mkIdent ``pyInputIO
+          -- Choose between proof mode (PyProofM) and run mode (IO) input
+          let inputIdent ← if (← shouldUseProofMonad) then
+              pure (mkIdent ``PastaLean.ProofMode.pyInputProof)
+            else
+              pure (mkIdent ``pyInputIO)
           match argsArray.size with
-          | 0 => `((← $pyInputIOIdent ""))
+          | 0 => `((← $inputIdent ""))
           | 1 =>
               let arg0 ← inlineIOTerm argsArray[0]!
-              `((← $pyInputIOIdent $arg0))
+              `((← $inputIdent $arg0))
           | _ => throwError "input() expects zero or one positional argument."
       | .ok "Name", .ok "int" => do
           unless keyWordsMap.isEmpty do
@@ -300,12 +305,16 @@ partial def hoistIOTerm (json : Json) : PygenM (Array (TSyntax `doElem) × TSynt
               resolvedArgs := resolvedArgs.push argTerm
             else
               resolvedArgs := resolvedArgs.push (← getCode argJson `term)
-          let pyInputIOIdent := mkIdent ``pyInputIO
+          -- Choose between proof mode (PyProofM) and run mode (IO) input
+          let inputIdent ← if (← shouldUseProofMonad) then
+              pure (mkIdent ``PastaLean.ProofMode.pyInputProof)
+            else
+              pure (mkIdent ``pyInputIO)
           let action ← match resolvedArgs.size with
-            | 0 => `($pyInputIOIdent "")
+            | 0 => `($inputIdent "")
             | 1 =>
                 let arg0 := resolvedArgs[0]!
-                `($pyInputIOIdent $arg0)
+                `($inputIdent $arg0)
             | _ => throwError "input() expects zero or one positional argument."
           let binder := mkIdent (s!"__py_input{bindings.size}").toName
           let finalBindings := bindings.push (← `(doElem| let $binder:ident ← $action:term))
@@ -422,10 +431,14 @@ def buildIOPureApplicationFromArgs (argJsons : Array Json) (argCodes : Array (TS
   let resultTerm ← mkResult resolvedArgs
   if bindings.isEmpty then
     return resultTerm
-  let ioIdent := mkIdent ``IO
+  -- Choose monad type: PyProofM in proof mode, IO in run mode
+  let monadType ← if (← shouldUseProofMonad) then
+      `(PastaLean.ProofMode.PyProofM)
+    else
+      `(IO)
   `(((do
         $[$bindings:doElem]*
-        return $resultTerm:term) : $ioIdent _))
+        return $resultTerm:term) : $monadType _))
 
 /-- Lift an `IO`-returning application when some arguments are already monadic. -/
 def buildIOActionApplicationFromArgs (argJsons : Array Json) (argCodes : Array (TSyntax `term))
@@ -453,10 +466,14 @@ def buildIOActionApplicationFromArgs (argJsons : Array Json) (argCodes : Array (
   let actionTerm ← mkAction resolvedArgs
   if bindings.isEmpty then
     return actionTerm
-  let ioIdent := mkIdent ``IO
+  -- Choose monad type: PyProofM in proof mode, IO in run mode
+  let monadType ← if (← shouldUseProofMonad) then
+      `(PastaLean.ProofMode.PyProofM)
+    else
+      `(IO)
   `(((do
         $[$bindings:doElem]*
         let __py_result ← $actionTerm:term
-        return __py_result) : $ioIdent _))
+        return __py_result) : $monadType _))
 
 end PastaLean
