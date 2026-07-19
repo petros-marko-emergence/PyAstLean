@@ -349,6 +349,24 @@ partial def markTuples (env : Env) (json : Json) : Json :=
     | .obj fs => Json.mkObj (fs.toList.map (fun (k, v) => (k, markTuples env v)))
     | _ => json
 
+/-- Mark every `x.attr` whose receiver `x` is `Option`-typed with
+`_unwrap_opt`, so the field codegen emits `(x.getD default).attr` instead of the invalid
+`Option.attr` projection. Covers the tree/linked-list traversal case (`root.val`, `root.left`).
+Skips nested defs (own scope). -/
+partial def markOptAttrs (sigs : Sigs) (env : Env) (json : Json) : Json :=
+  if nodeTypeOf json == some "FunctionDef" then json
+  else
+    let json :=
+      if nodeTypeOf json == some "Attribute" then
+        match (getField json "value").map (typeOfExpr sigs env) with
+        | some (.opt _) => json.setObjVal! "_unwrap_opt" (Json.bool true)
+        | _ => json
+      else json
+    match json with
+    | .arr xs => Json.arr (xs.map (markOptAttrs sigs env))
+    | .obj fs => Json.mkObj (fs.toList.map (fun (k, v) => (k, markOptAttrs sigs env v)))
+    | _ => json
+
 mutual
 
 /-- Infer types for `fn` (seeded by `outer` captures and `hints` for unannotated params, resolving
@@ -375,7 +393,8 @@ partial def stampFunction (sigs : Sigs) (outer hints : Env) (fn : Json) : Json :
         else fn
     | _ => fn
   match fn.getObjValAs? (Array Json) "body" with
-  | .ok body => fn.setObjVal! "body" (Json.arr ((body.map (stampStmt sigs env)).map (markTuples env)))
+  | .ok body => fn.setObjVal! "body"
+      (Json.arr (((body.map (stampStmt sigs env)).map (markTuples env)).map (markOptAttrs sigs env)))
   | _ => fn
 
 /-- Stamp one statement: its target, its nested blocks, and any nested def. -/

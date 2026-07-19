@@ -2,8 +2,10 @@ import Lean
 import Libraries.bisect.Mapping
 import Libraries.collections.Mapping
 import Libraries.functools.Mapping
+import Libraries.heapq.Mapping
 import Libraries.itertools.Mapping
 import Libraries.math.Mapping
+import Libraries.string.Mapping
 import Libraries.numpy.Mapping
 import Libraries.passta.Mapping
 import Libraries.scipy.Mapping
@@ -23,8 +25,10 @@ def pythonLibraryMap? (moduleName member : String) : Option Lean.Name :=
   | "bisect" => bisect.pythonBisectMemberMap? member
   | "collections" => collections.pythonCollectionsMemberMap? member
   | "functools" => functools.pythonFunctoolsMemberMap? member
+  | "heapq" => heapq.pythonHeapqMemberMap? member
   | "itertools" => itertools.pythonItertoolsMemberMap? member
   | "math" => math.pythonMathMemberMap? member
+  | "string" => string.pythonStringMemberMap? member
   | "numpy" => numpy.pythonNumpyMemberMap? member
   | "passta" => passta.pythonPasstaMemberMap? member
   | "scipy" => scipy.pythonScipyMemberMap? member

@@ -1010,7 +1010,11 @@ def attributeSyntax : (kind : SyntaxNodeKind) → Json →
           s!"Attribute node does not have an 'attr' field or it is not a string: {json}"
         let valueCode ← getCode valueJson `term
         let attrId := mkIdent attr.toName
-        `($valueCode.$attrId)
+        -- `_unwrap_opt` (TypeInfer): the receiver is `Option _`, so unwrap before projecting the field
+        if json.getObjValAs? Bool "_unwrap_opt" == .ok true then
+          `((($valueCode).getD default).$attrId)
+        else
+          `($valueCode.$attrId)
   | `ident, json => do
     match ← jsonLibraryMappedName? json with
     | some leanName =>
