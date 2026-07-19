@@ -37,6 +37,14 @@ initialize realContextRef : IO.Ref Bool ← IO.mkRef false
 /-- Read whether we're lowering inside a real-valued (`ℝ`) function body. -/
 def getRealContext : IO Bool := realContextRef.get
 
+/-- True while lowering the body of a function whose return is boxed to `PyValue` (its branches
+return disagreeing types). Each `return e` then ascribes `(e : PyValue)`, so `try/catch` branches
+coerce individually instead of Lean unifying their types from the first return. -/
+initialize boxReturnRef : IO.Ref Bool ← IO.mkRef false
+
+/-- Read whether we're lowering inside a `PyValue`-boxed-return function body. -/
+def getBoxReturnContext : IO Bool := boxReturnRef.get
+
 /-- True while lowering a *condition position* — the direct test of an `if`/`while` — where a
 comparison may be a `Prop` (`a < b`, and `a = b`/`a ≠ b` in exact mode) so it is provable, paired
 with the `if h : …` hypothesis. False everywhere else (the default): a comparison used as a *value*
@@ -139,6 +147,18 @@ def withRealContext {α : Type} (b : Bool) (x : PygenM α) : PygenM α := do
     return r
   catch e =>
     realContextRef.set saved
+    throw e
+
+/-- Run `x` with the boxed-return flag set to `b` (restoring it afterwards). -/
+def withBoxReturnContext {α : Type} (b : Bool) (x : PygenM α) : PygenM α := do
+  let saved ← boxReturnRef.get
+  boxReturnRef.set b
+  try
+    let r ← x
+    boxReturnRef.set saved
+    return r
+  catch e =>
+    boxReturnRef.set saved
     throw e
 
 /-- Run `x` with the prop-condition flag set to `b` (restoring it afterwards). `if`/`while` set it

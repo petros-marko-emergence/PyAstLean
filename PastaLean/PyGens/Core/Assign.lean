@@ -358,8 +358,10 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
         let .ok value := json.getObjVal? "value" | throwError
           s!"Return node does not have a 'value' field or it is not a JSON value: {json}"
         match value with
+        -- A bare `return` (Python `return`, i.e. `None`) → `return default`, which is `()` for a
+        -- `Unit`/void function but also matches a (mis-)annotated non-`Unit` return type.
         | .null =>
-            `(doElem| return (()))
+            `(doElem| return default)
         | _ =>
             let valueStx ←
               if jsonUsesIOEffect value then
@@ -367,6 +369,10 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
               else
                 let s ← getCode value `term
                 if jsonUsesMonadicEffect value then `((← $s:term)) else pure s
+            -- In a boxed-return function, ascribe each value to `PyValue` so `try/catch` branches
+            -- coerce individually (Lean would otherwise unify the branch types from the first return).
+            let valueStx ← if (← getBoxReturnContext)
+              then `(($valueStx : PastaLean.PyValue)) else pure valueStx
             -- A simple atom (`return x` / `return 42`) is always narrow, so return it directly.
             -- A wide expression placed directly after `return`, however, can be split onto the
             -- next line by the pretty-printer, which re-parses as `return` (Unit) followed by a

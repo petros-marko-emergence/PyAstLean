@@ -938,6 +938,60 @@ class CPastaEval:
         print(f"[*] Summary written to {self.dataset / 'convert_summary.json'}")
         return summary
 
+    # -- prune -------------------------------------------------------------------------
+
+    def prune_tests(self):
+        """Move constraint-violating test cases out of each function-model problem's `tests.json`
+        into a sibling `tests/excluded.json` (with the reason), leaving only well-formed cases so
+        evaluation reports an honest pass rate.
+
+        A case "violates the parameters given" exactly when the dataset's own groundtruth reference
+        can't produce an answer for it — it raises (an out-of-range node → `IndexError`), hangs, or
+        exhausts memory (a cyclic graph on a DAG problem loops forever). We reuse `guarded_ref_batch`
+        so detecting the runaway ones can't itself OOM the run. Idempotent: a second pass sees only
+        the kept cases and is a no-op.
+        """
+        kept_total = excluded_total = 0
+        for prob_dir in self.problems():
+            if self.kind_of(prob_dir) != KIND_FUNCTION:
+                continue
+            tests_file = prob_dir / "tests" / "tests.json"
+            meta_file = prob_dir / "meta.json"
+            if not (tests_file.exists() and meta_file.exists()):
+                continue
+            meta = json.loads(meta_file.read_text())
+            method, params = meta["method"], meta["params"]
+            fn = load_callable((prob_dir / "solutions" / "sol_0.py").read_text(), method)
+            if fn is None:
+                continue
+
+            raw = json.loads(tests_file.read_text())
+            reasons = {}                       # raw-case index -> why it is out of spec
+            parsed, parsed_idx = [], []
+            for i, case in enumerate(raw):
+                try:
+                    parsed.append(parse_test_input(case["input"], params))
+                    parsed_idx.append(i)
+                except (ValueError, SyntaxError, KeyError) as err:
+                    reasons[i] = f"unparsable input: {err}"
+            for (ok, payload), i in zip(guarded_ref_batch(fn, parsed), parsed_idx):
+                if not ok:
+                    reasons[i] = f"reference could not evaluate it: {payload}"
+
+            if not reasons:
+                continue
+            kept = [case for i, case in enumerate(raw) if i not in reasons]
+            excluded = [{**raw[i], "_excluded_reason": reasons[i]} for i in sorted(reasons)]
+            tests_file.write_text(json.dumps(kept, indent=2))
+            (prob_dir / "tests" / "excluded.json").write_text(json.dumps(excluded, indent=2))
+            kept_total += len(kept)
+            excluded_total += len(excluded)
+            print(f"[prune] {prob_dir.name}: kept {len(kept)}, excluded {len(excluded)}")
+            for i in sorted(reasons):
+                print(f"           - {str(raw[i].get('input', ''))[:70]}  ({reasons[i]})")
+        print(f"\n[*] Pruned: kept {kept_total}, excluded {excluded_total} "
+              f"constraint-violating case(s) across the selected problems")
+
     # -- evaluate ----------------------------------------------------------------------
 
     def _run_process(self, cmd, input_text=None, cwd=None):
@@ -1380,6 +1434,10 @@ def main(argv=None):
     p = sub.add_parser("convert", help="Translate to Lean and compile-check")
     _add_common(p)
 
+    p = sub.add_parser("prune", help="Drop constraint-violating test cases (reference can't judge "
+                                     "them) into tests/excluded.json")
+    _add_common(p)
+
     p = sub.add_parser("evaluate", help="Run Lean and CPython on the test cases")
     _add_common(p)
     _add_eval_opts(p)
@@ -1402,7 +1460,7 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
 
-    if args.cmd in ("convert", "evaluate", "plot", "run") and not Path(args.dataset).is_dir():
+    if args.cmd in ("convert", "prune", "evaluate", "plot", "run") and not Path(args.dataset).is_dir():
         if not (args.cmd == "run" and not args.skip_fetch):
             print(f"ERROR: dataset dir not found: {args.dataset}", file=sys.stderr)
             return 1
@@ -1410,7 +1468,9 @@ def main(argv=None):
     with _harness(args) as ev:
         if args.cmd == "fetch":
             return ev.fetch(args.num) or 0
-        if args.cmd == "convert":
+        if args.cmd == "prune":
+            ev.prune_tests()
+        elif args.cmd == "convert":
             ev.convert()
         elif args.cmd == "evaluate":
             ev.evaluate()

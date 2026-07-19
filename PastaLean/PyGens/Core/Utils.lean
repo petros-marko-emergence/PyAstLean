@@ -202,15 +202,35 @@ partial def statementDefinitelyReturns (stmt : Json) : Bool :=
 
 end
 
+/-- Does the subtree contain a reachable `return` (not descending into a nested def/lambda/class,
+which own their returns)? -/
+partial def stmtHasReachableReturn (json : Json) : Bool :=
+  match json.getObjValAs? String "node_type" with
+  | .ok "FunctionDef" | .ok "AsyncFunctionDef" | .ok "Lambda" | .ok "ClassDef" => false
+  | .ok "Return" => true
+  | _ => match json with
+    | .arr xs => xs.any stmtHasReachableReturn
+    | .obj fs => fs.toList.any (fun (_, v) => stmtHasReachableReturn v)
+    | _ => false
+
 /-- Compile a function body statement-by-statement into `doElem`s for the monadic fallback path. -/
 def monadicFunctionBodySyntax (bodyElems : Array Json) : PygenM (Array (TSyntax `doElem)) := do
   let mut bodyStxArray := #[]
+  let mut broke := false
   for elem in bodyElems do
     let elemStx ← withoutCheck do
       getCode elem `doElem
     bodyStxArray := appendDoElems bodyStxArray elemStx
     if statementDefinitelyReturns elem then
+      broke := true
       break
+  -- A function that returns a value only via an early `return` inside a loop/branch
+  -- (`while …: return x`) falls off the end; Python returns `None`, but the Lean do-block would end
+  -- with the loop's `Unit`. Append a fallback `return default` (its type pinned by the real returns)
+  -- so it type-checks. Only when the body actually has a return, so `Unit` functions are untouched.
+  unless broke do
+    if bodyElems.any stmtHasReachableReturn then
+      bodyStxArray := bodyStxArray.push (← `(doElem| return default))
   return bodyStxArray
 
 /-- Build a Lean conjunction term. -/

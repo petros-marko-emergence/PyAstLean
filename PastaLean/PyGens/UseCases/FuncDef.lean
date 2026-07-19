@@ -44,7 +44,9 @@ partial def functionArgTypeSyntax? (annotationJson : Json) : PygenM (Option (TSy
           | .exact => return some (mkIdent (if (← getRealContext) then ``Real else ``Rat))
           | .approx => return some (mkIdent ``Float)
       | "Any" => return none -- let Lean handle the type inference for now
-      | _ => return none
+      -- A user class (`TreeNode`) or anything else this manual reader misses: fall back to the
+      -- `TypeInfer` lowering, which handles class names (`.cls`) and `Optional`.
+      | _ => pyTypeSyntax? (TypeInfer.ofAnnotation annotationJson)
   | "Subscript" =>
       let .ok valueJson := annotationJson.getObjValAs? Json "value" | throwError
         s!"Function argument subscript annotation is missing a 'value' field: {annotationJson}"
@@ -78,8 +80,10 @@ partial def functionArgTypeSyntax? (annotationJson : Json) : PygenM (Option (TSy
                   | _, _ => return none
               | _, _ => return none
           | _ => return none
-      | _ => return none
-  | _ => return none
+      -- `Optional[T]` and other containers this reader misses fall back to `TypeInfer`.
+      | _ => pyTypeSyntax? (TypeInfer.ofAnnotation annotationJson)
+  -- `X | None` (`Optional`) and forward-ref strings: `TypeInfer` handles them.
+  | _ => pyTypeSyntax? (TypeInfer.ofAnnotation annotationJson)
 
 /-- Read Python function parameters as Lean idents plus any simple type annotations we can preserve. -/
 def functionArgInfos (json : Json) : PygenM (Array (TSyntax `ident × Option (TSyntax `term))) := do
@@ -719,7 +723,8 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         -- `PyValue`, which is not provable — so it never gets the `[simp, taste_ingr]` tag below.
         let boxReturn := json.getObjValAs? Bool "_box_return" == .ok true
         let argInfos ← functionArgInfos json
-        let effectCmd? ← functionCommandWithEffectSignature? nameIdent argInfos json isReal
+        let effectCmd? ← withBoxReturnContext boxReturn
+          (functionCommandWithEffectSignature? nameIdent argInfos json isReal)
         -- Drop any `Ensures(Result() …)`/`Assert(Result() …)` markers: they are verification-only
         -- (lifted to the spec postcondition) and `Result()` has no runtime lowering, so they must not
         -- leak into a runnable body — notably the `'rn` twin, which reaches this generic path.
@@ -727,7 +732,7 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         let isRecursive := bodyElems.any (jsonReferencesName · baseName)
         -- A real-valued body (transcendental, directly or via a callee) forces `noncomputable`.
         let nc := isReal || (← bodyNeedsNoncomputable bodyElems)
-        let cmd ← match effectCmd? with
+        let cmd ← withBoxReturnContext boxReturn do match effectCmd? with
           | some cmd => pure cmd
           | none =>
               -- Params with Python defaults become `optParam` binders on the def (`def f (b := 10)`),
