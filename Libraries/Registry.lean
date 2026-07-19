@@ -1,4 +1,5 @@
 import Lean
+import Libraries.Mutator
 import Libraries.bisect.Mapping
 import Libraries.collections.Mapping
 import Libraries.functools.Mapping
@@ -65,6 +66,13 @@ def libraryMemberReturn? (moduleName member : String) (arg0 : TypeInfer.PyType) 
   | "math" => math.mathMemberReturn? member
   | "scipy" => scipy.scipyMemberReturn? member
   | "numpy" => (numpy.numpyMemberReturn? member).map (· arg0)
+  | _ => none
+
+/-- The in-place mutation spec of a library member, for the core codegen — one entry point, so
+codegen names no specific library. -/
+def libraryMutator? (moduleName member : String) : Option LibraryMutator :=
+  match moduleName with
+  | "heapq" => heapq.heapqMutator? member
   | _ => none
 
 end Libraries

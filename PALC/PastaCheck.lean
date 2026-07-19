@@ -147,7 +147,7 @@ unsafe def runEvalLoop : IO UInt32 := do
     let line ← stdin.getLine
     if line.isEmpty then done := true
     else
-      let path := line.trim
+      let path := line.trimAscii.toString
       unless path.isEmpty do
         let out ← try evalHarness env (← IO.FS.readFile path)
                   catch e => pure s!"ERROR {toString e}"

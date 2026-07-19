@@ -124,6 +124,14 @@ def jsonLibraryMappedName? (json : Json) : PygenM (Option Lean.Name) := do
       | none => throwError s!"Unsupported imported library member '{moduleName}.{memberName}'."
   | _, _ => pure none
 
+/-- The in-place mutation spec (from `Libraries`) for a call's callee, if it is a library member that
+mutates its first argument (e.g. `heapq.heappush`). Lets codegen lower mutators without naming any
+specific library. -/
+def libraryMutatorOf? (funcJson : Json) : Option Libraries.LibraryMutator :=
+  match funcJson.getObjValAs? String "library_module", funcJson.getObjValAs? String "library_member" with
+  | .ok m, .ok mem => Libraries.libraryMutator? m mem
+  | _, _ => none
+
 /-- Resolve a Python builtin name to its Lean runtime name, honouring the numeric mode: in exact
 mode the `pythonBuiltinMapExact?` overrides (e.g. `float` → `pyRat`) win over the regular table. -/
 def builtinMappedName? (name : String) : PygenM (Option Lean.Name) := do

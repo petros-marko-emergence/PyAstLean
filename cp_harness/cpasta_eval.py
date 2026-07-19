@@ -31,11 +31,12 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import queue
 import random
 import re
-import select
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -438,35 +439,67 @@ class WarmLeanEval:
 
     READY, BEGIN, END = "===PACEVAL-READY===", "===PACEVAL-BEGIN===", "===PACEVAL-END==="
 
-    def __init__(self, timeout=15, boot_timeout=300):
+    def __init__(self, timeout=15, boot_timeout=300, verbose=True):
         self.timeout = timeout
         self.boot_timeout = boot_timeout
+        self.verbose = verbose
         self.proc = None
+        self._q = None       # lines from the backend's stdout, fed by a reader thread
+        self._boots = 0
+
+    def _log(self, msg):
+        if self.verbose:
+            print(f"    [warm] {msg}", flush=True)
+
+    def _read_lines(self, proc, q):
+        """Reader thread: forward the backend's stdout line-by-line into `q`, then a `None` on EOF.
+        A dedicated thread (rather than select) is what makes timeouts reliable — `select` on a
+        buffered pipe misses lines already sitting in Python's read buffer."""
+        try:
+            for line in proc.stdout:
+                q.put(line)
+        except Exception:  # noqa: BLE001
+            pass
+        q.put(None)
 
     def _start(self):
-        self.proc = subprocess.Popen(["lake", "exe", "palc", "eval"], cwd=REPO_ROOT,
-                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self._boots += 1
+        self._log(f"booting palc eval backend (boot #{self._boots}; Mathlib load ~10s)…")
+        # stderr → DEVNULL so a crash (broken pipe / OOM 'resource vanished') can't pollute stdout.
+        self.proc = subprocess.Popen(
+            ["lake", "exe", "palc", "eval"], cwd=REPO_ROOT,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        self._q = queue.Queue()
+        threading.Thread(target=self._read_lines, args=(self.proc, self._q), daemon=True).start()
         deadline = time.time() + self.boot_timeout
         while True:
-            if time.time() > deadline:
+            try:
+                line = self._q.get(timeout=max(0.0, deadline - time.time()))
+            except queue.Empty:
                 self._kill(); raise TimeoutError("palc eval boot timed out")
-            line = self.proc.stdout.readline()
-            if line == "":
+            if line is None:
                 self._kill(); raise RuntimeError("palc eval died during boot")
             if line.strip() == self.READY:
+                self._log("ready")
                 return
 
     def _kill(self):
         if self.proc:
             try:
                 self.proc.kill()
+                self.proc.wait(timeout=5)
             except Exception:  # noqa: BLE001
                 pass
-            self.proc = None
+        self.proc, self._q = None, None
 
     def eval(self, path):
+        # (Re)boot if the backend is down; a boot failure returns an error rather than crashing the run.
         if self.proc is None or self.proc.poll() is not None:
-            self._start()
+            try:
+                self._start()
+            except Exception as e:  # noqa: BLE001
+                self._kill()
+                return None, f"backend boot failed: {e}"
         try:
             self.proc.stdin.write(str(Path(path).resolve()) + "\n")
             self.proc.stdin.flush()
@@ -475,13 +508,12 @@ class WarmLeanEval:
             return None, "eval process died"
         deadline, lines, capturing = time.time() + self.timeout, [], False
         while True:
-            remaining = deadline - time.time()
-            if remaining <= 0:
+            try:
+                line = self._q.get(timeout=max(0.0, deadline - time.time()))
+            except queue.Empty:
+                self._log(f"timeout after {self.timeout}s on {Path(path).name} — restarting backend")
                 self._kill(); return None, "timeout"
-            if not select.select([self.proc.stdout], [], [], remaining)[0]:
-                self._kill(); return None, "timeout"
-            line = self.proc.stdout.readline()
-            if line == "":
+            if line is None:
                 self._kill(); return None, "eval process died"
             s = line.rstrip("\n")
             if s == self.BEGIN:
@@ -897,7 +929,7 @@ class CPastaEval:
             harness, runnable = build_test_harness(
                 (lean_dir / f"{name}.lean").read_text(), method, cases)
             n = len(runnable)
-            print(f"[*] {prob_dir.name}/{name} (function) over {n} renderable test(s)...")
+            print(f"[*] {prob_dir.name}/{name} (function) over {n} renderable test(s)...", flush=True)
             harness_path = self.tmp_dir / f"{prob_dir.name}_{name}_harness.lean"
             res, got_by_idx, err = self.run_lean_harness(harness, harness_path)
             lean_pass, lean_total = res if res else (0, n)
@@ -926,7 +958,7 @@ class CPastaEval:
             }
             print(f"    lean {lean_pass}/{lean_total}"
                   + (f"  python {py_pass}/{py_total}" if py_total else "")
-                  + (f"   [{err}]" if err else ""))
+                  + (f"   [{err}]" if err else ""), flush=True)
             deltas["lean_pass"] += lean_pass
             deltas["lean_total"] += lean_total
             deltas["py_pass"] += py_pass
@@ -1039,10 +1071,15 @@ class CPastaEval:
         agg = {"lean_pass": 0, "lean_total": 0, "py_pass": 0, "py_total": 0, "solutions": 0}
         divergences = []
 
-        for prob_dir in self.problems():
+        all_probs = list(self.problems())
+        total = len(all_probs)
+        print(f"[*] Evaluating {total} problem(s) through the warm backend "
+              f"(per-harness timeout {self.timeout}s)…", flush=True)
+        for idx, prob_dir in enumerate(all_probs, 1):
             lean_dir, tests_dir = prob_dir / "lean", prob_dir / "tests"
             if not (lean_dir.is_dir() and tests_dir.is_dir()):
                 continue
+            print(f"[{idx}/{total}] {prob_dir.name}", flush=True)
             if self.kind_of(prob_dir) == KIND_FUNCTION:
                 prob_report, deltas, diffs = self._evaluate_function_problem(prob_dir, lean_dir)
             else:

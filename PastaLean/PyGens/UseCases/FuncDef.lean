@@ -219,15 +219,21 @@ partial def jsonMutatesName (json : Json) (name : String) : Bool :=
                 | none => false
             | .ok "Call" =>
                 -- An in-place mutating method (`name.append(x)`, `name.add(x)`, …) is lowered as a
-                -- reassignment of the receiver, so it mutates `name`.
+                -- reassignment of the receiver, so it mutates `name`. Likewise a heapq mutating
+                -- *module function* (`heapq.heappush(name, x)`, `heapify(name)`, `heappop(name)`)
+                -- reassigns its FIRST ARGUMENT.
                 match (json.getObjVal? "func").toOption with
                 | some funcJson =>
-                    funcJson.getObjValAs? String "node_type" == .ok "Attribute"
+                    (funcJson.getObjValAs? String "node_type" == .ok "Attribute"
                       && (match funcJson.getObjValAs? String "attr" with
                           | .ok m => inPlaceMutatingMethods.contains m
                           | _ => false)
                       && (funcJson.getObjVal? "value").toOption.any
-                          (fun recv => assignTargetMutatesName recv name)
+                          (fun recv => assignTargetMutatesName recv name))
+                    || ((libraryMutatorOf? funcJson).isSome
+                      && (match (json.getObjValAs? (Array Json) "args").toOption with
+                          | some args => args[0]?.any (fun a => assignTargetMutatesName a name)
+                          | none => false))
                 | none => false
             | _ => false
           mutatedHere || fields.toList.any (fun (_, v) => jsonMutatesName v name)

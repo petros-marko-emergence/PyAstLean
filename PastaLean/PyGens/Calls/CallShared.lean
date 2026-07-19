@@ -105,7 +105,22 @@ pair. They each read the *original* container, so the caller binds `value` first
 def mutatingCallRhsLowering? (value : Json) :
     PygenM (Option (TSyntax `term × TSyntax `doElem)) := do
   match ← popCallParts? value with
-  | none => return none
+  | none =>
+      -- A library member that both mutates its first arg and returns a value (`x = heapq.heappop(h)`),
+      -- read from the `Libraries` mutator spec so no library names live in codegen.
+      match (value.getObjVal? "func").toOption.bind libraryMutatorOf? |>.bind (·.valueRest?) with
+      | some (valFn, restFn) =>
+          match value.getObjValAs? (Array Json) "args" with
+          | .ok args =>
+              if args.size ≥ 1 && jsonNodeType? args[0]! == some "Name" then
+                let recvIdent ← getCode args[0]! `ident
+                let argsCodes ← args.mapM (getCode · `term)
+                let valueTerm ← `($(mkIdent valFn) $argsCodes*)
+                let update ← `(doElem| $recvIdent:ident := $(mkIdent restFn) $argsCodes*)
+                return some (valueTerm, update)
+              else return none
+          | _ => return none
+      | none => return none
   | some ((valueFn, restFn), receiverIdent, index?) =>
       let valueIdent := mkIdent valueFn
       let restIdent := mkIdent restFn
