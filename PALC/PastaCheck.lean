@@ -23,7 +23,8 @@ reviewable), and checked-then-discarded for the rest.
 open Lean Lean.Elab
 
 def backendModules : Array Import :=
-  #[{ module := `PastaLean }, { module := `Mathlib }, { module := `Libraries }]
+  #[{ module := `PastaLean }, { module := `Mathlib }, { module := `Libraries },
+    { module := `Std.Tactic.Do }]
 
 unsafe def bootEnv : IO Environment := do
   initSearchPath (← findSysroot)
@@ -110,9 +111,54 @@ def checkRecord (env : Environment) (rec : Json) : IO (Option Verdict) := do
   | some err => return some (.compileFail err)
   | none => return some .ok
 
+/-! ### Warm evaluation backend (`lake exe palc eval`) for cp_harness
+
+`lake env lean --run <harness>` reloads Mathlib (~5 s) per problem. This mode boots the environment
+ONCE, then reads harness `.lean` paths on stdin and runs each harness's `main` in-process, capturing
+what it prints (`PASSED p/t` / `FAIL i: got …`). A non-terminating harness would hang the shared
+process, so the driver reads each block under a timeout and restarts on a miss. -/
+
+/-- Elaborate a cp_harness `.lean` in `env` and run its `main`, returning captured stdout, or
+`ERROR …` on an elaboration/eval failure. -/
+unsafe def evalHarness (env : Environment) (code : String) : IO String := do
+  let src := stripImports code
+  let inputCtx := Parser.mkInputContext src "<harness>"
+  let cmdState := Command.mkState env {} {}
+  let frontendState ← Lean.Elab.IO.processCommands inputCtx {} cmdState
+  let msgs := frontendState.commandState.messages
+  if msgs.hasErrors then
+    for msg in msgs.toList do
+      if msg.severity == .error then
+        return s!"ERROR {(((← msg.data.toString).replace "\n" " ").take 200)}"
+    return "ERROR elaboration"
+  match frontendState.commandState.env.evalConst (IO Unit) {} `main with
+  | .error e => return s!"ERROR eval {e}"
+  | .ok act => return (← IO.FS.withIsolatedStreams act).1
+
+/-- Boot once, then loop: read a harness path per stdin line, print its run output delimited. -/
+unsafe def runEvalLoop : IO UInt32 := do
+  IO.println "Booting Mathlib environment for warm evaluation…"
+  let env ← bootEnv
+  let stdin ← IO.getStdin
+  let stdout ← IO.getStdout
+  stdout.putStr "===PACEVAL-READY===\n"; stdout.flush
+  let mut done := false
+  while !done do
+    let line ← stdin.getLine
+    if line.isEmpty then done := true
+    else
+      let path := line.trim
+      unless path.isEmpty do
+        let out ← try evalHarness env (← IO.FS.readFile path)
+                  catch e => pure s!"ERROR {toString e}"
+        stdout.putStr s!"===PACEVAL-BEGIN===\n{out}\n===PACEVAL-END===\n"; stdout.flush
+  return 0
+
 unsafe def main (args : List String) : IO UInt32 := do
+  -- `palc eval`: warm evaluation backend for cp_harness (stdin-driven). Otherwise: example checks.
+  if args.head? == some "eval" then return (← runEvalLoop)
   let base : System.FilePath := "example_scripts"
-  -- Optional first arg restricts to one subdirectory (`lake exe pastacheck typing`).
+  -- Optional first arg restricts to one subdirectory (`lake exe palc typing`).
   let dir := match args.head? with | some g => base / g | none => base
   let pyBin := if (← (System.FilePath.mk ".venv/bin/python3").pathExists) then ".venv/bin/python3" else "python3"
   IO.println "Translating every example (one warm backend)…"

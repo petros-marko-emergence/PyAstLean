@@ -33,8 +33,10 @@ import ast
 import json
 import random
 import re
+import select
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from pastalean import Session  # `uv pip install -e .`
@@ -427,6 +429,77 @@ def run_python_check(fn_src, method, cases):
     return passed, total
 
 
+class WarmLeanEval:
+    """A persistent `lake exe palc eval` process: boots Mathlib ONCE, then evaluates harness files
+    in-process, so the ~5 s import cost is paid once instead of per problem. `eval(path)` returns
+    `(captured_stdout, None)`, or `(None, error)`. On a per-harness timeout (a non-terminating
+    conversion would hang the shared process) it kills and re-boots on the next call, so one bad
+    problem costs one re-boot, not the whole run."""
+
+    READY, BEGIN, END = "===PACEVAL-READY===", "===PACEVAL-BEGIN===", "===PACEVAL-END==="
+
+    def __init__(self, timeout=15, boot_timeout=300):
+        self.timeout = timeout
+        self.boot_timeout = boot_timeout
+        self.proc = None
+
+    def _start(self):
+        self.proc = subprocess.Popen(["lake", "exe", "palc", "eval"], cwd=REPO_ROOT,
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        deadline = time.time() + self.boot_timeout
+        while True:
+            if time.time() > deadline:
+                self._kill(); raise TimeoutError("palc eval boot timed out")
+            line = self.proc.stdout.readline()
+            if line == "":
+                self._kill(); raise RuntimeError("palc eval died during boot")
+            if line.strip() == self.READY:
+                return
+
+    def _kill(self):
+        if self.proc:
+            try:
+                self.proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+            self.proc = None
+
+    def eval(self, path):
+        if self.proc is None or self.proc.poll() is not None:
+            self._start()
+        try:
+            self.proc.stdin.write(str(Path(path).resolve()) + "\n")
+            self.proc.stdin.flush()
+        except (BrokenPipeError, OSError):
+            self._kill()
+            return None, "eval process died"
+        deadline, lines, capturing = time.time() + self.timeout, [], False
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                self._kill(); return None, "timeout"
+            if not select.select([self.proc.stdout], [], [], remaining)[0]:
+                self._kill(); return None, "timeout"
+            line = self.proc.stdout.readline()
+            if line == "":
+                self._kill(); return None, "eval process died"
+            s = line.rstrip("\n")
+            if s == self.BEGIN:
+                capturing, lines = True, []
+            elif s == self.END:
+                return "\n".join(lines), None
+            elif capturing:
+                lines.append(s)
+
+    def close(self):
+        if self.proc:
+            try:
+                self.proc.stdin.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._kill()
+
+
 # --------------------------------------------------------------------------------------
 # The harness
 # --------------------------------------------------------------------------------------
@@ -449,6 +522,7 @@ class CPastaEval:
         self.split = split
         self.exclude_file = Path(exclude_file)
         self._session = None
+        self._warm = None
 
     # -- lifecycle ---------------------------------------------------------------------
 
@@ -459,10 +533,20 @@ class CPastaEval:
             self._session = Session(target="command", mode="both", best_effort=False).start()
         return self._session
 
+    @property
+    def warm(self):
+        """The warm `palc eval` backend, booted on first use (Mathlib loaded once for all harnesses)."""
+        if self._warm is None:
+            self._warm = WarmLeanEval(timeout=self.timeout)
+        return self._warm
+
     def close(self):
         if self._session is not None:
             self._session.close()
             self._session = None
+        if self._warm is not None:
+            self._warm.close()
+            self._warm = None
 
     def __enter__(self):
         return self
@@ -757,22 +841,19 @@ class CPastaEval:
         return (strip_lean_diagnostics(out), None) if err is None else (None, err)
 
     def run_lean_harness(self, harness_src, tmp_path):
-        """Run a function-model harness. Returns `(counts, failures, error)` where `counts` is
-        `(passed, total)` or None, and `failures` maps a failing case index to what Lean computed."""
+        """Run a function-model harness through the warm `palc eval` backend (Mathlib booted once).
+        Returns `(counts, failures, error)` where `counts` is `(passed, total)` or None, and
+        `failures` maps a failing case index to what Lean computed."""
         tmp_path.write_text(harness_src)
-        try:
-            proc = subprocess.run(["lake", "env", "lean", "--run", str(tmp_path)],
-                                  cwd=REPO_ROOT, capture_output=True, text=True, timeout=self.timeout)
-        except subprocess.TimeoutExpired:
-            return None, {}, "timeout"
-        except Exception as e:  # noqa: BLE001
-            return None, {}, str(e)
-        out = strip_lean_diagnostics(proc.stdout)
+        out, err = self.warm.eval(tmp_path)
+        if err is not None:
+            return None, {}, err
         failures = {int(i): got.strip() for i, got in _FAIL_RE.findall(out)}
         if (m := _PASSED_RE.search(out)):
             return (int(m.group(1)), int(m.group(2))), failures, None
-        if proc.returncode != 0:
-            return None, failures, f"exit {proc.returncode}: {(proc.stderr or out)[:200]}"
+        # The backend reports an elaboration/eval failure as a leading `ERROR …` line.
+        if out.strip().startswith("ERROR"):
+            return None, failures, out.strip().replace("\n", " ")[:200]
         return None, failures, "no PASSED line in output"
 
     def load_function_cases(self, prob_dir, params, method):
