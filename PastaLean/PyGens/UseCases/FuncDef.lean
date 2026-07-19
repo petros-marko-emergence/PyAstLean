@@ -355,6 +355,30 @@ def functionMonadicValueNoCast (argInfos : Array (TSyntax `ident × Option (TSyn
       | none => `(fun $argIdent ↦ $result)
   pure result
 
+/-- Python parameter defaults (`args.defaults`, aligned to the TRAILING params). -/
+def functionParamDefaults (json : Json) : Array Json :=
+  ((json.getObjVal? "args").toOption.bind
+    (fun a => (a.getObjValAs? (Array Json) "defaults").toOption)).getD #[]
+
+/-- Bracketed `def` binders for the params, with `optParam` defaults where Python provides one
+(`def f(a, b=10)` → `(a : _) (b : _ := 10)`), so a call with fewer args (`f(5)`) applies the default
+instead of being a partial application. `none` when there are no defaults (callers keep the plain
+lambda form). Pair with a body built from EMPTY `argInfos` (un-wrapped, referencing the params). -/
+def functionParamBinders? (json : Json) (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) :
+    PygenM (Option (Array (TSyntax ``Lean.Parser.Term.bracketedBinder))) := do
+  let defaults := functionParamDefaults json
+  if defaults.isEmpty then return none
+  let offset := argInfos.size - defaults.size
+  let binders ← (Array.range argInfos.size).mapM fun i => do
+    let (argIdent, ty?) := argInfos[i]!
+    let tyStx ← match ty? with | some t => pure t | none => `(_)
+    if i ≥ offset then
+      let dCode ← getCode defaults[i - offset]! `term
+      `(Lean.Parser.Term.bracketedBinderF| ($argIdent : $tyStx := $dCode))
+    else
+      `(Lean.Parser.Term.bracketedBinderF| ($argIdent : $tyStx))
+  return some binders
+
 /-- Build a function type like `A → B → IO _` when every argument type is known. -/
 def functionArrowTypeSyntax? (argInfos : Array (TSyntax `ident × Option (TSyntax `term)))
     (codomain : TSyntax `term) : PygenM (Option (TSyntax `term)) := do
@@ -377,9 +401,26 @@ def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
     PygenM (Option (TSyntax `command)) := do
   let bodyElems ← functionBodyElems json
   let returnTy? ← functionReturnTypeSyntax? json
-  let mkDef : TSyntax `term → TSyntax `term → PygenM (TSyntax `command) := fun fullTy valueStx =>
-    if noncomp then `(command| noncomputable def $nameIdent : $fullTy := $valueStx)
-    else `(command| def $nameIdent : $fullTy := $valueStx)
+  -- Params with Python defaults go on the signature as `optParam` binders; otherwise the whole
+  -- effect type is an arrow (`A → B → M R`) and the body is lambda-wrapped as before.
+  let binders? ← functionParamBinders? json argInfos
+  let mkDefFor : TSyntax `term → PygenM (Option (TSyntax `command)) := fun codomain => do
+    match binders? with
+    | some binders =>
+        let body ← functionMonadicValueNoCast #[] bodyElems
+        if noncomp then return some (← `(command| noncomputable def $nameIdent $binders* : $codomain := $body))
+        else return some (← `(command| def $nameIdent $binders* : $codomain := $body))
+    | none =>
+        match ← functionArrowTypeSyntax? argInfos codomain with
+        | some fullTy =>
+            let valueStx ← functionMonadicValueNoCast argInfos bodyElems
+            if noncomp then return some (← `(command| noncomputable def $nameIdent : $fullTy := $valueStx))
+            else return some (← `(command| def $nameIdent : $fullTy := $valueStx))
+        | none => return none
+  let withRet (mkCodomain : TSyntax `term → PygenM (TSyntax `term)) : PygenM (Option (TSyntax `command)) := do
+    match returnTy? with
+    | none => return none
+    | some retTy => mkDefFor (← mkCodomain retTy)
   -- Exceptions take precedence over `IO`. Proof mode uses PyProofM (state monad with exceptions).
   -- Exact mode without proof uses PyExceptId (pure exceptions). Run mode uses PyExcept (IO + exceptions).
   let usesRealIO := bodyNeedsIOMonad bodyElems
@@ -388,53 +429,13 @@ def functionCommandWithEffectSignature? (nameIdent : TSyntax `ident)
   let usesProofMode := useProofMonad && (usesExceptions || usesRealIO)
   let usesPureExceptions := !useProofMonad && (← getNumericMode) == .exact && usesExceptions && !usesRealIO
   if usesProofMode then
-    match returnTy? with
-    | none => return none
-    | some retTy =>
-        let proofMonadIdent := mkIdent ``PastaLean.ProofMode.PyProofM
-        let codomain ← `($proofMonadIdent $retTy)
-        match ← functionArrowTypeSyntax? argInfos codomain with
-        | some fullTy =>
-            let valueStx ← functionMonadicValueNoCast argInfos bodyElems
-            return some (← mkDef fullTy valueStx)
-        | none =>
-            return none
+    withRet (fun retTy => `($(mkIdent ``PastaLean.ProofMode.PyProofM) $retTy))
   else if usesPureExceptions then
-    match returnTy? with
-    | none => return none
-    | some retTy =>
-        let exceptIdIdent := mkIdent ``PastaLean.PyExceptId
-        let codomain ← `($exceptIdIdent $retTy)
-        match ← functionArrowTypeSyntax? argInfos codomain with
-        | some fullTy =>
-            let valueStx ← functionMonadicValueNoCast argInfos bodyElems
-            return some (← mkDef fullTy valueStx)
-        | none =>
-            return none
-  else if bodyNeedsExceptionMonad bodyElems then
-    match returnTy? with
-    | none => return none
-    | some retTy =>
-        let exceptIdent := mkIdent ``PastaLean.PyExcept
-        let codomain ← `($exceptIdent $retTy)
-        match ← functionArrowTypeSyntax? argInfos codomain with
-        | some fullTy =>
-            let valueStx ← functionMonadicValueNoCast argInfos bodyElems
-            return some (← mkDef fullTy valueStx)
-        | none =>
-            return none
+    withRet (fun retTy => `($(mkIdent ``PastaLean.PyExceptId) $retTy))
+  else if usesExceptions then
+    withRet (fun retTy => `($(mkIdent ``PastaLean.PyExcept) $retTy))
   else if usesRealIO then
-    match returnTy? with
-    | none => return none
-    | some retTy =>
-        let ioIdent := mkIdent ``IO
-        let codomain ← `($ioIdent $retTy)
-        match ← functionArrowTypeSyntax? argInfos codomain with
-        | some fullTy =>
-            let valueStx ← functionMonadicValueNoCast argInfos bodyElems
-            return some (← mkDef fullTy valueStx)
-        | none =>
-            return none
+    withRet (fun retTy => `($(mkIdent ``IO) $retTy))
   else
     return none
 
@@ -729,6 +730,20 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         let cmd ← match effectCmd? with
           | some cmd => pure cmd
           | none =>
+              -- Params with Python defaults become `optParam` binders on the def (`def f (b := 10)`),
+              -- with the body built un-wrapped so it reads the binders directly.
+              match ← functionParamBinders? json argInfos with
+              | some binders =>
+                  let body ← functionValueSyntax #[] bodyElems boxReturn
+                  let rt? ← if isRecursive then functionReturnTypeSyntax? json else pure none
+                  match isRecursive, nc, rt? with
+                  | true, true, some rt => `(noncomputable partial def $nameIdent $binders* : $rt := $body)
+                  | true, false, some rt => `(partial def $nameIdent $binders* : $rt := $body)
+                  | true, true, none => `(noncomputable partial def $nameIdent $binders* := $body)
+                  | true, false, none => `(partial def $nameIdent $binders* := $body)
+                  | false, true, _ => `(noncomputable def $nameIdent $binders* := $body)
+                  | false, false, _ => `(def $nameIdent $binders* := $body)
+              | none =>
               let valueStx ← functionValueSyntax argInfos bodyElems boxReturn
               -- take care of recursion function Type
               if isRecursive then

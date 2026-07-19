@@ -31,6 +31,8 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import multiprocessing as mp
+import os
 import queue
 import random
 import re
@@ -414,20 +416,105 @@ def load_callable(fn_src, method):
     return ns.get(name)
 
 
+# A reference solution runs in *this* process to produce ground-truth outputs. A pathological input
+# — exponentially many source→target paths, O(n^4) 4Sum quadruplets — makes it allocate without
+# bound, and the OS OOM-killer sends the whole run SIGKILL (a bare "Killed"). A Python `except` can't
+# catch that. So run the reference in a forked child capped by an address-space rlimit and a
+# wall-clock timeout: the cap turns a runaway into a `MemoryError` *inside the child* (before the
+# giant result can cross the pipe back), the timeout catches an infinite loop, and the case is just
+# dropped. One bad input costs one dead child, not the run.
+_REF_MEM_LIMIT = 4 * 1024**3   # 4 GiB of address space per reference call
+_REF_CASE_TIMEOUT = 10         # wall-clock seconds allowed for a single case
+
+
+def _ref_stream_worker(conn, fn, arg_list, start, mem_bytes):
+    """Child side: compute `fn(*args)` for each case under a memory cap, streaming a
+    `(global_index, ok, payload)` tuple back as each one finishes — so results already computed
+    survive even when a *later* case OOMs or hangs and takes this process down."""
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+    except (ValueError, OSError, ImportError):
+        pass  # platform without RLIMIT_AS — the parent's per-case timeout is still a backstop
+    for offset, args in enumerate(arg_list):
+        idx = start + offset
+        try:
+            conn.send((idx, True, fn(*args)))
+        except MemoryError:
+            # The heap is wedged at the cap; a further send would fail too. Bail — the parent
+            # infers this case failed from the stream stopping here.
+            break
+        except BaseException as exc:  # noqa: BLE001  (report, don't crash the child)
+            try:
+                conn.send((idx, False, f"{type(exc).__name__}: {exc}"))
+            except Exception:  # noqa: BLE001
+                break
+    conn.close()
+
+
+def guarded_ref_batch(fn, arg_list, *, mem_bytes=_REF_MEM_LIMIT, timeout=_REF_CASE_TIMEOUT):
+    """Run `fn` over `arg_list` in memory-/time-bounded child processes; return a `(ok, value)` list
+    aligned to `arg_list`. A single pathological input — one that would OOM-kill the whole run — is
+    confined to a child and dropped as `(False, reason)`; because the child streams, the good cases
+    *before* it survive, and the child is restarted to finish the cases *after* it. Normal input
+    costs one fork; each bomb costs one extra fork."""
+    n = len(arg_list)
+    results = [None] * n
+    ctx = mp.get_context("fork")
+    i = 0
+    while i < n:
+        recv, send = ctx.Pipe(duplex=False)
+        proc = ctx.Process(target=_ref_stream_worker,
+                           args=(send, fn, arg_list[i:], i, mem_bytes), daemon=True)
+        proc.start()
+        send.close()  # parent holds only the read end, so `recv` sees EOF the moment the child dies
+        while i < n:
+            if not recv.poll(timeout):   # no result within the per-case budget → stalled on case i
+                break
+            try:
+                idx, ok, payload = recv.recv()
+            except EOFError:             # child finished, or died on case i (OOM)
+                break
+            results[idx] = (ok, payload)
+            i = idx + 1
+        if proc.is_alive():
+            proc.terminate()
+        proc.join(5)
+        recv.close()
+        # If we stopped short of the end, `arg_list[i]` is the case that stalled/killed the child.
+        # Drop it and step past so the next child can finish the remainder.
+        if i < n:
+            if results[i] is None:
+                results[i] = (False, "timeout-or-oom")
+            i += 1
+    return [(False, "not-run") if r is None else r for r in results]
+
+
 def run_python_check(fn_src, method, cases):
     """Run the groundtruth against `cases` (whose expected values it produced). Returns (p, t)."""
     fn = load_callable(fn_src, method)
     if fn is None:
         return 0, 0
-    passed = total = 0
-    for args, expected in cases:
-        total += 1
-        try:
-            if fn(*args) == expected:
-                passed += 1
-        except Exception:  # noqa: BLE001
-            pass
-    return passed, total
+    results = guarded_ref_batch(fn, [args for args, _ in cases])
+    passed = sum(1 for (ok, value), (_, expected) in zip(results, cases)
+                 if ok and value == expected)
+    return passed, len(cases)
+
+
+def _backend_mem_limit_preexec():
+    """Cap the `palc eval` backend's address space (opt-in via `PASTALEAN_EVAL_MEM_GB`) so a runaway
+    harness — an exponential `fn'rn` twin — OOMs *itself*, a clean crash the driver reboots from,
+    instead of pushing the machine into the OS OOM-killer, which can take down this parent too. Off
+    by default: too low a cap starves the Mathlib environment and fails every problem."""
+    gb = os.environ.get("PASTALEAN_EVAL_MEM_GB")
+    if not gb:
+        return
+    try:
+        import resource
+        limit = int(float(gb) * 1024**3)
+        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    except (ValueError, OSError, ImportError):
+        pass
 
 
 class WarmLeanEval:
@@ -468,7 +555,8 @@ class WarmLeanEval:
         # stderr → DEVNULL so a crash (broken pipe / OOM 'resource vanished') can't pollute stdout.
         self.proc = subprocess.Popen(
             ["lake", "exe", "palc", "eval"], cwd=REPO_ROOT,
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            preexec_fn=_backend_mem_limit_preexec)
         self._q = queue.Queue()
         threading.Thread(target=self._read_lines, args=(self.proc, self._q), daemon=True).start()
         deadline = time.time() + self.boot_timeout
@@ -897,17 +985,16 @@ class CPastaEval:
         fn = load_callable((prob_dir / "solutions" / "sol_0.py").read_text(), method)
         if fn is None:
             return []
-        cases = []
+        parsed = []
         for c in json.loads(tests_file.read_text()):
             try:
-                args = parse_test_input(c["input"], params)
+                parsed.append(parse_test_input(c["input"], params))
             except (ValueError, SyntaxError, KeyError):
                 continue
-            try:
-                cases.append((args, fn(*args)))
-            except Exception:  # noqa: BLE001
-                continue  # the reference itself errors here → can't judge
-        return cases
+        # Compute expected outputs in a memory-/time-bounded child (see `guarded_ref_batch`): a
+        # pathological input that would OOM-kill the whole run is confined to the child and dropped.
+        results = guarded_ref_batch(fn, parsed)
+        return [(args, value) for args, (ok, value) in zip(parsed, results) if ok]
 
     def _evaluate_function_problem(self, prob_dir, lean_dir):
         meta = json.loads((prob_dir / "meta.json").read_text())
