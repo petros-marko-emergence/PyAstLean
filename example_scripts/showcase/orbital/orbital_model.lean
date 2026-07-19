@@ -350,37 +350,37 @@ theorem spring_force_is_central :
 -- ----------------------------------------------------------------------------------------------
 def main' :=
   ((do
-      let mut k : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut m1 : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut m2 : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut r1x : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut r1y : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut r1z : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut r2x : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut r2y : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut r2z : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut v1x : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut v1y : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut v1z : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut v2x : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut v2y : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut v2z : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut dt : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut k := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut m1 := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut m2 := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r1x := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r1y := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r1z := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r2x := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r2y := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut r2z := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v1x := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v1y := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v1z := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v2x := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v2y := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut v2z := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut dt := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
       let mut nsteps : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
       let mut every : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
-      let mut t : Rat := (0.0 : Rat)
+      let mut t := (0.0 : Rat)
       for step in (PastaLean.pyRange nsteps)do
         -- Hooke spring (rest length 0): force F = -k (r1 - r2) on body 1, +k (r1 - r2) on body 2.
         -- Acceleration is F / m; all polynomial, no transcendentals.
-        let mut dx : Rat := r1x -ₚ r2x
-        let mut dy : Rat := r1y -ₚ r2y
-        let mut dz : Rat := r1z -ₚ r2z
-        let mut a1x : Rat := -k *ₚ dx /ₚ m1
-        let mut a1y : Rat := -k *ₚ dy /ₚ m1
-        let mut a1z : Rat := -k *ₚ dz /ₚ m1
-        let mut a2x : Rat := k *ₚ dx /ₚ m2
-        let mut a2y : Rat := k *ₚ dy /ₚ m2
-        let mut a2z : Rat := k *ₚ dz /ₚ m2
+        let mut dx := r1x -ₚ r2x
+        let mut dy := r1y -ₚ r2y
+        let mut dz := r1z -ₚ r2z
+        let mut a1x := -k *ₚ dx /ₚ m1
+        let mut a1y := -k *ₚ dy /ₚ m1
+        let mut a1z := -k *ₚ dz /ₚ m1
+        let mut a2x := k *ₚ dx /ₚ m2
+        let mut a2y := k *ₚ dy /ₚ m2
+        let mut a2z := k *ₚ dz /ₚ m2
         -- Velocity-Verlet (here the force is linear, so a half/full kick step is exact enough).
         v1x := v1x +ₚ a1x *ₚ dt
         v1y := v1y +ₚ a1y *ₚ dt
@@ -396,10 +396,10 @@ def main' :=
         r2z := r2z +ₚ v2z *ₚ dt
         t := t +ₚ dt
         if h_1 : step %ₚ every = (0 : Int) then 
-          let mut energy : Rat :=
+          let mut energy :=
             kinetic m1 v1x v1y v1z +ₚ kinetic m2 v2x v2y v2z +ₚ spring_energy k (r1x -ₚ r2x) (r1y -ₚ r2y) (r1z -ₚ r2z)
-          let mut px : Rat := m1 *ₚ v1x +ₚ m2 *ₚ v2x
-          let mut lx : Rat :=
+          let mut px := m1 *ₚ v1x +ₚ m2 *ₚ v2x
+          let mut lx :=
             cross_x r1x r1y r1z (m1 *ₚ v1x) (m1 *ₚ v1y) (m1 *ₚ v1z) +ₚ
               cross_x r2x r2y r2z (m2 *ₚ v2x) (m2 *ₚ v2y) (m2 *ₚ v2z)
           let _ ←
@@ -413,37 +413,37 @@ attribute [simp] main'
 
 def main''rn :=
   ((do
-      let mut k : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut m1 : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut m2 : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut r1x : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut r1y : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut r1z : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut r2x : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut r2y : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut r2z : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut v1x : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut v1y : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut v1z : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut v2x : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut v2y : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut v2z : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut dt : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut k := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut m1 := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut m2 := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut r1x := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut r1y := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut r1z := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut r2x := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut r2y := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut r2z := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut v1x := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut v1y := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut v1z := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut v2x := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut v2y := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut v2z := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut dt := PastaLean.pyFloat (← PastaLean.pyInputIO "")
       let mut nsteps : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
       let mut every : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut t : Float := (0.0 : Float)
+      let mut t := (0.0 : Float)
       for step in (PastaLean.pyRange nsteps)do
         -- Hooke spring (rest length 0): force F = -k (r1 - r2) on body 1, +k (r1 - r2) on body 2.
         -- Acceleration is F / m; all polynomial, no transcendentals.
-        let mut dx : Float := r1x -ₚ r2x
-        let mut dy : Float := r1y -ₚ r2y
-        let mut dz : Float := r1z -ₚ r2z
-        let mut a1x : Float := PastaLean.pyFloat (-k *ₚ dx) /ₚ m1
-        let mut a1y : Float := PastaLean.pyFloat (-k *ₚ dy) /ₚ m1
-        let mut a1z : Float := PastaLean.pyFloat (-k *ₚ dz) /ₚ m1
-        let mut a2x : Float := PastaLean.pyFloat (k *ₚ dx) /ₚ m2
-        let mut a2y : Float := PastaLean.pyFloat (k *ₚ dy) /ₚ m2
-        let mut a2z : Float := PastaLean.pyFloat (k *ₚ dz) /ₚ m2
+        let mut dx := r1x -ₚ r2x
+        let mut dy := r1y -ₚ r2y
+        let mut dz := r1z -ₚ r2z
+        let mut a1x := PastaLean.pyFloat (-k *ₚ dx) /ₚ m1
+        let mut a1y := PastaLean.pyFloat (-k *ₚ dy) /ₚ m1
+        let mut a1z := PastaLean.pyFloat (-k *ₚ dz) /ₚ m1
+        let mut a2x := PastaLean.pyFloat (k *ₚ dx) /ₚ m2
+        let mut a2y := PastaLean.pyFloat (k *ₚ dy) /ₚ m2
+        let mut a2z := PastaLean.pyFloat (k *ₚ dz) /ₚ m2
         -- Velocity-Verlet (here the force is linear, so a half/full kick step is exact enough).
         v1x := v1x +ₚ a1x *ₚ dt
         v1y := v1y +ₚ a1y *ₚ dt
@@ -459,11 +459,11 @@ def main''rn :=
         r2z := r2z +ₚ v2z *ₚ dt
         t := t +ₚ dt
         if h_1 : step %ₚ every == (0 : Int) then 
-          let mut energy : Float :=
+          let mut energy :=
             kinetic'rn m1 v1x v1y v1z +ₚ kinetic'rn m2 v2x v2y v2z +ₚ
               spring_energy'rn k (r1x -ₚ r2x) (r1y -ₚ r2y) (r1z -ₚ r2z)
-          let mut px : Float := m1 *ₚ v1x +ₚ m2 *ₚ v2x
-          let mut lx : Float :=
+          let mut px := m1 *ₚ v1x +ₚ m2 *ₚ v2x
+          let mut lx :=
             cross_x'rn r1x r1y r1z (m1 *ₚ v1x) (m1 *ₚ v1y) (m1 *ₚ v1z) +ₚ
               cross_x'rn r2x r2y r2z (m2 *ₚ v2x) (m2 *ₚ v2y) (m2 *ₚ v2z)
           let _ ←

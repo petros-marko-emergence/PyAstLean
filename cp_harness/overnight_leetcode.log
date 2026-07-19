@@ -2625,7 +2625,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [*] Done. Kept 2589 problem(s) into cp_harness/dataset_leetcode
 
 >>> [2/4] Convert (Python -> Lean -> compile-check)
-[compile_fail] 01-matrix/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] 01-matrix/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] 1-bit-and-2-bit-characters/sol_0.py
 [compile_fail] 132-pattern/sol_0.py  -- failed to synthesize instance of type class
 [          ok] 2-keys-keyboard/sol_0.py
@@ -2692,7 +2692,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] apply-operations-to-maximize-frequency-score/sol_0.py  -- Invalid argument name `initial` for function `itertools.pyAccumulate`
 [          ok] arithmetic-slices/sol_0.py
 [compile_fail] arithmetic-slices-ii-subsequence/sol_0.py  -- failed to synthesize instance of type class
-[          ok] arithmetic-subarrays/sol_0.py
+[compile_fail] arithmetic-subarrays/sol_0.py  -- failed to synthesize instance of type class
 [          ok] armstrong-number/sol_0.py
 [          ok] arranging-coins/sol_0.py
 [          ok] array-nesting/sol_0.py
@@ -2700,11 +2700,11 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] array-partition/sol_0.py
 [compile_fail] array-transformation/sol_0.py  -- Application type mismatch: The argument
 [          ok] array-with-elements-not-equal-to-average-of-neighbors/sol_0.py
-[compile_fail] as-far-from-land-as-possible/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] as-far-from-land-as-possible/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] assign-cookies/sol_0.py
 [          ok] asteroid-collision/sol_0.py
-[compile_fail] available-captures-for-rook/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] average-height-of-buildings-in-each-segment/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] available-captures-for-rook/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] average-height-of-buildings-in-each-segment/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] average-of-levels-in-binary-tree/sol_0.py  -- Invalid field notation: Type of
 [          ok] average-salary-excluding-the-minimum-and-maximum-salary/sol_0.py
 [          ok] average-value-of-even-numbers-that-are-divisible-by-three/sol_0.py
@@ -2714,7 +2714,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] bag-of-tokens/sol_0.py
 [compile_fail] balance-a-binary-search-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [compile_fail] balanced-binary-tree/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
-[          ok] baseball-game/sol_0.py
+[compile_fail] baseball-game/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] basic-calculator/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.binOpSyntax for key 'BinOp' and syntax category 'term': Error in code generation function PastaLean.binOpSyntax for key 'BinOp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [convert_fail] basic-calculator-ii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.matchSyntax for key 'Match' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Error in code generation function PastaLean.binOpSyntax for key 'BinOp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [convert_fail] basic-calculator-iii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.matchSyntax for key 'Match' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Error in code generation function PastaLean.binOpSyntax for key 'BinOp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
@@ -2723,7 +2723,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] beautiful-arrangement-ii/sol_0.py
 [convert_fail] beautiful-pairs/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' calls its sibling 'dist'; helpers that reference each other are not supported yet.
 [          ok] beautiful-towers-i/sol_0.py
-[          ok] beautiful-towers-ii/sol_0.py
+[compile_fail] beautiful-towers-ii/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] before-and-after-puzzle/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] best-meeting-point/sol_0.py  -- typeclass instance problem is stuck
 [          ok] best-poker-hand/sol_0.py
@@ -2751,7 +2751,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] binary-tree-level-order-traversal/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [compile_fail] binary-tree-level-order-traversal-ii/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [compile_fail] binary-tree-longest-consecutive-sequence/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
-[compile_fail] binary-tree-longest-consecutive-sequence-ii/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
+[convert_fail] binary-tree-longest-consecutive-sequence-ii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Unsupported tuple-assignment target element (only `Name` and subscript `a[i]` targets are supported): {"node_type": "Tuple",
 [compile_fail] binary-tree-maximum-path-sum/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [compile_fail] binary-tree-paths/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [compile_fail] binary-tree-postorder-traversal/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
@@ -2786,7 +2786,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] building-boxes/sol_0.py
 [          ok] buildings-with-an-ocean-view/sol_0.py
 [          ok] bulb-switcher/sol_0.py
-[compile_fail] bulb-switcher-ii/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] bulb-switcher-ii/sol_0.py  -- failed to synthesize instance of type class
 [          ok] bulls-and-cows/sol_0.py
 [          ok] burst-balloons/sol_0.py
 [          ok] bus-routes/sol_0.py
@@ -2795,7 +2795,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] calculate-delayed-arrival-time/sol_0.py
 [          ok] calculate-digit-sum-of-a-string/sol_0.py
 [          ok] calculate-money-in-leetcode-bank/sol_0.py
-[          ok] camelcase-matching/sol_0.py
+[compile_fail] camelcase-matching/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] campus-bikes/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported imported library member 'itertools.product'.
 [compile_fail] campus-bikes-ii/sol_0.py  -- failed to synthesize instance of type class
 [          ok] can-convert-string-in-k-moves/sol_0.py
@@ -2818,17 +2818,17 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] cells-with-odd-values-in-a-matrix/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] chalkboard-xor-game/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] champagne-tower/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] change-minimum-characters-to-satisfy-one-of-three-conditions/sol_0.py  -- typeclass instance problem is stuck
+[          ok] change-minimum-characters-to-satisfy-one-of-three-conditions/sol_0.py
 [compile_fail] cheapest-flights-within-k-stops/sol_0.py  -- Application type mismatch: The argument
 [          ok] check-array-formation-through-concatenation/sol_0.py
 [compile_fail] check-completeness-of-a-binary-tree/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
 [          ok] check-distances-between-same-letters/sol_0.py
-[compile_fail] check-for-contradictions-in-equations/sol_0.py  -- Type mismatch
+[compile_fail] check-for-contradictions-in-equations/sol_0.py  -- typeclass instance problem is stuck
 [          ok] check-if-a-number-is-majority-element-in-a-sorted-array/sol_0.py
 [          ok] check-if-a-parentheses-string-can-be-valid/sol_0.py
 [          ok] check-if-a-string-can-break-another-string/sol_0.py
 [          ok] check-if-a-string-contains-all-binary-codes-of-size-k/sol_0.py
-[compile_fail] check-if-a-string-is-a-valid-sequence-from-root-to-leaves-path-in-a-binary-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+[compile_fail] check-if-a-string-is-a-valid-sequence-from-root-to-leaves-path-in-a-binary-tree/sol_0.py  -- Application type mismatch: The argument
 [          ok] check-if-a-string-is-an-acronym-of-words/sol_0.py
 [          ok] check-if-a-word-occurs-as-a-prefix-of-any-word-in-a-sentence/sol_0.py
 [          ok] check-if-all-1s-are-at-least-length-k-places-away/sol_0.py
@@ -2853,7 +2853,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] check-if-number-has-equal-digit-count-and-digit-value/sol_0.py
 [          ok] check-if-number-is-a-sum-of-powers-of-three/sol_0.py
 [          ok] check-if-numbers-are-ascending-in-a-sentence/sol_0.py
-[compile_fail] check-if-one-string-swap-can-make-strings-equal/sol_0.py  -- Type mismatch
+[compile_fail] check-if-one-string-swap-can-make-strings-equal/sol_0.py  -- Application type mismatch: The argument
 [          ok] check-if-point-is-reachable/sol_0.py
 [          ok] check-if-string-is-a-prefix-of-array/sol_0.py
 [          ok] check-if-string-is-decomposable-into-value-equal-substrings/sol_0.py
@@ -2887,18 +2887,18 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] climbing-stairs/sol_0.py
 [compile_fail] clone-binary-tree-with-random-pointer/sol_0.py  -- Unknown identifier `NodeCopy`
 [compile_fail] closest-binary-search-tree-value/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
-[compile_fail] closest-binary-search-tree-value-ii/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+[compile_fail] closest-binary-search-tree-value-ii/sol_0.py  -- Application type mismatch: The argument
 [          ok] closest-dessert-cost/sol_0.py
 [compile_fail] closest-divisors/sol_0.py  -- type mismatch, `for` has type
 [compile_fail] closest-leaf-in-a-binary-tree/sol_0.py  -- Invalid field notation: Type of
 [compile_fail] closest-node-to-path-in-tree/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] closest-nodes-queries-in-a-binary-search-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
-[compile_fail] closest-prime-numbers-in-range/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] closest-prime-numbers-in-range/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] closest-room/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'bisect_left' encountered in Call node.
 [convert_fail] clumsy-factorial/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Error in code generation function PastaLean.binOpSyntax for key 'BinOp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [compile_fail] coin-change/sol_0.py  -- failed to synthesize instance of type class
 [          ok] coin-change-ii/sol_0.py
-[compile_fail] coin-path/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] coin-path/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] collect-coins-in-a-tree/sol_0.py  -- Application type mismatch: The argument
 [          ok] collecting-chocolates/sol_0.py
 [          ok] color-the-triangle-red/sol_0.py
@@ -2911,13 +2911,13 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] compare-strings-by-frequency-of-the-smallest-character/sol_0.py  -- Unknown identifier `next`
 [          ok] compare-version-numbers/sol_0.py
 [          ok] complement-of-base-10-integer/sol_0.py
-[          ok] complex-number-multiplication/sol_0.py
+[compile_fail] complex-number-multiplication/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] concatenated-words/sol_0.py  -- Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
 [          ok] concatenation-of-array/sol_0.py
 [          ok] concatenation-of-consecutive-binary-numbers/sol_0.py
 [          ok] confusing-number/sol_0.py
 [convert_fail] confusing-number-ii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' calls its sibling 'check'; helpers that reference each other are not supported yet.
-[compile_fail] connecting-cities-with-minimum-cost/sol_0.py  -- Unknown identifier `find`
+[compile_fail] connecting-cities-with-minimum-cost/sol_0.py  -- typeclass instance problem is stuck
 [          ok] consecutive-characters/sol_0.py
 [          ok] consecutive-numbers-sum/sol_0.py
 [compile_fail] constrained-subsequence-sum/sol_0.py  -- Type mismatch
@@ -2948,7 +2948,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] convert-a-number-to-hexadecimal/sol_0.py
 [          ok] convert-an-array-into-a-2d-array-with-conditions/sol_0.py
 [compile_fail] convert-binary-number-in-a-linked-list-to-integer/sol_0.py  -- Invalid field notation: Type of
-[compile_fail] convert-bst-to-greater-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+[compile_fail] convert-bst-to-greater-tree/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] convert-integer-to-the-sum-of-two-no-zero-integers/sol_0.py  -- type mismatch, `for` has type
 [compile_fail] convert-sorted-array-to-binary-search-tree/sol_0.py  -- Type mismatch
 [compile_fail] convert-sorted-list-to-binary-search-tree/sol_0.py  -- Type mismatch
@@ -3012,7 +3012,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] count-numbers-with-unique-digits-ii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' is used as a value; only direct calls are supported.
 [          ok] count-odd-numbers-in-an-interval-range/sol_0.py
 [convert_fail] count-of-integers/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' is used as a value; only direct calls are supported.
-[compile_fail] count-of-interesting-subarrays/sol_0.py  -- Type mismatch
+[          ok] count-of-interesting-subarrays/sol_0.py
 [          ok] count-of-matches-in-tournament/sol_0.py
 [compile_fail] count-of-range-sum/sol_0.py  -- Invalid argument name `initial` for function `itertools.pyAccumulate`
 [compile_fail] count-of-smaller-numbers-after-self/sol_0.py  -- failed to synthesize instance of type class
@@ -3047,7 +3047,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] count-subarrays-where-max-element-appears-at-least-k-times/sol_0.py
 [          ok] count-subarrays-with-fixed-bounds/sol_0.py
 [          ok] count-subarrays-with-median-k/sol_0.py
-[          ok] count-subarrays-with-more-ones-than-zeros/sol_0.py
+[compile_fail] count-subarrays-with-more-ones-than-zeros/sol_0.py  -- Type mismatch
 [compile_fail] count-subarrays-with-score-less-than-k/sol_0.py  -- Invalid argument name `initial` for function `itertools.pyAccumulate`
 [compile_fail] count-submatrices-with-all-ones/sol_0.py  -- invalid reassignment, value has type
 [          ok] count-submatrices-with-equal-frequency-of-x-and-y/sol_0.py
@@ -3080,12 +3080,12 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] count-the-number-of-square-free-subsets/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] count-the-number-of-substrings-with-dominant-ones/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] count-the-number-of-vowel-strings-in-range/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] count-the-repetitions/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] count-the-repetitions/sol_0.py  -- Application type mismatch: The argument
 [          ok] count-total-number-of-colored-cells/sol_0.py
 [          ok] count-triplets-that-can-form-two-arrays-of-equal-xor/sol_0.py
 [          ok] count-triplets-with-even-xor-set-bits-i/sol_0.py
 [          ok] count-triplets-with-even-xor-set-bits-ii/sol_0.py
-[compile_fail] count-unguarded-cells-in-the-grid/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] count-unguarded-cells-in-the-grid/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] count-unhappy-friends/sol_0.py  -- Application type mismatch: The argument
 [          ok] count-unique-characters-of-all-substrings-of-a-given-string/sol_0.py
 [compile_fail] count-univalue-subtrees/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
@@ -3108,7 +3108,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] course-schedule-ii/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] course-schedule-iii/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] course-schedule-iv/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] cousins-in-binary-tree/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] cousins-in-binary-tree/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] cousins-in-binary-tree-ii/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [          ok] cracking-the-safe/sol_0.py
 [          ok] crawler-log-folder/sol_0.py
@@ -3123,7 +3123,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] cutting-ribbons/sol_0.py
 [compile_fail] cycle-length-queries-in-a-tree/sol_0.py  -- `a` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `a`, consider using `let a` instead
 [          ok] cyclically-rotating-a-grid/sol_0.py
-[          ok] daily-temperatures/sol_0.py
+[compile_fail] daily-temperatures/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] day-of-the-week/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.returnSyntax for key 'Return' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'date' encountered in Call node.
 [          ok] day-of-the-year/sol_0.py
 [convert_fail] decode-string/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.binOpSyntax for key 'BinOp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
@@ -3143,13 +3143,13 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] defuse-the-bomb/sol_0.py
 [convert_fail] degree-of-an-array/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.subscriptSyntax for key 'Subscript' and syntax category 'term': Error in code generation function PastaLean.subscriptSyntax for key 'Subscript' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'most_common' encountered in Call node.
 [compile_fail] delete-and-earn/sol_0.py  -- Type mismatch
-[          ok] delete-characters-to-make-fancy-string/sol_0.py
+[compile_fail] delete-characters-to-make-fancy-string/sol_0.py  -- failed to synthesize instance of type class
 [          ok] delete-columns-to-make-sorted/sol_0.py
 [          ok] delete-columns-to-make-sorted-ii/sol_0.py
 [          ok] delete-columns-to-make-sorted-iii/sol_0.py
 [convert_fail] delete-duplicate-folders-in-system/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': call to 'buildSubtreeToRoots' inside a GeneratorExp cannot rebind the threaded state.
 [convert_fail] delete-greatest-value-in-each-row/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.returnSyntax for key 'Return' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.generatorExpSyntax for key 'GeneratorExp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': zip() expects at least two arguments.
-[compile_fail] delete-n-nodes-after-m-nodes-of-a-linked-list/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] delete-n-nodes-after-m-nodes-of-a-linked-list/sol_0.py  -- Invalid field `next`: The environment does not contain `Option.next`, so it is not possible to project the field `next` from an expression
 [compile_fail] delete-nodes-from-linked-list-present-in-array/sol_0.py  -- Invalid field `next`: The environment does not contain `Function.next`, so it is not possible to project the field `next` from an expression
 [          ok] delete-operation-for-two-strings/sol_0.py
 [compile_fail] delete-the-middle-node-of-a-linked-list/sol_0.py  -- Invalid field `next`: The environment does not contain `Int.next`, so it is not possible to project the field `next` from an expression
@@ -3161,7 +3161,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] destroy-sequential-targets/sol_0.py
 [          ok] destroying-asteroids/sol_0.py
 [compile_fail] detect-capital/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] detect-cycles-in-2d-grid/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] detect-cycles-in-2d-grid/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [          ok] detect-pattern-of-length-m-repeated-k-or-more-times/sol_0.py
 [          ok] determine-color-of-a-chessboard-square/sol_0.py
 [          ok] determine-if-a-cell-is-reachable-at-a-given-time/sol_0.py
@@ -3170,7 +3170,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] determine-if-two-strings-are-close/sol_0.py
 [          ok] determine-the-minimum-sum-of-a-k-avoiding-array/sol_0.py
 [          ok] determine-the-winner-of-a-bowling-game/sol_0.py
-[          ok] determine-whether-matrix-can-be-obtained-by-rotation/sol_0.py
+[compile_fail] determine-whether-matrix-can-be-obtained-by-rotation/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] detonate-the-maximum-bombs/sol_0.py  -- Type mismatch
 [          ok] di-string-match/sol_0.py
 [          ok] diagonal-traverse/sol_0.py
@@ -3182,7 +3182,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] difference-between-maximum-and-minimum-price-sum/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Unsupported tuple-assignment target element (only `Name` and subscript `a[i]` targets are supported): {"node_type": "Tuple",
 [          ok] difference-between-ones-and-zeros-in-row-and-column/sol_0.py
 [          ok] difference-of-number-of-distinct-values-on-diagonals/sol_0.py
-[          ok] different-ways-to-add-parentheses/sol_0.py
+[compile_fail] different-ways-to-add-parentheses/sol_0.py  -- Application type mismatch: The argument
 [          ok] disconnect-path-in-a-binary-matrix-by-at-most-one-flip/sol_0.py
 [compile_fail] display-table-of-food-orders-in-a-restaurant/sol_0.py  -- failed to synthesize instance of type class
 [          ok] distance-between-bus-stops/sol_0.py
@@ -3212,7 +3212,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] divide-array-into-increasing-sequences/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.generatorExpSyntax for key 'GeneratorExp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported imported library member 'itertools.groupby'.
 [          ok] divide-chocolate/sol_0.py
 [compile_fail] divide-intervals-into-minimum-number-of-groups/sol_0.py  -- Unknown identifier `heappop`
-[compile_fail] divide-nodes-into-the-maximum-number-of-groups/sol_0.py  -- Type mismatch
+[compile_fail] divide-nodes-into-the-maximum-number-of-groups/sol_0.py  -- Application type mismatch: The argument
 [          ok] divide-players-into-teams-of-equal-skill/sol_0.py
 [          ok] divide-two-integers/sol_0.py
 [          ok] divisible-and-non-divisible-sums-difference/sol_0.py
@@ -3234,7 +3234,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] encode-string-with-shortest-length/sol_0.py  -- Function expected at
 [compile_fail] equal-rational-numbers/sol_0.py  -- overloaded, errors
 [          ok] equal-row-and-column-pairs/sol_0.py
-[compile_fail] equal-tree-partition/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+[compile_fail] equal-tree-partition/sol_0.py  -- Application type mismatch: The argument
 [          ok] equalize-strings-by-adding-or-removing-characters-at-ends/sol_0.py
 [convert_fail] erect-the-fence/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [compile_fail] escape-a-large-maze/sol_0.py  -- failed to synthesize instance of type class
@@ -3249,7 +3249,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] exclusive-time-of-functions/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.augAssignSyntax for key 'AugAssign' and syntax category 'doElem': Error in code generation function PastaLean.subscriptSyntax for key 'Subscript' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [          ok] execution-of-all-suffix-instructions-staying-in-a-grid/sol_0.py
 [          ok] existence-of-a-substring-in-a-string-and-its-reverse/sol_0.py
-[          ok] expression-add-operators/sol_0.py
+[compile_fail] expression-add-operators/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] expressive-words/sol_0.py  -- failed to synthesize instance of type class
 [          ok] extra-characters-in-a-string/sol_0.py
 [          ok] factor-combinations/sol_0.py
@@ -3262,7 +3262,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] fibonacci-number/sol_0.py
 [          ok] filling-bookcase-shelves/sol_0.py
 [compile_fail] filter-restaurants-by-vegan-friendly-price-and-distance/sol_0.py  -- Application type mismatch: The argument
-[          ok] final-prices-with-a-special-discount-in-a-shop/sol_0.py
+[compile_fail] final-prices-with-a-special-discount-in-a-shop/sol_0.py  -- failed to synthesize instance of type class
 [          ok] final-value-of-variable-after-performing-operations/sol_0.py
 [compile_fail] find-a-corresponding-node-of-a-binary-tree-in-a-clone-of-that-tree/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
 [          ok] find-a-good-subset-of-the-matrix/sol_0.py
@@ -3284,21 +3284,21 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] find-and-replace-in-string/sol_0.py  -- Function expected at
 [compile_fail] find-and-replace-pattern/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] find-array-given-subset-sums/sol_0.py  -- Unknown identifier `SortedList`
-[compile_fail] find-beautiful-indices-in-the-given-array-i/sol_0.py  -- typeclass instance problem is stuck
-[compile_fail] find-beautiful-indices-in-the-given-array-ii/sol_0.py  -- typeclass instance problem is stuck
+[compile_fail] find-beautiful-indices-in-the-given-array-i/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] find-beautiful-indices-in-the-given-array-ii/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] find-bottom-left-tree-value/sol_0.py  -- Invalid field notation: Type of
 [compile_fail] find-building-where-alice-and-bob-can-meet/sol_0.py  -- Type mismatch
 [          ok] find-center-of-star-graph/sol_0.py
 [compile_fail] find-champion-i/sol_0.py  -- type mismatch, `for` has type
 [compile_fail] find-champion-ii/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] find-closest-node-to-given-two-nodes/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] find-closest-node-to-given-two-nodes/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] find-closest-number-to-zero/sol_0.py  -- walrus inside BoolOp is evaluated conditionally; hoisting it would change evaluation order.
 [convert_fail] find-common-characters/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.returnSyntax for key 'Return' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'elements' encountered in Call node.
 [compile_fail] find-common-elements-between-two-arrays/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] find-critical-and-pseudo-critical-edges-in-minimum-spanning-tree/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.generatorExpSyntax for key 'GeneratorExp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Mutating method 'union' cannot be used as an expression under value semantics; call it as a statement on its own line.
 [compile_fail] find-distance-in-a-binary-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [          ok] find-duplicate-file-in-system/sol_0.py
-[compile_fail] find-edges-in-shortest-paths/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] find-edges-in-shortest-paths/sol_0.py  -- failed to synthesize instance of type class
 [          ok] find-eventual-safe-states/sol_0.py
 [          ok] find-first-and-last-position-of-element-in-sorted-array/sol_0.py
 [compile_fail] find-first-palindromic-string-in-the-array/sol_0.py  -- Unknown identifier `next`
@@ -3333,7 +3333,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] find-minimum-time-to-finish-all-jobs-ii/sol_0.py
 [          ok] find-missing-and-repeated-values/sol_0.py
 [          ok] find-missing-observations/sol_0.py
-[compile_fail] find-mode-in-binary-search-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+[compile_fail] find-mode-in-binary-search-tree/sol_0.py  -- Application type mismatch: The argument
 [          ok] find-n-unique-integers-sum-up-to-zero/sol_0.py
 [compile_fail] find-nearest-point-that-has-the-same-x-or-y-coordinate/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] find-nearest-right-node-in-binary-tree/sol_0.py  -- Invalid field notation: Type of
@@ -3346,7 +3346,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] find-peak-element/sol_0.py
 [          ok] find-permutation/sol_0.py
 [          ok] find-pivot-index/sol_0.py
-[compile_fail] find-players-with-zero-or-one-losses/sol_0.py  -- Type mismatch
+[compile_fail] find-players-with-zero-or-one-losses/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] find-polygon-with-the-largest-perimeter/sol_0.py  -- Invalid argument name `initial` for function `itertools.pyAccumulate`
 [compile_fail] find-resultant-array-after-removing-anagrams/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] find-right-interval/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.generatorExpSyntax for key 'GeneratorExp' and syntax category 'term': Only Name targets are supported in tuple comprehension unpacking.
@@ -3362,8 +3362,8 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] find-target-indices-after-sorting-array/sol_0.py
 [          ok] find-the-array-concatenation-value/sol_0.py
 [          ok] find-the-child-who-has-the-ball-after-k-seconds/sol_0.py
-[compile_fail] find-the-city-with-the-smallest-number-of-neighbors-at-a-threshold-distance/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] find-the-closest-marked-node/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] find-the-city-with-the-smallest-number-of-neighbors-at-a-threshold-distance/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] find-the-closest-marked-node/sol_0.py  -- failed to synthesize instance of type class
 [          ok] find-the-closest-palindrome/sol_0.py
 [compile_fail] find-the-count-of-numbers-which-are-not-special/sol_0.py  -- failed to synthesize instance of type class
 [          ok] find-the-derangement-of-an-array/sol_0.py
@@ -3394,7 +3394,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] find-the-longest-equal-subarray/sol_0.py
 [          ok] find-the-longest-semi-repetitive-substring/sol_0.py
 [          ok] find-the-longest-substring-containing-vowels-in-even-counts/sol_0.py
-[          ok] find-the-longest-valid-obstacle-course-at-each-position/sol_0.py
+[compile_fail] find-the-longest-valid-obstacle-course-at-each-position/sol_0.py  -- Type mismatch
 [          ok] find-the-losers-of-the-circular-game/sol_0.py
 [          ok] find-the-maximum-achievable-number/sol_0.py
 [compile_fail] find-the-maximum-divisibility-score/sol_0.py  -- failed to synthesize instance of type class
@@ -3407,7 +3407,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] find-the-maximum-sum-of-node-values/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] find-the-median-of-the-uniqueness-array/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'check' is used as a value; only direct calls are supported.
 [          ok] find-the-middle-index-in-array/sol_0.py
-[compile_fail] find-the-minimum-and-maximum-number-of-nodes-between-critical-points/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] find-the-minimum-and-maximum-number-of-nodes-between-critical-points/sol_0.py  -- Invalid field notation: Type of
 [          ok] find-the-minimum-area-to-cover-all-ones-i/sol_0.py
 [compile_fail] find-the-minimum-area-to-cover-all-ones-ii/sol_0.py  -- Type mismatch
 [convert_fail] find-the-minimum-cost-array-permutation/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'g' calls its sibling 'dfs'; helpers that reference each other are not supported yet.
@@ -3418,7 +3418,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] find-the-number-of-distinct-colors-among-the-balls/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] find-the-number-of-good-pairs-i/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] find-the-number-of-good-pairs-ii/sol_0.py  -- failed to synthesize instance of type class
-[          ok] find-the-number-of-subarrays-where-boundary-elements-are-maximum/sol_0.py
+[compile_fail] find-the-number-of-subarrays-where-boundary-elements-are-maximum/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] find-the-number-of-ways-to-place-people-i/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] find-the-number-of-ways-to-place-people-ii/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] find-the-number-of-winning-players/sol_0.py  -- Application type mismatch: The argument
@@ -3427,7 +3427,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] find-the-pivot-integer/sol_0.py
 [          ok] find-the-prefix-common-array-of-two-arrays/sol_0.py
 [          ok] find-the-punishment-number-of-an-integer/sol_0.py
-[compile_fail] find-the-safest-path-in-a-grid/sol_0.py  -- Type mismatch
+[convert_fail] find-the-safest-path-in-a-grid/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] find-the-score-of-all-prefixes-of-an-array/sol_0.py
 [compile_fail] find-the-shortest-superstring/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] find-the-smallest-divisor-given-a-threshold/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'f' is used as a value; only direct calls are supported.
@@ -3457,7 +3457,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] finding-the-number-of-visible-mountains/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] finding-the-users-active-minutes/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] first-bad-version/sol_0.py  -- Unknown identifier `isBadVersion`
-[compile_fail] first-completely-painted-row-or-column/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] first-completely-painted-row-or-column/sol_0.py  -- type mismatch, `for` has type
 [          ok] first-day-where-you-have-been-in-all-the-rooms/sol_0.py
 [compile_fail] first-letter-to-appear-twice/sol_0.py  -- type mismatch, `for` has type
 [          ok] first-missing-positive/sol_0.py
@@ -3467,9 +3467,9 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] flatten-binary-tree-to-linked-list/sol_0.py  -- Invalid field notation: Type of
 [compile_fail] flip-binary-tree-to-match-preorder-traversal/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [          ok] flip-columns-for-maximum-number-of-equal-rows/sol_0.py
-[compile_fail] flip-equivalent-binary-trees/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+[compile_fail] flip-equivalent-binary-trees/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] flip-game/sol_0.py  -- Application type mismatch: The argument
-[          ok] flip-game-ii/sol_0.py
+[compile_fail] flip-game-ii/sol_0.py  -- typeclass instance problem is stuck
 [          ok] flip-string-to-monotone-increasing/sol_0.py
 [compile_fail] flipping-an-image/sol_0.py  -- `row` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `row`, consider using `let row` instead
 [compile_fail] flood-fill/sol_0.py  -- typeclass instance problem is stuck
@@ -3478,25 +3478,25 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] form-largest-integer-with-digits-that-add-up-to-target/sol_0.py  -- failed to synthesize instance of type class
 [          ok] form-smallest-number-from-two-digit-arrays/sol_0.py
 [          ok] four-divisors/sol_0.py
-[          ok] fraction-addition-and-subtraction/sol_0.py
+[compile_fail] fraction-addition-and-subtraction/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] fraction-to-recurring-decimal/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] freedom-trail/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] frequency-of-the-most-frequent-element/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] friends-of-appropriate-ages/sol_0.py  -- Type mismatch
 [compile_fail] frog-jump/sol_0.py  -- typeclass instance problem is stuck
 [          ok] frog-jump-ii/sol_0.py
-[compile_fail] frog-position-after-t-seconds/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] frog-position-after-t-seconds/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] fruit-into-baskets/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] furthest-building-you-can-reach/sol_0.py  -- Unknown identifier `heappush`
 [          ok] furthest-point-from-origin/sol_0.py
 [          ok] game-of-life/sol_0.py
 [          ok] game-of-nim/sol_0.py
 [          ok] gas-station/sol_0.py
-[compile_fail] gcd-sort-of-an-array/sol_0.py  -- Unknown identifier `find`
+[compile_fail] gcd-sort-of-an-array/sol_0.py  -- typeclass instance problem is stuck
 [          ok] generalized-abbreviation/sol_0.py
 [          ok] generate-a-string-with-characters-that-have-odd-counts/sol_0.py
 [          ok] generate-binary-strings-without-adjacent-zeros/sol_0.py
-[          ok] generate-parentheses/sol_0.py
+[compile_fail] generate-parentheses/sol_0.py  -- typeclass instance problem is stuck
 [          ok] get-biggest-three-rhombus-sums-in-a-grid/sol_0.py
 [compile_fail] get-equal-substrings-within-budget/sol_0.py  -- typeclass instance problem is stuck
 [          ok] get-maximum-in-generated-array/sol_0.py
@@ -3506,9 +3506,9 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] goal-parser-interpretation/sol_0.py
 [          ok] goat-latin/sol_0.py
 [compile_fail] graph-connectivity-with-threshold/sol_0.py  -- Type mismatch
-[compile_fail] graph-valid-tree/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] graph-valid-tree/sol_0.py  -- typeclass instance problem is stuck
 [          ok] gray-code/sol_0.py
-[          ok] greatest-common-divisor-of-strings/sol_0.py
+[compile_fail] greatest-common-divisor-of-strings/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] greatest-common-divisor-traversal/sol_0.py  -- Type mismatch
 [compile_fail] greatest-english-letter-in-upper-and-lower-case/sol_0.py  -- Unknown identifier `ascii_uppercase`
 [compile_fail] greatest-sum-divisible-by-three/sol_0.py  -- failed to synthesize instance of type class
@@ -3547,7 +3547,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] image-overlap/sol_0.py  -- failed to synthesize instance of type class
 [          ok] image-smoother/sol_0.py
 [compile_fail] increasing-decreasing-string/sol_0.py  -- Unknown identifier `ascii_lowercase`
-[compile_fail] increasing-order-search-tree/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
+[compile_fail] increasing-order-search-tree/sol_0.py  -- Application type mismatch: The argument
 [          ok] increasing-triplet-subsequence/sol_0.py
 [compile_fail] increment-submatrices-by-one/sol_0.py  -- Application type mismatch: The argument
 [          ok] incremental-memory-leak/sol_0.py
@@ -3558,16 +3558,16 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] integer-break/sol_0.py
 [          ok] integer-replacement/sol_0.py
 [          ok] integer-to-english-words/sol_0.py
-[compile_fail] integer-to-roman/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] integer-to-roman/sol_0.py  -- failed to synthesize instance of type class
 [          ok] interleaving-string/sol_0.py
 [          ok] intersection-of-multiple-arrays/sol_0.py
 [          ok] intersection-of-three-sorted-arrays/sol_0.py
 [          ok] intersection-of-two-arrays/sol_0.py
 [          ok] intersection-of-two-arrays-ii/sol_0.py
 [compile_fail] intersection-of-two-linked-lists/sol_0.py  -- Invalid field notation: Type of
-[compile_fail] interval-list-intersections/sol_0.py  -- Unknown identifier `firstlist`
+[compile_fail] interval-list-intersections/sol_0.py  -- Application type mismatch: The argument
 [          ok] intervals-between-identical-elements/sol_0.py
-[compile_fail] invalid-transactions/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] invalid-transactions/sol_0.py  -- Invalid match expression: The type of pattern variable 'd' contains metavariables:
 [compile_fail] ipo/sol_0.py  -- Unknown identifier `heapify`
 [convert_fail] is-array-a-preorder-of-some-binary-tree/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': call to 'dfs' inside a GeneratorExp cannot rebind the threaded state.
 [          ok] is-graph-bipartite/sol_0.py
@@ -3582,13 +3582,13 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] jump-game-v/sol_0.py
 [          ok] jump-game-vi/sol_0.py
 [compile_fail] jump-game-vii/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] jump-game-viii/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] jump-game-viii/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] k-closest-points-to-origin/sol_0.py  -- Application type mismatch: The argument
 [          ok] k-concatenation-maximum-sum/sol_0.py
 [          ok] k-diff-pairs-in-an-array/sol_0.py
 [          ok] k-divisible-elements-subarrays/sol_0.py
 [          ok] k-empty-slots/sol_0.py
-[compile_fail] k-highest-ranked-items-within-a-price-range/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] k-highest-ranked-items-within-a-price-range/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] k-inverse-pairs-array/sol_0.py
 [          ok] k-items-with-the-maximum-sum/sol_0.py
 [          ok] k-radius-subarray-averages/sol_0.py
@@ -3608,7 +3608,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] kth-largest-sum-in-a-binary-tree/sol_0.py  -- Invalid field notation: Type of
 [          ok] kth-missing-positive-number/sol_0.py
 [convert_fail] kth-smallest-amount-with-single-denomination-combination/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'check' is used as a value; only direct calls are supported.
-[compile_fail] kth-smallest-element-in-a-bst/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
+[compile_fail] kth-smallest-element-in-a-bst/sol_0.py  -- Invalid field notation: Type of
 [          ok] kth-smallest-element-in-a-sorted-matrix/sol_0.py
 [          ok] kth-smallest-instructions/sol_0.py
 [          ok] kth-smallest-number-in-multiplication-table/sol_0.py
@@ -3664,13 +3664,13 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] length-of-the-longest-alphabetical-continuous-substring/sol_0.py
 [compile_fail] length-of-the-longest-subsequence-that-sums-to-target/sol_0.py  -- failed to synthesize instance of type class
 [          ok] length-of-the-longest-valid-substring/sol_0.py
-[          ok] letter-case-permutation/sol_0.py
+[compile_fail] letter-case-permutation/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] letter-combinations-of-a-phone-number/sol_0.py  -- Type mismatch
 [compile_fail] letter-tile-possibilities/sol_0.py  -- Invalid match expression: The type of pattern variable 'cnt' contains metavariables:
 [          ok] lexicographical-numbers/sol_0.py
 [convert_fail] lexicographically-minimum-string-after-removing-stars/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [          ok] lexicographically-smallest-beautiful-string/sol_0.py
-[compile_fail] lexicographically-smallest-equivalent-string/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] lexicographically-smallest-equivalent-string/sol_0.py  -- typeclass instance problem is stuck
 [          ok] lexicographically-smallest-palindrome/sol_0.py
 [compile_fail] lexicographically-smallest-string-after-a-swap/sol_0.py  -- Application type mismatch: The argument
 [          ok] lexicographically-smallest-string-after-applying-operations/sol_0.py
@@ -3692,7 +3692,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] longest-binary-subsequence-less-than-or-equal-to-k/sol_0.py
 [          ok] longest-chunked-palindrome-decomposition/sol_0.py
 [          ok] longest-common-prefix/sol_0.py
-[          ok] longest-common-subpath/sol_0.py
+[compile_fail] longest-common-subpath/sol_0.py  -- typeclass instance problem is stuck
 [          ok] longest-common-subsequence/sol_0.py
 [          ok] longest-common-subsequence-between-sorted-arrays/sol_0.py
 [convert_fail] longest-common-suffix-queries/sol_0.py  -- Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
@@ -3724,12 +3724,12 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] longest-repeating-substring/sol_0.py
 [compile_fail] longest-square-streak-in-an-array/sol_0.py  -- `v` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `v`, consider using `let v` instead
 [          ok] longest-strictly-increasing-or-strictly-decreasing-subarray/sol_0.py
-[          ok] longest-string-chain/sol_0.py
+[compile_fail] longest-string-chain/sol_0.py  -- failed to synthesize instance of type class
 [          ok] longest-subarray-of-1s-after-deleting-one-element/sol_0.py
 [          ok] longest-subarray-with-maximum-bitwise-and/sol_0.py
 [compile_fail] longest-subsequence-repeated-k-times/sol_0.py  -- Unknown identifier `string.ascii_lowercase`
 [          ok] longest-subsequence-with-limited-sum/sol_0.py
-[compile_fail] longest-substring-of-all-vowels-in-order/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] longest-substring-of-all-vowels-in-order/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] longest-substring-of-one-repeating-character/sol_0.py  -- ambiguous identifier ``max`, possible interpretations: [Max.max, max]
 [compile_fail] longest-substring-with-at-least-k-repeating-characters/sol_0.py  -- Unknown identifier `next`
 [compile_fail] longest-substring-with-at-most-k-distinct-characters/sol_0.py  -- failed to synthesize instance of type class
@@ -3746,7 +3746,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] longest-word-in-dictionary/sol_0.py  -- Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
 [          ok] longest-word-in-dictionary-through-deleting/sol_0.py
 [convert_fail] longest-word-with-all-prefixes/sol_0.py  -- Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
-[compile_fail] longest-zigzag-path-in-a-binary-tree/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
+[compile_fail] longest-zigzag-path-in-a-binary-tree/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] loud-and-rich/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] lowest-common-ancestor-of-a-binary-tree-ii/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] lowest-common-ancestor-of-deepest-leaves/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
@@ -3769,13 +3769,13 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] make-string-anti-palindrome/sol_0.py
 [          ok] make-sum-divisible-by-p/sol_0.py
 [compile_fail] make-the-prefix-sum-non-negative/sol_0.py  -- Unknown identifier `heappush`
-[          ok] make-the-string-great/sol_0.py
-[compile_fail] make-the-xor-of-all-segments-equal-to-zero/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] make-the-string-great/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] make-the-xor-of-all-segments-equal-to-zero/sol_0.py  -- failed to synthesize instance of type class
 [          ok] make-three-strings-equal/sol_0.py
 [          ok] make-two-arrays-equal-by-reversing-subarrays/sol_0.py
 [compile_fail] making-a-large-island/sol_0.py  -- Invalid match expression: The type of pattern variable 'cnt' contains metavariables:
-[compile_fail] making-file-names-unique/sol_0.py  -- Type mismatch
-[compile_fail] map-of-highest-peak/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] making-file-names-unique/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] map-of-highest-peak/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] mark-elements-on-array-by-performing-queries/sol_0.py  -- `k` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `k`, consider using `let k` instead
 [          ok] masking-personal-information/sol_0.py
 [          ok] match-alphanumerical-pattern-in-matrix-i/sol_0.py
@@ -3787,7 +3787,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] matrix-similarity-after-cyclic-shifts/sol_0.py
 [convert_fail] max-area-of-island/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': call to 'dfs' inside a GeneratorExp cannot rebind the threaded state.
 [          ok] max-chunks-to-make-sorted/sol_0.py
-[          ok] max-chunks-to-make-sorted-ii/sol_0.py
+[compile_fail] max-chunks-to-make-sorted-ii/sol_0.py  -- failed to synthesize instance of type class
 [          ok] max-consecutive-ones/sol_0.py
 [          ok] max-consecutive-ones-ii/sol_0.py
 [          ok] max-consecutive-ones-iii/sol_0.py
@@ -3797,10 +3797,10 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] max-number-of-k-sum-pairs/sol_0.py
 [          ok] max-pair-sum-in-an-array/sol_0.py
 [          ok] max-points-on-a-line/sol_0.py
-[compile_fail] max-sum-of-a-pair-with-equal-sum-of-digits/sol_0.py  -- Type mismatch
+[          ok] max-sum-of-a-pair-with-equal-sum-of-digits/sol_0.py
 [compile_fail] max-value-of-equation/sol_0.py  -- Unknown identifier `heappop`
 [compile_fail] maximal-network-rank/sol_0.py  -- Application type mismatch: The argument
-[          ok] maximal-range-that-each-element-is-maximum-in-it/sol_0.py
+[compile_fail] maximal-range-that-each-element-is-maximum-in-it/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] maximal-score-after-applying-k-operations/sol_0.py  -- Unknown identifier `heapify`
 [          ok] maximal-square/sol_0.py
 [          ok] maximize-area-of-square-hole-in-grid/sol_0.py
@@ -3820,7 +3820,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] maximize-the-profit-as-the-salesman/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] maximize-the-topmost-element-after-k-moves/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': max() keyword argument 'default' is not supported yet.
 [          ok] maximize-total-cost-of-alternating-subarrays/sol_0.py
-[          ok] maximize-total-tastiness-of-purchased-fruits/sol_0.py
+[compile_fail] maximize-total-tastiness-of-purchased-fruits/sol_0.py  -- failed to synthesize instance of type class
 [          ok] maximize-value-of-function-in-a-ball-passing-game/sol_0.py
 [          ok] maximize-win-from-two-segments/sol_0.py
 [          ok] maximum-absolute-sum-of-any-subarray/sol_0.py
@@ -3830,7 +3830,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] maximum-area-of-a-piece-of-cake-after-horizontal-and-vertical-cuts/sol_0.py
 [compile_fail] maximum-area-of-longest-diagonal-rectangle/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] maximum-array-hopping-score-i/sol_0.py  -- failed to synthesize instance of type class
-[          ok] maximum-array-hopping-score-ii/sol_0.py
+[compile_fail] maximum-array-hopping-score-ii/sol_0.py  -- failed to synthesize instance of type class
 [          ok] maximum-ascending-subarray-sum/sol_0.py
 [compile_fail] maximum-average-pass-ratio/sol_0.py  -- Application type mismatch: The argument
 [          ok] maximum-average-subarray-i/sol_0.py
@@ -3888,7 +3888,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] maximum-nesting-depth-of-the-parentheses/sol_0.py
 [          ok] maximum-nesting-depth-of-two-valid-parentheses-strings/sol_0.py
 [          ok] maximum-non-negative-product-in-a-matrix/sol_0.py
-[          ok] maximum-number-of-accepted-invitations/sol_0.py
+[compile_fail] maximum-number-of-accepted-invitations/sol_0.py  -- Invalid match expression: This pattern contains metavariables:
 [          ok] maximum-number-of-achievable-transfer-requests/sol_0.py
 [          ok] maximum-number-of-alloys/sol_0.py
 [          ok] maximum-number-of-balloons/sol_0.py
@@ -3920,7 +3920,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] maximum-number-of-operations-with-the-same-score-ii/sol_0.py
 [          ok] maximum-number-of-pairs-in-array/sol_0.py
 [          ok] maximum-number-of-people-that-can-be-caught-in-tag/sol_0.py
-[compile_fail] maximum-number-of-points-from-grid-queries/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] maximum-number-of-points-from-grid-queries/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] maximum-number-of-points-with-cost/sol_0.py  -- Application type mismatch: The argument
 [          ok] maximum-number-of-potholes-that-can-be-fixed/sol_0.py
 [          ok] maximum-number-of-removable-characters/sol_0.py
@@ -3936,8 +3936,8 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] maximum-number-of-words-you-can-type/sol_0.py  -- failed to synthesize instance of type class
 [          ok] maximum-number-that-makes-result-of-bitwise-and-zero/sol_0.py
 [          ok] maximum-odd-binary-number/sol_0.py
-[compile_fail] maximum-of-absolute-value-expression/sol_0.py  -- Application type mismatch: The argument
-[          ok] maximum-of-minimum-values-in-all-subarrays/sol_0.py
+[compile_fail] maximum-of-absolute-value-expression/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] maximum-of-minimum-values-in-all-subarrays/sol_0.py  -- failed to synthesize instance of type class
 [          ok] maximum-or/sol_0.py
 [          ok] maximum-palindromes-after-operations/sol_0.py
 [compile_fail] maximum-path-quality-of-a-graph/sol_0.py  -- typeclass instance problem is stuck
@@ -3973,7 +3973,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] maximum-score-from-performing-multiplication-operations/sol_0.py
 [          ok] maximum-score-from-removing-stones/sol_0.py
 [          ok] maximum-score-from-removing-substrings/sol_0.py
-[          ok] maximum-score-of-a-good-subarray/sol_0.py
+[compile_fail] maximum-score-of-a-good-subarray/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] maximum-score-of-a-node-sequence/sol_0.py  -- Unknown identifier `nlargest`
 [          ok] maximum-score-of-spliced-array/sol_0.py
 [          ok] maximum-score-words-formed-by-letters/sol_0.py
@@ -3992,7 +3992,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] maximum-strong-pair-xor-ii/sol_0.py  -- Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
 [compile_fail] maximum-students-taking-exam/sol_0.py  -- typeclass instance problem is stuck
 [          ok] maximum-subarray/sol_0.py
-[compile_fail] maximum-subarray-min-product/sol_0.py  -- Invalid argument name `initial` for function `itertools.pyAccumulate`
+[compile_fail] maximum-subarray-min-product/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] maximum-subarray-sum-after-one-operation/sol_0.py  -- Type mismatch
 [          ok] maximum-subarray-sum-with-one-deletion/sol_0.py
 [compile_fail] maximum-subsequence-score/sol_0.py  -- Unknown identifier `heappush`
@@ -4000,7 +4000,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] maximum-sum-bst-in-binary-tree/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Unsupported tuple-assignment target element (only `Name` and subscript `a[i]` targets are supported): {"node_type": "Tuple",
 [          ok] maximum-sum-circular-subarray/sol_0.py
 [compile_fail] maximum-sum-obtained-of-any-permutation/sol_0.py  -- Application type mismatch: The argument
-[convert_fail] maximum-sum-of-3-non-overlapping-subarrays/sol_0.py  -- NotImplementedError: Multiple assignment targets are not supported.
+[compile_fail] maximum-sum-of-3-non-overlapping-subarrays/sol_0.py  -- invalid reassignment, value has type
 [compile_fail] maximum-sum-of-almost-unique-subarray/sol_0.py  -- failed to synthesize instance of type class
 [          ok] maximum-sum-of-an-hourglass/sol_0.py
 [compile_fail] maximum-sum-of-distinct-subarrays-with-length-k/sol_0.py  -- failed to synthesize instance of type class
@@ -4027,7 +4027,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] maximum-value-of-an-ordered-triplet-ii/sol_0.py
 [compile_fail] maximum-value-of-k-coins-from-piles/sol_0.py  -- Invalid argument name `initial` for function `itertools.pyAccumulate`
 [          ok] maximum-white-tiles-covered-by-a-carpet/sol_0.py
-[compile_fail] maximum-width-of-binary-tree/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] maximum-width-of-binary-tree/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [convert_fail] maximum-width-ramp/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.listSyntax for key 'List' and syntax category 'term': Error in code generation function PastaLean.binOpSyntax for key 'BinOp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [compile_fail] maximum-xor-after-operations/sol_0.py  -- Unknown identifier `or_`
 [compile_fail] maximum-xor-for-each-query/sol_0.py  -- failed to synthesize instance of type class
@@ -4042,7 +4042,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] meeting-rooms-ii/sol_0.py  -- invalid binder name `Libraries.math.pyMathER`, it must be atomic
 [compile_fail] meeting-rooms-iii/sol_0.py  -- Unknown identifier `heapify`
 [          ok] meeting-scheduler/sol_0.py
-[compile_fail] merge-in-between-linked-lists/sol_0.py  -- invalid reassignment, value has type
+[compile_fail] merge-in-between-linked-lists/sol_0.py  -- Invalid field notation: Type of
 [compile_fail] merge-intervals/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] merge-k-sorted-lists/sol_0.py  -- Unknown identifier `setattr`
 [compile_fail] merge-nodes-in-between-zeros/sol_0.py  -- invalid reassignment, value has type
@@ -4053,9 +4053,9 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] merge-triplets-to-form-target-triplet/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] merge-two-2d-arrays-by-summing-values/sol_0.py  -- failed to synthesize instance of type class
 [          ok] mice-and-cheese/sol_0.py
-[compile_fail] middle-of-the-linked-list/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] middle-of-the-linked-list/sol_0.py  -- Invalid field notation: Type of
 [          ok] min-cost-climbing-stairs/sol_0.py
-[compile_fail] min-cost-to-connect-all-points/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] min-cost-to-connect-all-points/sol_0.py  -- failed to synthesize instance of type class
 [          ok] min-max-game/sol_0.py
 [          ok] minesweeper/sol_0.py
 [compile_fail] minimize-deviation-in-array/sol_0.py  -- Type mismatch
@@ -4085,7 +4085,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] minimum-absolute-difference-in-bst/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [compile_fail] minimum-absolute-difference-queries/sol_0.py  -- Type mismatch
 [compile_fail] minimum-absolute-sum-difference/sol_0.py  -- Application type mismatch: The argument
-[          ok] minimum-add-to-make-parentheses-valid/sol_0.py
+[compile_fail] minimum-add-to-make-parentheses-valid/sol_0.py  -- failed to synthesize instance of type class
 [          ok] minimum-addition-to-make-integer-beautiful/sol_0.py
 [          ok] minimum-additions-to-make-valid-string/sol_0.py
 [compile_fail] minimum-adjacent-swaps-for-k-consecutive-ones/sol_0.py  -- failed to synthesize instance of type class
@@ -4110,9 +4110,9 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] minimum-cost-for-cutting-cake-ii/sol_0.py
 [compile_fail] minimum-cost-for-tickets/sol_0.py  -- Application type mismatch: The argument
 [          ok] minimum-cost-homecoming-of-a-robot-in-a-grid/sol_0.py
-[compile_fail] minimum-cost-of-a-path-with-special-roads/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] minimum-cost-of-a-path-with-special-roads/sol_0.py  -- Unknown identifier `heappop`
 [          ok] minimum-cost-of-buying-candies-with-discount/sol_0.py
-[compile_fail] minimum-cost-to-buy-apples/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] minimum-cost-to-buy-apples/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] minimum-cost-to-change-the-final-value-of-expression/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.subscriptSyntax for key 'Subscript' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [compile_fail] minimum-cost-to-connect-sticks/sol_0.py  -- Unknown identifier `heapify`
 [compile_fail] minimum-cost-to-connect-two-groups-of-points/sol_0.py  -- failed to synthesize instance of type class
@@ -4122,12 +4122,12 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] minimum-cost-to-equalize-array/sol_0.py
 [compile_fail] minimum-cost-to-hire-k-workers/sol_0.py  -- Unknown identifier `heappush`
 [          ok] minimum-cost-to-make-all-characters-equal/sol_0.py
-[compile_fail] minimum-cost-to-make-array-equal/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] minimum-cost-to-make-array-equal/sol_0.py  -- Type mismatch
 [compile_fail] minimum-cost-to-make-array-equalindromic/sol_0.py  -- don't know how to synthesize implicit argument `α`
-[compile_fail] minimum-cost-to-make-at-least-one-valid-path-in-a-grid/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] minimum-cost-to-make-at-least-one-valid-path-in-a-grid/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] minimum-cost-to-merge-stones/sol_0.py  -- failed to synthesize instance of type class
 [          ok] minimum-cost-to-move-chips-to-the-same-position/sol_0.py
-[compile_fail] minimum-cost-to-reach-city-with-discounts/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] minimum-cost-to-reach-city-with-discounts/sol_0.py  -- Unknown identifier `heappop`
 [compile_fail] minimum-cost-to-reach-destination-in-time/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] minimum-cost-to-separate-sentence-into-rows/sol_0.py  -- walrus in a `while` test is re-evaluated each iteration and cannot be hoisted.
 [          ok] minimum-cost-to-set-cooking-time/sol_0.py
@@ -4159,12 +4159,12 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] minimum-flips-to-make-a-or-b-equal-to-c/sol_0.py
 [compile_fail] minimum-fuel-cost-to-report-to-the-capital/sol_0.py  -- typeclass instance problem is stuck
 [          ok] minimum-garden-perimeter-to-collect-enough-apples/sol_0.py
-[compile_fail] minimum-genetic-mutation/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] minimum-genetic-mutation/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] minimum-health-to-beat-game/sol_0.py
 [compile_fail] minimum-height-trees/sol_0.py  -- Application type mismatch: The argument
 [          ok] minimum-hours-of-training-to-win-a-competition/sol_0.py
 [compile_fail] minimum-impossible-or/sol_0.py  -- Unknown identifier `next`
-[compile_fail] minimum-incompatibility/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] minimum-incompatibility/sol_0.py  -- failed to synthesize instance of type class
 [          ok] minimum-increment-operations-to-make-array-beautiful/sol_0.py
 [          ok] minimum-increment-to-make-array-unique/sol_0.py
 [convert_fail] minimum-index-of-a-valid-split/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.subscriptSyntax for key 'Subscript' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'most_common' encountered in Call node.
@@ -4173,8 +4173,8 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] minimum-insertion-steps-to-make-a-string-palindrome/sol_0.py
 [          ok] minimum-insertions-to-balance-a-parentheses-string/sol_0.py
 [compile_fail] minimum-interval-to-include-each-query/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] minimum-jumps-to-reach-home/sol_0.py  -- mutable variable `k` cannot be shadowed
-[compile_fail] minimum-knight-moves/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] minimum-jumps-to-reach-home/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
+[convert_fail] minimum-knight-moves/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] minimum-length-of-anagram-concatenation/sol_0.py  -- typeclass instance problem is stuck
 [          ok] minimum-length-of-string-after-deleting-similar-ends/sol_0.py
 [          ok] minimum-length-of-string-after-operations/sol_0.py
@@ -4188,16 +4188,16 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] minimum-moves-to-equal-array-elements-ii/sol_0.py
 [convert_fail] minimum-moves-to-get-a-peaceful-board/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.generatorExpSyntax for key 'GeneratorExp' and syntax category 'term': Only Name targets are supported in tuple comprehension unpacking.
 [          ok] minimum-moves-to-make-array-complementary/sol_0.py
-[compile_fail] minimum-moves-to-move-a-box-to-their-target-location/sol_0.py  -- mutable variable `b` cannot be shadowed
+[convert_fail] minimum-moves-to-move-a-box-to-their-target-location/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] minimum-moves-to-pick-k-ones/sol_0.py  -- Type mismatch
-[compile_fail] minimum-moves-to-reach-target-with-rotations/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] minimum-moves-to-spread-stones-over-grid/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] minimum-moves-to-reach-target-with-rotations/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
+[compile_fail] minimum-moves-to-spread-stones-over-grid/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] minimum-number-game/sol_0.py  -- Unknown identifier `heapify`
 [compile_fail] minimum-number-of-arrows-to-burst-balloons/sol_0.py  -- Application type mismatch: The argument
 [          ok] minimum-number-of-chairs-in-a-waiting-room/sol_0.py
 [compile_fail] minimum-number-of-changes-to-make-binary-string-beautiful/sol_0.py  -- failed to synthesize instance of type class
 [          ok] minimum-number-of-coins-for-fruits/sol_0.py
-[          ok] minimum-number-of-coins-for-fruits-ii/sol_0.py
+[compile_fail] minimum-number-of-coins-for-fruits-ii/sol_0.py  -- failed to synthesize instance of type class
 [          ok] minimum-number-of-coins-to-be-added/sol_0.py
 [          ok] minimum-number-of-days-to-eat-n-oranges/sol_0.py
 [convert_fail] minimum-number-of-days-to-make-m-bouquets/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'check' is used as a value; only direct calls are supported.
@@ -4238,12 +4238,12 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] minimum-number-of-taps-to-open-to-water-a-garden/sol_0.py
 [compile_fail] minimum-number-of-vertices-to-reach-all-nodes/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] minimum-number-of-visited-cells-in-a-grid/sol_0.py  -- Unknown identifier `heappop`
-[compile_fail] minimum-number-of-work-sessions-to-finish-the-tasks/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] minimum-number-of-work-sessions-to-finish-the-tasks/sol_0.py  -- failed to synthesize instance of type class
 [          ok] minimum-numbers-of-function-calls-to-make-target-array/sol_0.py
-[compile_fail] minimum-obstacle-removal-to-reach-corner/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] minimum-obstacle-removal-to-reach-corner/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] minimum-one-bit-operations-to-make-integers-zero/sol_0.py
 [compile_fail] minimum-operations-to-collect-elements/sol_0.py  -- type mismatch, `for` has type
-[compile_fail] minimum-operations-to-convert-number/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] minimum-operations-to-convert-number/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] minimum-operations-to-exceed-threshold-value-i/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] minimum-operations-to-exceed-threshold-value-ii/sol_0.py  -- Unknown identifier `heapify`
 [          ok] minimum-operations-to-form-subsequence-with-target-sum/sol_0.py
@@ -4266,9 +4266,9 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] minimum-operations-to-maximize-last-elements-in-arrays/sol_0.py
 [          ok] minimum-operations-to-reduce-an-integer-to-0/sol_0.py
 [          ok] minimum-operations-to-reduce-x-to-zero/sol_0.py
-[compile_fail] minimum-operations-to-remove-adjacent-ones-in-matrix/sol_0.py  -- typeclass instance problem is stuck
+[compile_fail] minimum-operations-to-remove-adjacent-ones-in-matrix/sol_0.py  -- Invalid match expression: This pattern contains metavariables:
 [          ok] minimum-operations-to-write-the-letter-y-on-a-grid/sol_0.py
-[compile_fail] minimum-path-cost-in-a-grid/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] minimum-path-cost-in-a-grid/sol_0.py  -- invalid reassignment, value has type
 [          ok] minimum-path-sum/sol_0.py
 [compile_fail] minimum-penalty-for-a-shop/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] minimum-possible-integer-after-at-most-k-adjacent-swaps-on-digits/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.nameSyntax for key 'Name' and syntax category 'term': Unsupported imported library member 'collections.deque'.
@@ -4309,29 +4309,29 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] minimum-swaps-to-make-strings-equal/sol_0.py
 [          ok] minimum-time-difference/sol_0.py
 [convert_fail] minimum-time-for-k-virus-variants-to-spread/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Unsupported Python method 'heappush' encountered in Call node.
-[compile_fail] minimum-time-takes-to-reach-destination-without-drowning/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] minimum-time-takes-to-reach-destination-without-drowning/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] minimum-time-to-build-blocks/sol_0.py  -- Unknown identifier `heapify`
 [compile_fail] minimum-time-to-complete-all-tasks/sol_0.py  -- `duration` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `duration`, consider using `let duration` instead
 [compile_fail] minimum-time-to-complete-trips/sol_0.py  -- Invalid argument name `key` for function `bisect.pyBisectLeft`
 [convert_fail] minimum-time-to-eat-all-grains/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'check' is used as a value; only direct calls are supported.
-[compile_fail] minimum-time-to-finish-the-race/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] minimum-time-to-finish-the-race/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] minimum-time-to-kill-all-monsters/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] minimum-time-to-make-array-sum-at-most-x/sol_0.py  -- Application type mismatch: The argument
 [          ok] minimum-time-to-make-rope-colorful/sol_0.py
 [          ok] minimum-time-to-remove-all-cars-containing-illegal-goods/sol_0.py
 [convert_fail] minimum-time-to-repair-cars/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'check' is used as a value; only direct calls are supported.
 [          ok] minimum-time-to-revert-word-to-initial-state-i/sol_0.py
-[          ok] minimum-time-to-revert-word-to-initial-state-ii/sol_0.py
+[compile_fail] minimum-time-to-revert-word-to-initial-state-ii/sol_0.py  -- Type mismatch
 [          ok] minimum-time-to-type-word-using-special-typewriter/sol_0.py
 [compile_fail] minimum-time-to-visit-a-cell-in-a-grid/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] minimum-time-to-visit-disappearing-nodes/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] minimum-time-to-visit-disappearing-nodes/sol_0.py  -- failed to synthesize instance of type class
 [          ok] minimum-time-visiting-all-points/sol_0.py
 [compile_fail] minimum-total-cost-to-make-arrays-unequal/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] minimum-total-distance-traveled/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' is used as a value; only direct calls are supported.
 [compile_fail] minimum-total-space-wasted-with-k-resizing-operations/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] minimum-unique-word-abbreviation/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] minimum-value-to-get-positive-step-by-step-sum/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] minimum-weighted-subgraph-with-the-required-paths/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] minimum-weighted-subgraph-with-the-required-paths/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] minimum-white-tiles-after-covering-with-carpets/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' is used as a value; only direct calls are supported.
 [          ok] minimum-window-subsequence/sol_0.py
 [compile_fail] minimum-window-substring/sol_0.py  -- Application type mismatch: The argument
@@ -4354,7 +4354,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] most-frequent-subtree-sum/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [compile_fail] most-popular-video-creator/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] most-profit-assigning-work/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] most-profitable-path-in-a-tree/sol_0.py  -- typeclass instance problem is stuck
+[compile_fail] most-profitable-path-in-a-tree/sol_0.py  -- Invalid match expression: This pattern contains metavariables:
 [compile_fail] most-stones-removed-with-same-row-or-column/sol_0.py  -- Type mismatch
 [          ok] most-visited-sector-in-a-circular-track/sol_0.py
 [compile_fail] move-pieces-to-obtain-a-string/sol_0.py  -- Application type mismatch: The argument
@@ -4368,10 +4368,10 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] n-repeated-element-in-size-2n-array/sol_0.py  -- type mismatch, `for` has type
 [          ok] n-th-tribonacci-number/sol_0.py
 [          ok] naming-a-company/sol_0.py
-[compile_fail] nearest-exit-from-entrance-in-maze/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] nearest-exit-from-entrance-in-maze/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] neighboring-bitwise-xor/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] neither-minimum-nor-maximum/sol_0.py  -- Unknown identifier `next`
-[compile_fail] network-delay-time/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] network-delay-time/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] new-21-game/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] next-closest-time/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' calls its sibling 'check'; helpers that reference each other are not supported yet.
 [compile_fail] next-greater-element-i/sol_0.py  -- failed to synthesize instance of type class
@@ -4415,7 +4415,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] number-of-digit-one/sol_0.py
 [          ok] number-of-distinct-averages/sol_0.py
 [compile_fail] number-of-distinct-binary-strings-after-applying-operations/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] number-of-distinct-islands/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] number-of-distinct-islands/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] number-of-distinct-islands-ii/sol_0.py  -- Application type mismatch: The argument
 [          ok] number-of-distinct-roll-sequences/sol_0.py
 [          ok] number-of-distinct-substrings-in-a-string/sol_0.py
@@ -4443,14 +4443,14 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] number-of-music-playlists/sol_0.py
 [compile_fail] number-of-nodes-in-the-sub-tree-with-the-same-label/sol_0.py  -- Invalid match expression: The type of pattern variable 'cnt' contains metavariables:
 [          ok] number-of-nodes-with-value-one/sol_0.py
-[compile_fail] number-of-operations-to-make-network-connected/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] number-of-operations-to-make-network-connected/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] number-of-orders-in-the-backlog/sol_0.py  -- `a` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `a`, consider using `let a` instead
 [compile_fail] number-of-pairs-of-interchangeable-rectangles/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] number-of-pairs-of-strings-with-concatenation-equal-to-target/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] number-of-pairs-satisfying-inequality/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] number-of-paths-with-max-score/sol_0.py  -- typeclass instance problem is stuck
 [          ok] number-of-people-aware-of-a-secret/sol_0.py
-[          ok] number-of-people-that-can-be-seen-in-a-grid/sol_0.py
+[compile_fail] number-of-people-that-can-be-seen-in-a-grid/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] number-of-possible-sets-of-closing-branches/sol_0.py  -- failed to synthesize instance of type class
 [          ok] number-of-provinces/sol_0.py
 [compile_fail] number-of-rectangles-that-can-form-the-largest-square/sol_0.py  -- Application type mismatch: The argument
@@ -4479,7 +4479,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] number-of-subarrays-with-bounded-maximum/sol_0.py
 [          ok] number-of-subarrays-with-gcd-equal-to-k/sol_0.py
 [          ok] number-of-subarrays-with-lcm-equal-to-k/sol_0.py
-[compile_fail] number-of-submatrices-that-sum-to-target/sol_0.py  -- Type mismatch
+[          ok] number-of-submatrices-that-sum-to-target/sol_0.py
 [compile_fail] number-of-subsequences-that-satisfy-the-given-sum-condition/sol_0.py  -- Function expected at
 [          ok] number-of-substrings-containing-all-three-characters/sol_0.py
 [          ok] number-of-substrings-with-fixed-ratio/sol_0.py
@@ -4491,14 +4491,14 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] number-of-unique-good-subsequences/sol_0.py
 [compile_fail] number-of-valid-clock-times/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] number-of-valid-move-combinations-on-chessboard/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' calls its sibling 'check_stop'; helpers that reference each other are not supported yet.
-[          ok] number-of-valid-subarrays/sol_0.py
+[compile_fail] number-of-valid-subarrays/sol_0.py  -- failed to synthesize instance of type class
 [          ok] number-of-valid-words-for-each-puzzle/sol_0.py
 [compile_fail] number-of-valid-words-in-a-sentence/sol_0.py  -- failed to synthesize instance of type class
-[          ok] number-of-visible-people-in-a-queue/sol_0.py
+[compile_fail] number-of-visible-people-in-a-queue/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] number-of-ways-of-cutting-a-pizza/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] number-of-ways-to-arrive-at-destination/sol_0.py  -- failed to synthesize instance of type class
 [          ok] number-of-ways-to-build-house-of-cards/sol_0.py
-[compile_fail] number-of-ways-to-build-sturdy-brick-wall/sol_0.py  -- typeclass instance problem is stuck
+[compile_fail] number-of-ways-to-build-sturdy-brick-wall/sol_0.py  -- failed to synthesize instance of type class
 [          ok] number-of-ways-to-buy-pens-and-pencils/sol_0.py
 [convert_fail] number-of-ways-to-divide-a-long-corridor/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' is used as a value; only direct calls are supported.
 [          ok] number-of-ways-to-earn-points/sol_0.py
@@ -4521,20 +4521,20 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] numbers-at-most-n-given-digit-set/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] numbers-with-repeated-digits/sol_0.py  -- failed to synthesize instance of type class
 [          ok] numbers-with-same-consecutive-differences/sol_0.py
-[compile_fail] occurrences-after-bigram/sol_0.py  -- Application type mismatch: The argument
+[          ok] occurrences-after-bigram/sol_0.py
 [convert_fail] odd-even-jump/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'bisect_left' encountered in Call node.
 [compile_fail] odd-even-linked-list/sol_0.py  -- Invalid field `next`: The environment does not contain `Option.next`, so it is not possible to project the field `next` from an expression
 [compile_fail] odd-string-difference/sol_0.py  -- Unknown identifier `next`
 [          ok] ones-and-zeroes/sol_0.py
-[compile_fail] open-the-lock/sol_0.py  -- Invalid match expression: The type of pattern variable 's' contains metavariables:
+[compile_fail] open-the-lock/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] optimal-account-balancing/sol_0.py  -- failed to synthesize instance of type class
 [          ok] optimal-division/sol_0.py
 [          ok] optimal-partition-of-string/sol_0.py
-[compile_fail] optimize-water-distribution-in-a-village/sol_0.py  -- type mismatch, `for` has type
+[compile_fail] optimize-water-distribution-in-a-village/sol_0.py  -- typeclass instance problem is stuck
 [          ok] orderly-queue/sol_0.py
 [compile_fail] out-of-boundary-paths/sol_0.py  -- typeclass instance problem is stuck
 [          ok] output-contest-matches/sol_0.py
-[compile_fail] pacific-atlantic-water-flow/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] pacific-atlantic-water-flow/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] paint-fence/sol_0.py
 [compile_fail] paint-house/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] paint-house-ii/sol_0.py  -- Application type mismatch: The argument
@@ -4556,7 +4556,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] palindromic-substrings/sol_0.py
 [          ok] pancake-sorting/sol_0.py
 [compile_fail] parallel-courses/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] parallel-courses-ii/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] parallel-courses-ii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] parallel-courses-iii/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] parse-lisp-expression/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'eval' calls its sibling 'parseVar'; helpers that reference each other are not supported yet.
 [convert_fail] parsing-a-boolean-expression/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.matchSyntax for key 'Match' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
@@ -4625,13 +4625,13 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] prime-in-diagonal/sol_0.py  -- Failed to infer type of binder `i`
 [compile_fail] prime-number-of-set-bits-in-binary-representation/sol_0.py  -- failed to synthesize instance of type class
 [          ok] prime-pairs-with-target-sum/sol_0.py
-[compile_fail] prime-palindrome/sol_0.py  -- type mismatch, `for` has type
+[compile_fail] prime-palindrome/sol_0.py  -- failed to synthesize instance of type class
 [          ok] prime-subtraction-operation/sol_0.py
 [compile_fail] print-binary-tree/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
 [          ok] print-words-vertically/sol_0.py
 [compile_fail] prison-cells-after-n-days/sol_0.py  -- Unknown identifier `firstDayCells`
-[          ok] probability-of-a-two-boxes-having-the-same-number-of-distinct-balls/sol_0.py
-[compile_fail] process-restricted-friend-requests/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] probability-of-a-two-boxes-having-the-same-number-of-distinct-balls/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] process-restricted-friend-requests/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] process-tasks-using-servers/sol_0.py  -- Unknown identifier `heapify`
 [          ok] product-of-array-except-self/sol_0.py
 [compile_fail] product-of-two-run-length-encoded-arrays/sol_0.py  -- `fi` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `fi`, consider using `let fi` instead
@@ -4666,7 +4666,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] rearrange-array-to-maximize-prefix-score/sol_0.py
 [          ok] rearrange-characters-to-make-target-string/sol_0.py
 [          ok] rearrange-spaces-between-words/sol_0.py
-[compile_fail] rearrange-string-k-distance-apart/sol_0.py  -- Unknown identifier `heapify`
+[convert_fail] rearrange-string-k-distance-apart/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [convert_fail] rearrange-words-in-a-sentence/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'title' encountered in Call node.
 [          ok] rearranging-fruits/sol_0.py
 [          ok] reconstruct-a-2-row-binary-matrix/sol_0.py
@@ -4682,7 +4682,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] reduce-array-size-to-the-half/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'most_common' encountered in Call node.
 [          ok] reducing-dishes/sol_0.py
 [          ok] reduction-operations-to-make-the-array-elements-equal/sol_0.py
-[compile_fail] redundant-connection/sol_0.py  -- type mismatch, `for` has type
+[compile_fail] redundant-connection/sol_0.py  -- typeclass instance problem is stuck
 [convert_fail] redundant-connection-ii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.listCompSyntax for key 'ListComp' and syntax category 'term': Only Name targets are supported in tuple comprehension unpacking.
 [convert_fail] reformat-date/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'zfill' encountered in Call node.
 [          ok] reformat-phone-number/sol_0.py
@@ -4694,8 +4694,8 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] relocate-marbles/sol_0.py
 [          ok] remove-9/sol_0.py
 [          ok] remove-adjacent-almost-equal-characters/sol_0.py
-[          ok] remove-all-adjacent-duplicates-in-string/sol_0.py
-[compile_fail] remove-all-adjacent-duplicates-in-string-ii/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] remove-all-adjacent-duplicates-in-string/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] remove-all-adjacent-duplicates-in-string-ii/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] remove-all-occurrences-of-a-substring/sol_0.py  -- Function expected at
 [          ok] remove-all-ones-with-row-and-column-flips/sol_0.py
 [          ok] remove-all-ones-with-row-and-column-flips-ii/sol_0.py
@@ -4705,11 +4705,11 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] remove-covered-intervals/sol_0.py  -- Application type mismatch: The argument
 [          ok] remove-digit-from-number-to-maximize-result/sol_0.py
 [convert_fail] remove-duplicate-letters/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
-[compile_fail] remove-duplicates-from-an-unsorted-linked-list/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] remove-duplicates-from-an-unsorted-linked-list/sol_0.py  -- Invalid field notation: Type of
 [          ok] remove-duplicates-from-sorted-array/sol_0.py
 [          ok] remove-duplicates-from-sorted-array-ii/sol_0.py
-[compile_fail] remove-duplicates-from-sorted-list/sol_0.py  -- Invalid field `next`: The environment does not contain `Option.next`, so it is not possible to project the field `next` from an expression
-[compile_fail] remove-duplicates-from-sorted-list-ii/sol_0.py  -- Type mismatch
+[compile_fail] remove-duplicates-from-sorted-list/sol_0.py  -- Invalid field notation: Type of
+[compile_fail] remove-duplicates-from-sorted-list-ii/sol_0.py  -- Invalid field `next`: The environment does not contain `Int.next`, so it is not possible to project the field `next` from an expression
 [          ok] remove-element/sol_0.py
 [compile_fail] remove-interval/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] remove-k-digits/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.returnSyntax for key 'Return' and syntax category 'doElem': Error in code generation function PastaLean.boolOpSyntax for key 'BoolOp' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'lstrip' encountered in Call node.
@@ -4730,7 +4730,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] removing-minimum-number-of-magic-beans/sol_0.py
 [          ok] removing-stars-from-a-string/sol_0.py
 [convert_fail] reorder-data-in-log-files/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'f' is used as a value; only direct calls are supported.
-[compile_fail] reorder-list/sol_0.py  -- Invalid field `next`: The environment does not contain `Option.next`, so it is not possible to project the field `next` from an expression
+[compile_fail] reorder-list/sol_0.py  -- Invalid field notation: Type of
 [compile_fail] reorder-routes-to-make-all-paths-lead-to-the-city-zero/sol_0.py  -- typeclass instance problem is stuck
 [          ok] reordered-power-of-2/sol_0.py
 [convert_fail] reorganize-string/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'most_common' encountered in Call node.
@@ -4741,7 +4741,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] replace-all-s-to-avoid-consecutive-repeating-characters/sol_0.py  -- invalid reassignment, value has type
 [compile_fail] replace-elements-in-an-array/sol_0.py  -- Application type mismatch: The argument
 [          ok] replace-elements-with-greatest-element-on-right-side/sol_0.py
-[compile_fail] replace-non-coprime-numbers-in-array/sol_0.py  -- Application type mismatch: The argument
+[          ok] replace-non-coprime-numbers-in-array/sol_0.py
 [compile_fail] replace-question-marks-in-string-to-minimize-its-value/sol_0.py  -- Unknown identifier `ascii_lowercase`
 [          ok] replace-the-substring-for-balanced-string/sol_0.py
 [convert_fail] replace-words/sol_0.py  -- Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
@@ -4752,10 +4752,10 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] reveal-cards-in-increasing-order/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [          ok] reverse-bits/sol_0.py
 [          ok] reverse-integer/sol_0.py
-[compile_fail] reverse-linked-list/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] reverse-linked-list/sol_0.py  -- Invalid field `next`: The environment does not contain `Function.next`, so it is not possible to project the field `next` from an expression
 [compile_fail] reverse-linked-list-ii/sol_0.py  -- invalid reassignment, value has type
 [compile_fail] reverse-nodes-in-even-length-groups/sol_0.py  -- Invalid field `next`: The environment does not contain `Option.next`, so it is not possible to project the field `next` from an expression
-[compile_fail] reverse-nodes-in-k-group/sol_0.py  -- Invalid field `next`: The environment does not contain `Option.next`, so it is not possible to project the field `next` from an expression
+[compile_fail] reverse-nodes-in-k-group/sol_0.py  -- Invalid field `next`: The environment does not contain `Function.next`, so it is not possible to project the field `next` from an expression
 [convert_fail] reverse-odd-levels-of-binary-tree/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Unsupported tuple-assignment target element (only `Name` and subscript `a[i]` targets are supported): {"value":
 [          ok] reverse-only-letters/sol_0.py
 [          ok] reverse-pairs/sol_0.py
@@ -4784,11 +4784,11 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] rotate-string/sol_0.py
 [compile_fail] rotated-digits/sol_0.py  -- failed to synthesize instance of type class
 [          ok] rotating-the-box/sol_0.py
-[compile_fail] rotting-oranges/sol_0.py  -- Application type mismatch: The argument
+[convert_fail] rotting-oranges/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] row-with-maximum-ones/sol_0.py
 [          ok] running-sum-of-1d-array/sol_0.py
 [compile_fail] russian-doll-envelopes/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] satisfiability-of-equality-equations/sol_0.py  -- Unknown identifier `find`
+[compile_fail] satisfiability-of-equality-equations/sol_0.py  -- typeclass instance problem is stuck
 [          ok] score-after-flipping-matrix/sol_0.py
 [          ok] score-of-a-string/sol_0.py
 [          ok] score-of-parentheses/sol_0.py
@@ -4800,8 +4800,8 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] search-insert-position/sol_0.py
 [convert_fail] search-suggestions-system/sol_0.py  -- Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
 [          ok] second-largest-digit-in-a-string/sol_0.py
-[compile_fail] second-minimum-node-in-a-binary-tree/sol_0.py  -- Invalid field notation: Type of
-[compile_fail] second-minimum-time-to-reach-destination/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] second-minimum-node-in-a-binary-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+[convert_fail] second-minimum-time-to-reach-destination/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] self-crossing/sol_0.py
 [          ok] self-dividing-numbers/sol_0.py
 [          ok] sell-diminishing-valued-colored-balls/sol_0.py
@@ -4810,7 +4810,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] sender-with-largest-word-count/sol_0.py
 [          ok] sentence-screen-fitting/sol_0.py
 [compile_fail] sentence-similarity/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] sentence-similarity-ii/sol_0.py  -- Unknown identifier `find`
+[compile_fail] sentence-similarity-ii/sol_0.py  -- typeclass instance problem is stuck
 [          ok] sentence-similarity-iii/sol_0.py
 [          ok] separate-black-and-white-balls/sol_0.py
 [compile_fail] separate-the-digits-in-an-array/sol_0.py  -- `x` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `x`, consider using `let x` instead
@@ -4824,22 +4824,22 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] shifting-letters-ii/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] shopping-offers/sol_0.py  -- Failed to infer type of binder `i`
 [          ok] shortest-and-lexicographically-smallest-beautiful-string/sol_0.py
-[compile_fail] shortest-bridge/sol_0.py  -- typeclass instance problem is stuck
+[convert_fail] shortest-bridge/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] shortest-common-supersequence/sol_0.py
 [compile_fail] shortest-completing-word/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] shortest-cycle-in-a-graph/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] shortest-distance-from-all-buildings/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] shortest-cycle-in-a-graph/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] shortest-distance-from-all-buildings/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] shortest-distance-to-a-character/sol_0.py  -- Type mismatch
 [compile_fail] shortest-distance-to-target-color/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] shortest-distance-to-target-string-in-a-circular-array/sol_0.py  -- Application type mismatch: The argument
 [          ok] shortest-impossible-sequence-of-rolls/sol_0.py
 [          ok] shortest-palindrome/sol_0.py
-[compile_fail] shortest-path-in-a-grid-with-obstacles-elimination/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] shortest-path-in-binary-matrix/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] shortest-path-to-get-all-keys/sol_0.py  -- Unknown identifier `next`
-[compile_fail] shortest-path-to-get-food/sol_0.py  -- Unknown identifier `next`
-[compile_fail] shortest-path-visiting-all-nodes/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] shortest-path-with-alternating-colors/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] shortest-path-in-a-grid-with-obstacles-elimination/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
+[convert_fail] shortest-path-in-binary-matrix/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
+[convert_fail] shortest-path-to-get-all-keys/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
+[convert_fail] shortest-path-to-get-food/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
+[convert_fail] shortest-path-visiting-all-nodes/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
+[convert_fail] shortest-path-with-alternating-colors/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [convert_fail] shortest-string-that-contains-three-strings/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported imported library member 'itertools.permutations'.
 [compile_fail] shortest-subarray-to-be-removed-to-make-array-sorted/sol_0.py  -- Invalid argument name `lo` for function `bisect.pyBisectLeft`
 [          ok] shortest-subarray-with-or-at-least-k-i/sol_0.py
@@ -4883,17 +4883,17 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] smallest-range-ii/sol_0.py
 [          ok] smallest-rectangle-enclosing-black-pixels/sol_0.py
 [          ok] smallest-rotation-with-highest-score/sol_0.py
-[compile_fail] smallest-string-starting-from-leaf/sol_0.py  -- Invalid field notation: Type of
+[compile_fail] smallest-string-starting-from-leaf/sol_0.py  -- failed to synthesize instance of type class
 [          ok] smallest-string-with-a-given-numeric-value/sol_0.py
 [convert_fail] smallest-string-with-swaps/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': call to 'find' inside a GeneratorExp cannot rebind the threaded state.
 [          ok] smallest-subarrays-with-maximum-bitwise-or/sol_0.py
 [convert_fail] smallest-subsequence-of-distinct-characters/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
 [compile_fail] smallest-subtree-with-all-the-deepest-nodes/sol_0.py  -- Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
-[compile_fail] smallest-sufficient-team/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] smallest-sufficient-team/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] smallest-value-after-replacing-with-sum-of-prime-factors/sol_0.py  -- type mismatch, `for` has type
 [          ok] smallest-value-of-the-rearranged-number/sol_0.py
 [          ok] snakes-and-ladders/sol_0.py
-[          ok] solve-the-equation/sol_0.py
+[compile_fail] solve-the-equation/sol_0.py  -- failed to synthesize instance of type class
 [          ok] solving-questions-with-brainpower/sol_0.py
 [compile_fail] sort-an-array/sol_0.py  -- Unknown identifier `randint`
 [          ok] sort-array-by-increasing-frequency/sol_0.py
@@ -4906,7 +4906,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] sort-features-by-popularity/sol_0.py
 [          ok] sort-integers-by-the-number-of-1-bits/sol_0.py
 [          ok] sort-integers-by-the-power-value/sol_0.py
-[compile_fail] sort-items-by-groups-respecting-dependencies/sol_0.py  -- Invalid match expression: The type of pattern variable 'degree' contains metavariables:
+[compile_fail] sort-items-by-groups-respecting-dependencies/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] sort-linked-list-already-sorted-using-absolute-values/sol_0.py  -- Invalid field notation: Type of
 [          ok] sort-the-jumbled-numbers/sol_0.py
 [convert_fail] sort-the-matrix-diagonally/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
@@ -4916,17 +4916,17 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] sort-vowels-in-a-string/sol_0.py
 [compile_fail] sorting-the-sentence/sol_0.py  -- failed to synthesize instance of type class
 [          ok] sorting-three-groups/sol_0.py
-[compile_fail] soup-servings/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] soup-servings/sol_0.py  -- Type mismatch
 [          ok] sparse-matrix-multiplication/sol_0.py
 [          ok] special-array-i/sol_0.py
 [compile_fail] special-array-ii/sol_0.py  -- Application type mismatch: The argument
 [compile_fail] special-array-with-x-elements-greater-than-or-equal-x/sol_0.py  -- failed to synthesize instance of type class
 [          ok] special-permutations/sol_0.py
 [          ok] special-positions-in-a-binary-matrix/sol_0.py
-[compile_fail] spiral-matrix/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] spiral-matrix-ii/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] spiral-matrix/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] spiral-matrix-ii/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] spiral-matrix-iii/sol_0.py  -- type mismatch, `for` has type
-[compile_fail] spiral-matrix-iv/sol_0.py  -- Application type mismatch: The argument
+[compile_fail] spiral-matrix-iv/sol_0.py  -- failed to synthesize instance of type class
 [          ok] split-a-string-in-balanced-strings/sol_0.py
 [          ok] split-a-string-into-the-max-number-of-unique-substrings/sol_0.py
 [compile_fail] split-array-into-consecutive-subsequences/sol_0.py  -- Unknown identifier `heappush`
@@ -4957,7 +4957,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] stone-game-ii/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] stone-game-iii/sol_0.py  -- Application type mismatch: The argument
 [          ok] stone-game-iv/sol_0.py
-[compile_fail] stone-game-ix/sol_0.py  -- typeclass instance problem is stuck
+[          ok] stone-game-ix/sol_0.py
 [compile_fail] stone-game-v/sol_0.py  -- ambiguous identifier ``max`, possible interpretations: [Max.max, max]
 [convert_fail] stone-game-vi/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.listCompSyntax for key 'ListComp' and syntax category 'term': Only Name targets are supported in tuple comprehension unpacking.
 [convert_fail] stone-game-vii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' is used as a value; only direct calls are supported.
@@ -4976,7 +4976,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] strobogrammatic-number/sol_0.py
 [compile_fail] strobogrammatic-number-ii/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] strobogrammatic-number-iii/sol_0.py  -- failed to synthesize instance of type class
-[          ok] strong-password-checker/sol_0.py
+[compile_fail] strong-password-checker/sol_0.py  -- Application type mismatch: The argument
 [          ok] strong-password-checker-ii/sol_0.py
 [          ok] student-attendance-record-i/sol_0.py
 [convert_fail] student-attendance-record-ii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': nested function 'dfs' is used as a value; only direct calls are supported.
@@ -5000,7 +5000,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] subtract-the-product-and-sum-of-digits-of-an-integer/sol_0.py
 [          ok] subtree-removal-game-with-fibonacci-tree/sol_0.py
 [compile_fail] successful-pairs-of-spells-and-potions/sol_0.py  -- Ambiguous term
-[compile_fail] sudoku-solver/sol_0.py  -- failed to synthesize instance of type class
+[compile_fail] sudoku-solver/sol_0.py  -- Invalid match expression: This pattern contains metavariables:
 [          ok] sum-game/sol_0.py
 [convert_fail] sum-in-a-matrix/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.returnSyntax for key 'Return' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': zip() expects at least two arguments.
 [          ok] sum-multiples/sol_0.py
@@ -5026,15 +5026,15 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [convert_fail] sum-of-numbers-with-units-digit-k/sol_0.py  -- walrus inside BoolOp is evaluated conditionally; hoisting it would change evaluation order.
 [convert_fail] sum-of-prefix-scores-of-strings/sol_0.py  -- Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
 [convert_fail] sum-of-remoteness-of-all-cells/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Unsupported tuple-assignment target element (only `Name` and subscript `a[i]` targets are supported): {"node_type": "Tuple",
-[compile_fail] sum-of-root-to-leaf-binary-numbers/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+[compile_fail] sum-of-root-to-leaf-binary-numbers/sol_0.py  -- Application type mismatch: The argument
 [          ok] sum-of-scores-of-built-strings/sol_0.py
 [compile_fail] sum-of-special-evenly-spaced-elements-in-array/sol_0.py  -- Application type mismatch: The argument
 [          ok] sum-of-square-numbers/sol_0.py
 [          ok] sum-of-squares-of-special-elements/sol_0.py
-[          ok] sum-of-subarray-minimums/sol_0.py
+[compile_fail] sum-of-subarray-minimums/sol_0.py  -- failed to synthesize instance of type class
 [          ok] sum-of-subarray-ranges/sol_0.py
 [          ok] sum-of-subsequence-widths/sol_0.py
-[compile_fail] sum-of-total-strength-of-wizards/sol_0.py  -- Invalid argument name `initial` for function `itertools.pyAccumulate`
+[compile_fail] sum-of-total-strength-of-wizards/sol_0.py  -- failed to synthesize instance of type class
 [          ok] sum-of-two-integers/sol_0.py
 [          ok] sum-of-unique-elements/sol_0.py
 [          ok] sum-of-values-at-indices-with-k-set-bits/sol_0.py
@@ -5049,7 +5049,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] swap-adjacent-in-lr-string/sol_0.py
 [          ok] swap-for-longest-repeated-character-substring/sol_0.py
 [convert_fail] swapping-nodes-in-a-linked-list/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Unsupported tuple-assignment target element (only `Name` and subscript `a[i]` targets are supported): {"value": {"node_type": "Name", "id": "p"},
-[compile_fail] swim-in-rising-water/sol_0.py  -- Unknown identifier `find`
+[compile_fail] swim-in-rising-water/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] symmetric-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [convert_fail] synonymous-sentences/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'from_iterable' encountered in Call node.
 [convert_fail] tag-validator/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.boolOpSyntax for key 'BoolOp' and syntax category 'term': Error in code generation function PastaLean.compareSyntax for key 'Compare' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
@@ -5059,12 +5059,12 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] tallest-billboard/sol_0.py  -- Type mismatch
 [          ok] target-sum/sol_0.py
 [compile_fail] task-scheduler/sol_0.py  -- failed to synthesize instance of type class
-[compile_fail] task-scheduler-ii/sol_0.py  -- Type mismatch
+[          ok] task-scheduler-ii/sol_0.py
 [          ok] teemo-attacking/sol_0.py
 [          ok] ternary-expression-parser/sol_0.py
 [          ok] text-justification/sol_0.py
 [compile_fail] the-earliest-and-latest-rounds-where-players-compete/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] the-earliest-moment-when-everyone-become-friends/sol_0.py  -- Unknown identifier `find`
+[compile_fail] the-earliest-moment-when-everyone-become-friends/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] the-employee-that-worked-on-the-longest-task/sol_0.py  -- `t` cannot be mutated, only variables declared using `let mut` can be mutated. If you did not intend to mutate but define `t`, consider using `let t` instead
 [          ok] the-k-strongest-values-in-an-array/sol_0.py
 [compile_fail] the-k-th-lexicographical-string-of-all-happy-strings-of-length-n/sol_0.py  -- failed to synthesize instance of type class
@@ -5073,8 +5073,8 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] the-kth-factor-of-n/sol_0.py
 [compile_fail] the-latest-time-to-catch-a-bus/sol_0.py  -- Unknown identifier `c`
 [compile_fail] the-maze/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] the-maze-ii/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] the-maze-iii/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] the-maze-ii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
+[convert_fail] the-maze-iii/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [compile_fail] the-most-similar-path-in-a-graph/sol_0.py  -- failed to synthesize instance of type class
 [compile_fail] the-number-of-beautiful-subsets/sol_0.py  -- typeclass instance problem is stuck
 [          ok] the-number-of-full-rounds-you-have-played/sol_0.py
@@ -5111,7 +5111,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] trapping-rain-water/sol_0.py
 [compile_fail] trapping-rain-water-ii/sol_0.py  -- Unknown identifier `heappush`
 [compile_fail] tree-diameter/sol_0.py  -- typeclass instance problem is stuck
-[compile_fail] tree-of-coprimes/sol_0.py  -- Invalid match expression: The type of pattern variable 'stks' contains metavariables:
+[compile_fail] tree-of-coprimes/sol_0.py  -- Invalid match expression: The type of pattern variable 'ans' contains metavariables:
 [          ok] triangle/sol_0.py
 [compile_fail] trim-a-binary-search-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [          ok] triples-with-bitwise-and-equal-to-zero/sol_0.py
@@ -5133,14 +5133,14 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [compile_fail] uncommon-words-from-two-sentences/sol_0.py  -- failed to synthesize instance of type class
 [          ok] uncrossed-lines/sol_0.py
 [          ok] unique-binary-search-trees/sol_0.py
-[          ok] unique-email-addresses/sol_0.py
+[compile_fail] unique-email-addresses/sol_0.py  -- Application type mismatch: The argument
 [convert_fail] unique-length-3-palindromic-subsequences/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.tupleSyntax for key 'Tuple' and syntax category 'term': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'rfind' encountered in Call node.
 [          ok] unique-morse-code-words/sol_0.py
 [          ok] unique-number-of-occurrences/sol_0.py
 [          ok] unique-paths/sol_0.py
 [          ok] unique-paths-ii/sol_0.py
 [compile_fail] unique-paths-iii/sol_0.py  -- typeclass instance problem is stuck
-[compile_fail] unique-substrings-in-wraparound-string/sol_0.py  -- Type mismatch
+[          ok] unique-substrings-in-wraparound-string/sol_0.py
 [compile_fail] unique-substrings-with-equal-digit-frequency/sol_0.py  -- typeclass instance problem is stuck
 [compile_fail] univalued-binary-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [convert_fail] using-a-robot-to-print-the-lexicographically-smallest-string/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': pop() returns a value *and* mutates its receiver; it is only supported as a direct assignment `x = container.pop(...)`, not as a sub-expression.
@@ -5166,7 +5166,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] valid-word-abbreviation/sol_0.py
 [          ok] valid-word-square/sol_0.py
 [compile_fail] validate-binary-search-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
-[compile_fail] validate-binary-tree-nodes/sol_0.py  -- Unknown identifier `find`
+[compile_fail] validate-binary-tree-nodes/sol_0.py  -- typeclass instance problem is stuck
 [          ok] validate-ip-address/sol_0.py
 [          ok] validate-stack-sequences/sol_0.py
 [compile_fail] verify-preorder-sequence-in-binary-search-tree/sol_0.py  -- Type mismatch
@@ -5174,12 +5174,12 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] verifying-an-alien-dictionary/sol_0.py
 [compile_fail] vertical-order-traversal-of-a-binary-tree/sol_0.py  -- Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
 [compile_fail] video-stitching/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] visit-array-positions-to-maximize-score/sol_0.py  -- Type mismatch
+[compile_fail] visit-array-positions-to-maximize-score/sol_0.py  -- failed to synthesize instance of type class
 [convert_fail] vowel-spellchecker/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.exprSyntax for key 'Expr' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'doElem': Unsupported Python method 'setdefault' encountered in Call node.
 [          ok] vowels-game-in-a-string/sol_0.py
 [          ok] vowels-of-all-substrings/sol_0.py
 [compile_fail] walking-robot-simulation/sol_0.py  -- Application type mismatch: The argument
-[compile_fail] walls-and-gates/sol_0.py  -- failed to synthesize instance of type class
+[convert_fail] walls-and-gates/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'popleft' encountered in Call node.
 [          ok] water-and-jug-problem/sol_0.py
 [          ok] water-bottles/sol_0.py
 [          ok] water-bottles-ii/sol_0.py
@@ -5215,18 +5215,18 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 [          ok] zigzag-conversion/sol_0.py
 [convert_fail] zuma-game/sol_0.py  -- Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.funcDefSyntax for key 'FunctionDef' and syntax category 'command': Error in code generation function PastaLean.whileSyntax for key 'While' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Error in code generation function PastaLean.callSyntax for key 'Call' and syntax category 'term': Unsupported Python method 'sub' encountered in Call node.
 
-[*] Conversion: 1353 ok, 974 compile_fail, 262 convert_fail
+[*] Conversion: 1321 ok, 971 compile_fail, 297 convert_fail
 [*] Most common failures:
-      254x  failed to synthesize instance of type class
-      224x  Application type mismatch: The argument
-       75x  typeclass instance problem is stuck
-       64x  Type mismatch
-       53x  Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
-       28x  type mismatch, `for` has type
-       21x  Invalid argument name `initial` for function `itertools.pyAccumulate`
-       21x  Invalid field notation: Type of
-       20x  Invalid field `left`: The environment does not contain `Option.left`, so it is not possible to project the field `left` from an expression
-       20x  invalid reassignment, value has type
+      287x  failed to synthesize instance of type class
+      199x  Application type mismatch: The argument
+       87x  typeclass instance problem is stuck
+       56x  Type mismatch
+       47x  Invalid field `val`: The environment does not contain `Option.val`, so it is not possible to project the field `val` from an expression
+       26x  type mismatch, `for` has type
+       26x  Invalid field notation: Type of
+       21x  invalid reassignment, value has type
+       19x  Error in code generation function PastaLean.classDefSyntax for key 'ClassDef' and syntax category 'command': Error in code generation function PastaLean.forSyntax for key 'For' and syntax category 'doElem': Error in code generation function PastaLean.ifSyntax for key 'If' and syntax category 'doElem': Error in code generation function PastaLean.assignSyntax for key 'Assign' and syntax category 'doElem': Subscript assignment through an attribute is only supported on `self`.
+       19x  Invalid argument name `initial` for function `itertools.pyAccumulate`
 [*] Summary written to cp_harness/dataset_leetcode/convert_summary.json
 
 >>> [3/4] Evaluate (run Lean vs Python on test cases)

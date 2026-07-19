@@ -352,27 +352,45 @@ def py_lit_to_lean(v):
 
 
 def build_test_harness(converted_lean, fn_name, cases):
-    """Append a `main` calling the computable `fn'rn` twin on each case, printing `PASSED p/t` and a
-    `FAIL <idx>: got <value>` line per failing case. Cases with an unrenderable argument or expected
-    value are skipped. Returns (source, runnable_indices)."""
+    """Append a `main` that runs the computable `fn'rn` twin over the cases, printing `PASSED p/t` and
+    a `FAIL <idx>: got <value>` line per failing case. Cases with an unrenderable argument or expected
+    value are skipped. Returns (source, runnable_indices).
+
+    The cases are emitted as ONE runtime data list iterated by a loop — not unrolled into one
+    statement per case — so the `fn'rn` application is elaborated once instead of N times. On a
+    100-case problem this turns ~35 s of typechecking into ~5 s (the elaboration cost was per
+    unrolled statement, not the execution), which is what was blowing the harness timeout."""
     rn = f"{fn_name}'rn"
-    checks, runnable = [], []
+    tuples, runnable, arity = [], [], 0
     for idx, (args, expected) in enumerate(cases):
         arg_lits = [py_lit_to_lean(a) for a in args]
         exp_lit = py_lit_to_lean(expected)
         if exp_lit is None or any(a is None for a in arg_lits):
             continue
-        call = rn + " " + " ".join(f"({a})" for a in arg_lits)
-        checks.append("  _t := _t + 1")
-        # Print what Lean actually computed, so a failure is debuggable without a rerun. Every
-        # renderable expected type (Int/Float/String/Bool/List) has a `Repr` instance.
-        checks.append(f'  if ({call}) == ({exp_lit}) then _p := _p + 1 '
-                      f'else IO.println s!"FAIL {idx}: got {{repr ({call})}}"')
+        # Each case carries its ORIGINAL index so a `FAIL <idx>` still maps back to `cases[idx]`.
+        elems = [f"({idx} : Nat)"] + [f"({a})" for a in arg_lits] + [f"({exp_lit})"]
+        tuples.append("(" + ", ".join(elems) + ")")
         runnable.append(idx)
-    body = "\n".join(
-        [converted_lean.rstrip(), "", "def main : IO Unit := do",
-         "  let mut _p := 0", "  let mut _t := 0"]
-        + checks + ['  IO.println s!"PASSED {_p}/{_t}"', ""])
+        arity = len(arg_lits)
+    if not tuples:
+        body = "\n".join([converted_lean.rstrip(), "",
+                          'def main : IO Unit := IO.println "PASSED 0/0"', ""])
+        return body, runnable
+    arg_names = [f"a{i}" for i in range(arity)]
+    pat = "(" + ", ".join(["idx"] + arg_names + ["e"]) + ")"
+    call = rn + (" " + " ".join(arg_names) if arg_names else "")
+    body = "\n".join([
+        converted_lean.rstrip(), "",
+        "def _cases := [\n    " + ",\n    ".join(tuples) + "\n  ]", "",
+        "def main : IO Unit := do",
+        "  let mut _p := 0",
+        "  let mut _t := 0",
+        f"  for {pat} in _cases do",
+        "    _t := _t + 1",
+        # `repr` prints what Lean computed so a failure is debuggable without a rerun.
+        f"    if ({call}) == e then _p := _p + 1",
+        f'    else IO.println s!"FAIL {{idx}}: got {{repr ({call})}}"',
+        '  IO.println s!"PASSED {_p}/{_t}"', ""])
     return body, runnable
 
 

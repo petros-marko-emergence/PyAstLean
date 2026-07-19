@@ -78,6 +78,15 @@ partial def isKnown : PyType → Bool
   | .tuple es => es.all isKnown
   | _ => true
 
+/-- Should a *local* binding of this type be ascribed at all? Only discrete scalars, where an
+unascribed literal would otherwise default (`5` → `ℚ` in exact mode). Containers/floats are left for
+Lean to infer from the assignment RHS, so an ascription never *forces* an element type (e.g. `ℚ`)
+against what the RHS actually elaborates to (e.g. a numpy `Float`). Parameters are ascribed
+separately — this governs only locals. -/
+def needsAscription : PyType → Bool
+  | .int | .bool | .str => true
+  | _ => false
+
 /-- Least upper bound.
 
 `unknown` carries no information, so it yields to anything. Genuinely incompatible types (`int` and

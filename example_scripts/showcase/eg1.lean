@@ -112,11 +112,11 @@ def find_nearest_neighbor'rn := fun (target : List Int) ↦ fun (dataset : List 
 
 noncomputable def run_example :=
   ((do
-      let mut dataset : List (List Int) :=
+      let mut dataset :=
         [[(1 : Int), (2 : Int), (3 : Int)], [(4 : Int), (5 : Int), (6 : Int)], [(7 : Int), (8 : Int), (9 : Int)],
           [(2 : Int), (1 : Int), (4 : Int)]]
-      let mut target_point : List Int := [(2 : Int), (3 : Int), (4 : Int)]
-      let mut invalid_point : List Int := [(1 : Int), (2 : Int)]
+      let mut target_point := [(2 : Int), (3 : Int), (4 : Int)]
+      let mut invalid_point := [(1 : Int), (2 : Int)]
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Dataset:", pyPrintArg dataset]
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "Target Point:", pyPrintArg target_point]
       -- Valid Case
@@ -140,11 +140,11 @@ attribute [simp] run_example
 
 def run_example'rn :=
   ((do
-      let mut dataset : List (List Int) :=
+      let mut dataset :=
         [[(1 : Int), (2 : Int), (3 : Int)], [(4 : Int), (5 : Int), (6 : Int)], [(7 : Int), (8 : Int), (9 : Int)],
           [(2 : Int), (1 : Int), (4 : Int)]]
-      let mut target_point : List Int := [(2 : Int), (3 : Int), (4 : Int)]
-      let mut invalid_point : List Int := [(1 : Int), (2 : Int)]
+      let mut target_point := [(2 : Int), (3 : Int), (4 : Int)]
+      let mut invalid_point := [(1 : Int), (2 : Int)]
       let _ ← pyPrintIO [pyPrintArg "Dataset:", pyPrintArg dataset]
       let _ ← pyPrintIO [pyPrintArg "Target Point:", pyPrintArg target_point]
       -- Valid Case

@@ -21,10 +21,10 @@ def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List R
         -- Center the data by subtracting the mean
         -- (Using a manual broadcast-like subtraction for this example)
         -- Note: np.subtract is mapped to pyNumpySubtract
-        let mut centered : List (List Rat) := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+        let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
         -- Perform matrix multiplication
         -- Note: np.matmul is mapped to pyNumpyMatmul
-        let mut result : List (List Rat) := Libraries.numpy.pyNumpyMatmul centered weights
+        let mut result := Libraries.numpy.pyNumpyMatmul centered weights
         return result
       catch caught =>
         if (caught).OfKind == "ValueError" then 
@@ -42,21 +42,17 @@ attribute [simp] process_data
 def process_data'rn : List (List Float) → List (List Float) → PastaLean.PyExcept (List (List Float)) :=
   fun (data : List (List Float)) ↦ fun (weights : List (List Float)) ↦ do
   try
-    let __py_try_val_1 ←
-      PastaLean.PyExcept.captureIOErrors
-          (do
-            -- Calculate mean of the dataset
-            let mut m := Libraries.numpy.pyNumpyMean data
-            let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
-            -- Center the data by subtracting the mean
-            -- (Using a manual broadcast-like subtraction for this example)
-            -- Note: np.subtract is mapped to pyNumpySubtract
-            let mut centered : List (List Float) := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
-            -- Perform matrix multiplication
-            -- Note: np.matmul is mapped to pyNumpyMatmul
-            let mut result : List (List Float) := Libraries.numpy.pyNumpyMatmul centered weights
-            return result)
-    return __py_try_val_1
+    -- Calculate mean of the dataset
+    let mut m := Libraries.numpy.pyNumpyMean data
+    let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
+    -- Center the data by subtracting the mean
+    -- (Using a manual broadcast-like subtraction for this example)
+    -- Note: np.subtract is mapped to pyNumpySubtract
+    let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+    -- Perform matrix multiplication
+    -- Note: np.matmul is mapped to pyNumpyMatmul
+    let mut result := Libraries.numpy.pyNumpyMatmul centered weights
+    return result
   catch caught =>
     if (caught).OfKind == "ValueError" then 
       let e := caught
@@ -70,14 +66,14 @@ def process_data'rn : List (List Float) → List (List Float) → PastaLean.PyEx
 def run_example :=
   ((do
       -- Define a 2x2 dataset and a 2x2 weight matrix
-      let mut dataset : List (List Rat) := [[(1.0 : Rat), (2.0 : Rat)], [(3.0 : Rat), (4.0 : Rat)]]
-      let mut weights : List (List Rat) := [[(0.5 : Rat), (0.5 : Rat)], [(1.0 : Rat), (2.0 : Rat)]]
+      let mut dataset := [[(1.0 : Rat), (2.0 : Rat)], [(3.0 : Rat), (4.0 : Rat)]]
+      let mut weights := [[(0.5 : Rat), (0.5 : Rat)], [(1.0 : Rat), (2.0 : Rat)]]
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "=== PastaLean NumPy Showcase ==="]
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Input Data: {dataset}"]
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Weight Matrix: {weights}"]
       -- 1. Main Processing Pipeline
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\n[1] Running Data Pipeline:"]
-      let mut output : List (List Rat) := (← process_data dataset weights)
+      let mut output := (← process_data dataset weights)
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Final Result:\n{output}"]
       -- 2. Utility Operations
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\n[2] Structural Operations:"]
@@ -95,7 +91,7 @@ def run_example :=
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
       -- 4. Error Handling Simulation
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
-      let mut invalid_data : List (List Rat) := [[(1.0 : Rat), (2.0 : Rat), (3.0 : Rat)]]
+      let mut invalid_data := [[(1.0 : Rat), (2.0 : Rat), (3.0 : Rat)]]
       -- This should trigger the ValueError in np.matmul(1x3, 2x2)
       let _ ← process_data invalid_data weights) :
     PastaLean.ProofMode.PyProofM _)
@@ -105,14 +101,14 @@ attribute [simp] run_example
 def run_example'rn :=
   ((do
       -- Define a 2x2 dataset and a 2x2 weight matrix
-      let mut dataset : List (List Float) := [[(1.0 : Float), (2.0 : Float)], [(3.0 : Float), (4.0 : Float)]]
-      let mut weights : List (List Float) := [[(0.5 : Float), (0.5 : Float)], [(1.0 : Float), (2.0 : Float)]]
+      let mut dataset := [[(1.0 : Float), (2.0 : Float)], [(3.0 : Float), (4.0 : Float)]]
+      let mut weights := [[(0.5 : Float), (0.5 : Float)], [(1.0 : Float), (2.0 : Float)]]
       let _ ← pyPrintIO [pyPrintArg "=== PastaLean NumPy Showcase ==="]
       let _ ← pyPrintIO [pyPrintArg s! "Input Data: {dataset}"]
       let _ ← pyPrintIO [pyPrintArg s! "Weight Matrix: {weights}"]
       -- 1. Main Processing Pipeline
       let _ ← pyPrintIO [pyPrintArg "\n[1] Running Data Pipeline:"]
-      let mut output : List (List Float) := (← process_data'rn dataset weights)
+      let mut output := (← process_data'rn dataset weights)
       let _ ← pyPrintIO [pyPrintArg s! "Final Result:\n{output}"]
       -- 2. Utility Operations
       let _ ← pyPrintIO [pyPrintArg "\n[2] Structural Operations:"]
@@ -127,7 +123,7 @@ def run_example'rn :=
       let _ ← pyPrintIO [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
       -- 4. Error Handling Simulation
       let _ ← pyPrintIO [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
-      let mut invalid_data : List (List Float) := [[(1.0 : Float), (2.0 : Float), (3.0 : Float)]]
+      let mut invalid_data := [[(1.0 : Float), (2.0 : Float), (3.0 : Float)]]
       -- This should trigger the ValueError in np.matmul(1x3, 2x2)
       let _ ← process_data'rn invalid_data weights) :
     PastaLean.PyExcept _)

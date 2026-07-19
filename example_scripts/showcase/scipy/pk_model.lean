@@ -178,21 +178,21 @@ theorem total_nonincreasing :
 
 noncomputable def main' :=
   ((do
-      let mut ka : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut ke : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut k12 : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut k21 : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut vol : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut dose : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut dt : Rat := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut ka := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut ke := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut k12 := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut k21 := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut vol := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut dose := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
+      let mut dt := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
       let mut dose_step : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
       let mut ndoses : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
       let mut nsteps : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
       let mut every : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
-      let mut depot : Rat := (0.0 : Rat)
-      let mut central : Rat := (0.0 : Rat)
-      let mut periph : Rat := (0.0 : Rat)
-      let mut t : Rat := (0.0 : Rat)
+      let mut depot := (0.0 : Rat)
+      let mut central := (0.0 : Rat)
+      let mut periph := (0.0 : Rat)
+      let mut t := (0.0 : Rat)
       let mut dose_num : Int := (0 : Int)
       for step in (PastaLean.pyRange nsteps)do
         -- Administer a dose into the gut depot when one is due.
@@ -205,9 +205,9 @@ noncomputable def main' :=
         else
           let _ := ()
         -- One forward-Euler step using the rate functions.
-        let mut d_depot : Rat := depot_rate ka depot
-        let mut d_central : Rat := central_rate ka ke k12 k21 depot central periph
-        let mut d_periph : Rat := periph_rate k12 k21 central periph
+        let mut d_depot := depot_rate ka depot
+        let mut d_central := central_rate ka ke k12 k21 depot central periph
+        let mut d_periph := periph_rate k12 k21 central periph
         depot := depot +ₚ d_depot *ₚ dt
         central := central +ₚ d_central *ₚ dt
         periph := periph +ₚ d_periph *ₚ dt
@@ -225,21 +225,21 @@ attribute [simp] main'
 
 def main''rn :=
   ((do
-      let mut ka : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut ke : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut k12 : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut k21 : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut vol : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut dose : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut dt : Float := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut ka := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut ke := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut k12 := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut k21 := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut vol := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut dose := PastaLean.pyFloat (← PastaLean.pyInputIO "")
+      let mut dt := PastaLean.pyFloat (← PastaLean.pyInputIO "")
       let mut dose_step : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
       let mut ndoses : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
       let mut nsteps : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
       let mut every : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut depot : Float := (0.0 : Float)
-      let mut central : Float := (0.0 : Float)
-      let mut periph : Float := (0.0 : Float)
-      let mut t : Float := (0.0 : Float)
+      let mut depot := (0.0 : Float)
+      let mut central := (0.0 : Float)
+      let mut periph := (0.0 : Float)
+      let mut t := (0.0 : Float)
       let mut dose_num : Int := (0 : Int)
       for step in (PastaLean.pyRange nsteps)do
         -- Administer a dose into the gut depot when one is due.
@@ -252,9 +252,9 @@ def main''rn :=
         else
           let _ := ()
         -- One forward-Euler step using the rate functions.
-        let mut d_depot : Float := depot_rate'rn ka depot
-        let mut d_central : Float := central_rate'rn ka ke k12 k21 depot central periph
-        let mut d_periph : Float := periph_rate'rn k12 k21 central periph
+        let mut d_depot := depot_rate'rn ka depot
+        let mut d_central := central_rate'rn ka ke k12 k21 depot central periph
+        let mut d_periph := periph_rate'rn k12 k21 central periph
         depot := depot +ₚ d_depot *ₚ dt
         central := central +ₚ d_central *ₚ dt
         periph := periph +ₚ d_periph *ₚ dt

@@ -268,13 +268,17 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     if bodyElems.any (fun b => jsonMutatesName b argIdent.getId.toString) then
       addVar argIdent.getId
       paramPrelude := paramPrelude.push (← `(doElem| let mut $argIdent:ident := $argIdent))
+  -- The monad codomain: `PyValue` when the returns disagree (`_box_return`), else a hole for Lean to
+  -- infer. Without this an effectful boxed function would keep `_`, and Lean would fix the monad's
+  -- type from the first `return` — forcing e.g. `Float`, so a later `return 0` (`ℤ`) fails to match.
+  let effCodomain : TSyntax `term ← if boxReturn then `(PastaLean.PyValue) else `(_)
   if usesProofExceptions || usesProofIO then
     -- Proof mode: use PyProofM (state monad with Python exceptions)
     let bodyStxArray ← monadicFunctionBodySyntax bodyElems
     let proofMonadIdent := mkIdent ``PastaLean.ProofMode.PyProofM
     let proofBody ← `(((do
           $[$paramPrelude:doElem]*
-          $[$bodyStxArray:doElem]*) : $proofMonadIdent _))
+          $[$bodyStxArray:doElem]*) : $proofMonadIdent $effCodomain))
     if argInfos.isEmpty then
       pure proofBody
     else
@@ -284,7 +288,7 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     let exceptIdIdent := mkIdent ``PastaLean.PyExceptId
     let exceptIdBody ← `(((do
           $[$paramPrelude:doElem]*
-          $[$bodyStxArray:doElem]*) : $exceptIdIdent _))
+          $[$bodyStxArray:doElem]*) : $exceptIdIdent $effCodomain))
     if argInfos.isEmpty then
       pure exceptIdBody
     else
@@ -294,7 +298,7 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     let exceptIdent := mkIdent ``PastaLean.PyExcept
     let exceptBody ← `(((do
           $[$paramPrelude:doElem]*
-          $[$bodyStxArray:doElem]*) : $exceptIdent _))
+          $[$bodyStxArray:doElem]*) : $exceptIdent $effCodomain))
     if argInfos.isEmpty then
       pure exceptBody
     else
@@ -304,7 +308,7 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     let ioIdent := mkIdent ``IO
     let ioBody ← `(((do
           $[$paramPrelude:doElem]*
-          $[$bodyStxArray:doElem]*) : $ioIdent _))
+          $[$bodyStxArray:doElem]*) : $ioIdent $effCodomain))
     if argInfos.isEmpty then
       pure ioBody
     else

@@ -133,6 +133,22 @@ def handlerConditionTerm (caughtIdent : TSyntax `ident) (handlerType? : Option J
           else
             `($caughtKind == $(Syntax.mkStrLit excName))
 
+/-- Wrap every `(← e)` await in a run-mode try body with `PyExcept.captureIOErrors`, turning an IO
+error (e.g. `EOFError` from `input()`) into a catchable `PyException`. Unlike wrapping the whole body
+in `captureIOErrors (do …)`, this keeps each statement in the enclosing `do`, so a hoisted `let mut`
+stays mutable (Lean forbids mutating an outer `let mut` from inside a nested `do`). -/
+partial def wrapIOAwaitsWithCapture (stx : Syntax) : PygenM Syntax := do
+  match stx with
+  | .node info ``Lean.Parser.Term.liftMethod args =>
+      if args.size ≥ 1 then
+        let inner ← wrapIOAwaitsWithCapture args[args.size - 1]!
+        let innerT : TSyntax `term := ⟨inner⟩
+        let captured ← `($(mkIdent ``PastaLean.PyExcept.captureIOErrors) $innerT)
+        return .node info ``Lean.Parser.Term.liftMethod (args.set! (args.size - 1) captured.raw)
+      else return stx
+  | .node info k args => return .node info k (← args.mapM wrapIOAwaitsWithCapture)
+  | _ => return stx
+
 mutual
 
 /-- Compile the `except` chain into nested handler tests over the caught exception value. -/
@@ -170,12 +186,12 @@ partial def tryBranchBodySyntax (bodyElems : Array Json) : PygenM (Array (TSynta
   let mut bodyStxArray := #[]
   for elem in bodyElems do
     let elemStx ←
-      if jsonNodeType? elem == some "Try" then
+      -- A value-returning nested `try` becomes an inner PyExcept term (it yields a value); a
+      -- non-returning one is spliced inline via its `doElem` form, so a `let mut` assigned inside it
+      -- and used later in the enclosing body stays mutable (a nested `do` term would freeze it).
+      if jsonNodeType? elem == some "Try" && statementDefinitelyReturns elem then
         let nestedTry ← tryExceptTerm elem
-        if statementDefinitelyReturns elem then
-          `(doElem| $nestedTry:term)
-        else
-          `(doElem| let _ ← $nestedTry:term)
+        `(doElem| $nestedTry:term)
       else
         withoutCheck do
           getCode elem `doElem
@@ -222,23 +238,14 @@ partial def tryExceptTerm (json : Json) : PygenM (TSyntax `term) := do
   let bodyYieldsValue :=
     statementListMayYieldValue (bodyElems ++ orelseElems)
       || handlersListMayYieldValue handlersElems
+  let _ := bodyYieldsValue
   let tryBranchElems : Array (TSyntax `doElem) ←
-    if needsIO && useProofMonad then do
-      -- Proof mode with IO: no captureIOErrors wrapper needed!
-      -- pyInputProof already converts IOError to PyException via liftInputM,
-      -- so we can just splice the body directly (preserving let mut scope)
-      pure innerBodyElems
-    else if needsIO then do
-      -- Run mode with IO: keep existing captureIOErrors wrapping
-      let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
-      let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
-      if bodyYieldsValue then do
-        let tryValName := mkIdent (← freshName `__py_try_val)
-        pure #[← `(doElem| let $tryValName ← $wrappedBody:term), ← `(doElem| return $tryValName)]
-      else
-        pure #[← `(doElem| let _ ← $wrappedBody:term)]
+    if needsIO && !useProofMonad then do
+      -- Run mode with IO: wrap each `(← io)` await with captureIOErrors and splice the body
+      -- directly, so IO errors are catchable AND a hoisted `let mut` stays mutable.
+      innerBodyElems.mapM (fun e => do return ⟨← wrapIOAwaitsWithCapture e.raw⟩)
     else
-      -- No IO: splice directly
+      -- Proof mode (pyInputProof self-converts IO errors) or no IO: splice directly.
       pure innerBodyElems
   if finalbodyElems.isEmpty then
     `(((do
@@ -305,21 +312,14 @@ def trySyntax : (kind : SyntaxNodeKind) → Json →
         let bodyYieldsValue :=
           statementListMayYieldValue (bodyElems ++ orelseElems)
             || handlersListMayYieldValue handlersElems
+        let _ := bodyYieldsValue
         let tryBranchElems : Array (TSyntax `doElem) ←
-          if needsIO && useProofMonad then do
-            -- Proof mode with IO: splice directly (no wrapper needed)
-            pure innerBodyElems
-          else if needsIO then do
-            -- Run mode with IO: wrap with captureIOErrors
-            let captureIdent := mkIdent ``PastaLean.PyExcept.captureIOErrors
-            let wrappedBody ← `($captureIdent (do $[$innerBodyElems:doElem]*))
-            if bodyYieldsValue then do
-              let tryValName := mkIdent (← freshName `__py_try_val)
-              pure #[← `(doElem| let $tryValName ← $wrappedBody:term), ← `(doElem| return $tryValName)]
-            else
-              pure #[← `(doElem| let _ ← $wrappedBody:term)]
+          if needsIO && !useProofMonad then do
+            -- Run mode with IO: wrap each `(← io)` await with captureIOErrors and splice directly,
+            -- so IO errors are catchable AND a hoisted `let mut` stays mutable.
+            innerBodyElems.mapM (fun e => do return ⟨← wrapIOAwaitsWithCapture e.raw⟩)
           else
-            -- No IO: splice directly
+            -- Proof mode (pyInputProof self-converts IO errors) or no IO: splice directly.
             pure innerBodyElems
         let tryStx ←
           if finalbodyElems.isEmpty then

@@ -242,9 +242,21 @@ partial def stampTarget (env : Env) (target : Json) : Json :=
   | some "Name" =>
       if (getField target "_ty").isSome then target
       else
-        -- `_` is a throwaway; typing it is pointless and can clash with its RHS.
-        match (nameId? target).filter (· != "_") |>.bind (env.get? ·) |>.bind toAnnotation? with
-        | some ann => target.setObjVal! "_ty" ann
+        -- Only ascribe a local when Lean cannot infer it from the assignment's RHS on its own — i.e.
+        -- an empty/none-shaped container (`xs = []`, `d = {}`) whose element type is otherwise stuck.
+        -- For a determined RHS (a numpy/division result, a literal), ascribing would *force* a type
+        -- (e.g. `ℚ`) that fights what the RHS actually elaborates to (e.g. `Float`); leave it to Lean.
+        match (nameId? target).filter (· != "_") |>.bind (env.get? ·) with
+        -- A variable that is two incompatible types across paths (`y = 10/x` then `y = 0`) is boxed
+        -- as `PyValue`, so the reassignments coerce instead of clashing.
+        | some .any =>
+            target.setObjVal! "_ty" (Json.mkObj [("node_type", .str "Name"), ("id", .str "PyValue")])
+        | some t =>
+            if t.needsAscription then
+              match toAnnotation? t with
+              | some ann => target.setObjVal! "_ty" ann
+              | none => target
+            else target
         | none => target
   | some "Tuple" | some "List" =>
       match target.getObjValAs? (Array Json) "elts" with
