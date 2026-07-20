@@ -260,6 +260,16 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
         match ← tupleTargetElts? target with
         | some elts => do
             let n := elts.size
+            -- RHS both yields a value (a tuple) and mutates its receiver (`d, node = heappop(h)`):
+            -- bind the value first (reads the original receiver), apply the mutation, then unpack.
+            if let some (valueTerm, update) ← mutatingCallRhsLowering? value then
+              let valueTmpIdent := mkIdent (← freshName `__unpack_value)
+              let bindValueTmp ← `(doElem| let $valueTmpIdent:ident := $valueTerm)
+              let mut binds : Array (TSyntax `doElem) := #[bindValueTmp, update]
+              for i in List.range n do
+                let acc ← unpackAccessTerm true valueTmpIdent i n
+                binds := binds.push (← tupleElementAssignDoElem elts[i]! acc)
+              return ⟨mkNullNode (binds.map TSyntax.raw)⟩
             let valueStx ← getCode value `term
             let valueTmpIdent := mkIdent (← freshName `__unpack_value)
             let unpackTmpIdent := mkIdent (← freshName `__unpack_pair)
@@ -364,7 +374,11 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
             `(doElem| return default)
         | _ =>
             let valueStx ←
-              if jsonUsesIOEffect value then
+              -- A call that both yields a value and mutates its receiver (`return heappop(h)`):
+              -- the mutation is unobservable after a `return`, so return the value component.
+              if let some (valueTerm, _) ← mutatingCallRhsLowering? value then
+                pure valueTerm
+              else if jsonUsesIOEffect value then
                 inlineIOTerm value
               else
                 let s ← getCode value `term

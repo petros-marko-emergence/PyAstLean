@@ -23,6 +23,12 @@ def pyHeappopVal {α : Type} [Inhabited α] (h : List α) : α := h.headD defaul
 /-- The heap left after `heappop(h)`: everything but the min. -/
 def pyHeappopRest {α : Type} (h : List α) : List α := h.tail
 
+/-- The value `heapreplace(h, x)` returns: the min *before* the replacement (ignores `x`). -/
+def pyHeapreplaceVal {α : Type} [Inhabited α] (h : List α) (_x : α) : α := h.headD default
+
+/-- The heap after `heapreplace(h, x)`: drop the min, then insert `x`. -/
+def pyHeapreplaceRest {α : Type} [LinearOrder α] (h : List α) (x : α) : List α := sortAsc (x :: h.tail)
+
 /-- `heapq.nsmallest(n, iterable)`: the `n` smallest elements, ascending. -/
 def pyNsmallest {α β : Type} [PastaLean.PyIterable α β] [LinearOrder β] (n : Int) (xs : α) : List β :=
   (sortAsc (PastaLean.pyIter xs)).take n.toNat

@@ -18,6 +18,7 @@ def heapqMutator? (member : String) : Option Libraries.LibraryMutator :=
   | "heapify"  => some { stmtFn := ``pyHeapify }
   | "heappush" => some { stmtFn := ``pyHeappush }
   | "heappop"  => some { stmtFn := ``pyHeappopRest, valueRest? := some (``pyHeappopVal, ``pyHeappopRest) }
+  | "heapreplace" => some { stmtFn := ``pyHeapreplaceRest, valueRest? := some (``pyHeapreplaceVal, ``pyHeapreplaceRest) }
   | _ => none
 
 end Libraries.heapq

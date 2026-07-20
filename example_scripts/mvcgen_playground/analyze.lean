@@ -8,6 +8,7 @@ open Std.Do
 
 set_option linter.all false
 set_option mvcgen.warning false
+set_option linter.pyAnyProof true
 
 set_option maxHeartbeats 800000
 
@@ -43,7 +44,7 @@ noncomputable def analyze := fun (xs : List Int) ↦ fun (threshold : Int) ↦
     else
       avg := (0.0 : Rat)
       spread := (0.0 : Real)
-    let mut result : Real := avg +ₚ spread
+    let mut result := avg +ₚ spread
     let _ := Libraries.passta.pyPassEnsures (decide (result ≥ (0.0 : Rat)))
     return result : ExceptT PastaLean.PyException Id _)
 
@@ -87,6 +88,6 @@ def analyze'rn : List Int → Int → PastaLean.PyExcept Float := fun (xs : List
   else
     avg := (0.0 : Float)
     spread := (0.0 : Float)
-  let mut result : Float := avg +ₚ spread
+  let mut result := avg +ₚ spread
   let _ := Libraries.passta.pyPassEnsures (decide (result ≥ (0.0 : Float)))
   return result
