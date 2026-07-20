@@ -8,7 +8,7 @@ open Std.Do
 
 set_option linter.all false
 set_option mvcgen.warning false
-set_option linter.pyValueProof true
+set_option linter.pyAnyProof true
 
 set_option maxHeartbeats 0
 
@@ -27,7 +27,7 @@ def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List R
         let mut result := Libraries.numpy.pyNumpyMatmul centered weights
         return result
       catch caught =>
-        if (caught).OfKind == "ValueError" then 
+        if (caught).OfKind == "ValueError" then
           let e := caught
           let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Processing failed: {e}"]
           -- Fallback to a zero matrix if dimensions fail
@@ -54,7 +54,7 @@ def process_data'rn : List (List Float) → List (List Float) → PastaLean.PyEx
     let mut result := Libraries.numpy.pyNumpyMatmul centered weights
     return result
   catch caught =>
-    if (caught).OfKind == "ValueError" then 
+    if (caught).OfKind == "ValueError" then
       let e := caught
       let _ ← pyPrintIO [pyPrintArg s! "Processing failed: {e}"]
       -- Fallback to a zero matrix if dimensions fail

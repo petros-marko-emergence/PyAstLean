@@ -142,7 +142,7 @@ def elemType : PyType → PyType
   | _ => .unknown
 
 /-- What to do when a value of type `actual` reaches a position expecting `expected`: the small
-implicit coercion Python performs, or `box` (fall back to `PyValue`) when the types are unrelated. -/
+implicit coercion Python performs, or `box` (fall back to `PyAny`) when the types are unrelated. -/
 inductive Reconcile where
   /-- Types already agree — no coercion. -/
   | exact
@@ -152,14 +152,14 @@ inductive Reconcile where
   | intToFloat
   /-- `actual` is `Optional[T]`, `expected` is `T` — unwrap the `Option`. -/
   | unwrapOpt
-  /-- Unrelated types — box both as `PyValue`. -/
+  /-- Unrelated types — box both as `PyAny`. -/
   | box
   deriving Repr, BEq, DecidableEq
 
 namespace Reconcile end Reconcile
 
 /-- Decide the coercion from `actual` to `expected`. The wired-up cases today are `boolToInt`
-(runtime instances), tuple projection (codegen) and `box` (`PyValue`); `intToFloat`/`unwrapOpt`
+(runtime instances), tuple projection (codegen) and `box` (`PyAny`); `intToFloat`/`unwrapOpt`
 name the remaining ones. -/
 def reconcile (expected actual : PyType) : Reconcile :=
   if expected.beq actual then .exact

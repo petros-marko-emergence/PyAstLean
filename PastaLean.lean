@@ -5,5 +5,5 @@ import PastaLean.PyGens
 import Libraries
 import Mathlib
 import PastaLean.PyAPI.UnsupportedLinter
-import PastaLean.PyAPI.PyValueLinter
+import PastaLean.PyAPI.PyAnyLinter
 import PastaLean.PyVerify.AssertTactic

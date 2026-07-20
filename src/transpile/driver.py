@@ -1584,9 +1584,9 @@ def translate_to_lean(source_code, target="term", filepath = None, imports_add =
                     "",
                     "set_option linter.all false", # shut up warnings which annoyingly popup in output
                     "set_option mvcgen.warning false",
-                    # Re-enable only the PyValue-proof linter, and only when a prove twin exists, so
-                    # un-inferred (PyValue) binders are flagged as unprovable in prove/both mode.
-                    *(["set_option linter.pyValueProof true"] if mode != "run" else []),
+                    # Re-enable only the PyAny-proof linter, and only when a prove twin exists, so
+                    # un-inferred (PyAny) binders are flagged as unprovable in prove/both mode.
+                    *(["set_option linter.pyAnyProof true"] if mode != "run" else []),
                     "",
                     f"set_option maxHeartbeats {heartbeats}",
                     "\n",

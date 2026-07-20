@@ -5,5 +5,5 @@ import PALC.PyAPI.TestCommonProtocols
 import PALC.PyAPI.TestBuiltins
 import PALC.PyAPI.TestCasting
 import PALC.PyAPI.TestPyPrint
-import PALC.PyAPI.TestPyValue
+import PALC.PyAPI.TestPyAny
 import PALC.PyAPI.TestInput

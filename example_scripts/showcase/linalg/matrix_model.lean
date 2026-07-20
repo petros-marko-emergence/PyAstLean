@@ -8,7 +8,7 @@ open Std.Do
 
 set_option linter.all false
 set_option mvcgen.warning false
-set_option linter.pyValueProof true
+set_option linter.pyAnyProof true
 
 set_option maxHeartbeats 800000
 
@@ -243,7 +243,7 @@ def main' :=
         let mut ny := c *ₚ x +ₚ d *ₚ y
         x := nx
         y := ny
-        if h_1 : step %ₚ every = (0 : Int) then 
+        if h_1 : step %ₚ every = (0 : Int) then
           let _ ←
             PastaLean.ProofMode.pyPrintProof
                 [pyPrintArg "S", pyPrintArg step, pyPrintArg x, pyPrintArg y, pyPrintArg detA]
@@ -270,7 +270,7 @@ def main''rn :=
         let mut ny := c *ₚ x +ₚ d *ₚ y
         x := nx
         y := ny
-        if h_1 : step %ₚ every == (0 : Int) then 
+        if h_1 : step %ₚ every == (0 : Int) then
           let _ ← pyPrintIO [pyPrintArg "S", pyPrintArg step, pyPrintArg x, pyPrintArg y, pyPrintArg detA]
         else
           let _ := ()) :

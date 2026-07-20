@@ -78,7 +78,7 @@ instance : PyItems (PyDefaultDict κ ν) κ ν where
 instance : PyKeys (PyDefaultDict κ ν) κ where
   pyKeys d := d.order
 
-instance : PyValues (PyDefaultDict κ ν) ν where
-  pyValues d := d.toPairs.map Prod.snd
+instance : PyAnys (PyDefaultDict κ ν) ν where
+  pyAnys d := d.toPairs.map Prod.snd
 
 end Libraries.collections

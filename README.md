@@ -43,44 +43,44 @@ Python has some unique features that make it hard to model in Lean because of th
 <details><summary>Dynamic Typing</summary>
 
 Python supports dynamic typing, while Lean is a statically typed language. The key to solving a lot of problems in modelling Python in Lean is to have a type system that can handle dynamic typing.
-Among all the problems, this has been the toughest one. The answer to this We found was something called [Gradual Typing](https://jsiek.github.io/home/WhatIsGradualTyping.html). The idea is to have a special total fallback type — we call it `PyValue` in the code which any Python value can box into.
+Among all the problems, this has been the toughest one. The answer to this We found was something called [Gradual Typing](https://jsiek.github.io/home/WhatIsGradualTyping.html). The idea is to have a special total fallback type — we call it `PyAny` in the code which any Python value can box into.
 
-We constructed a [TypeInfer](./TypeInfer/) engine which can infer the types of the variables in the Python code, made a Lattice following the rules of gradual typing and fine-tuning it for Python's type system. It infers a *concrete* Lean type (`Int`, `List String`, ...) wherever it can, and only falls back to `PyValue` for the slots it genuinely can't pin — so `PyValue` is rare, not everywhere.
+We constructed a [TypeInfer](./TypeInfer/) engine which can infer the types of the variables in the Python code, made a Lattice following the rules of gradual typing and fine-tuning it for Python's type system. It infers a *concrete* Lean type (`Int`, `List String`, ...) wherever it can, and only falls back to `PyAny` for the slots it genuinely can't pin — so `PyAny` is rare, not everywhere.
 
-For example: `int` and `bool` in Python can be used interchangeably in some cases(like `if 1 = True`), so we have to make sure that the type inference engine can handle this. `PyValue` has given us a lot of flexibility in modelling Python's dynamic typing in Lean.
+For example: `int` and `bool` in Python can be used interchangeably in some cases(like `if 1 = True`), so we have to make sure that the type inference engine can handle this. `PyAny` has given us a lot of flexibility in modelling Python's dynamic typing in Lean.
 
 </details>
 
 <details><summary>Multiple Return Types</summary>
 
-This is another tough one. Python allows for a function to return different types based on the input arguments. When the branches disagree, we box the result to `PyValue`; when they all agree, we return the specific type, as one would expect (and it stays provable).
+This is another tough one. Python allows for a function to return different types based on the input arguments. When the branches disagree, we box the result to `PyAny`; when they all agree, we return the specific type, as one would expect (and it stays provable).
 
 ```python
 def classify(n):
     if n > 0:
         return "positive"   # str
-    return 0                # int   ->  the whole function returns PyValue
+    return 0                # int   ->  the whole function returns PyAny
 ```
 
 *Why don't we make something like `Int | String` Union type?*
-Well, we can do that, but then Python doesn't even follow that. A function saying it will return `int` in the signature can return a `str` in some cases. Dealing with that is a nightmare, rather simply returning `PyValue` is a better idea. It might not be precise, but it is sound, and it works.
+Well, we can do that, but then Python doesn't even follow that. A function saying it will return `int` in the signature can return a `str` in some cases. Dealing with that is a nightmare, rather simply returning `PyAny` is a better idea. It might not be precise, but it is sound, and it works.
 
 </details>
 
 <details><summary>Mutations, not just Values but also Types</summary>
 
 We use simply `do` notation (with `let mut`) to model mutations in Lean. As long as the Type doesn't change, no fancy tricks needed.
-But Python lets a variable *change type* mid-function, so `TypeInfer` tracks each variable's type and, the moment two incompatible types meet in one slot, marks it `PyValue`.
+But Python lets a variable *change type* mid-function, so `TypeInfer` tracks each variable's type and, the moment two incompatible types meet in one slot, marks it `PyAny`.
 
-Now `PyValue` is a *tagged union* (`.int`, `.str`, `.list`, ...), and its operators are single delegating functions that **dispatch on the runtime tag**:
+Now `PyAny` is a *tagged union* (`.int`, `.str`, `.list`, ...), and its operators are single delegating functions that **dispatch on the runtime tag**:
 
 ```python
-x = 5        # x : PyValue (holds .int 5)
-x = x + 1        # boxes 1 to PyValue, then +ₚ inspects both tags:
-             #   both .int  ->  unwrap, do the Int addition, re-box as PyValue
+x = 5        # x : PyAny (holds .int 5)
+x = x + 1        # boxes 1 to PyAny, then +ₚ inspects both tags:
+             #   both .int  ->  unwrap, do the Int addition, re-box as PyAny
 ```
 
-So `x + 1` is *one* operator (`PyValue.add`) looking at the tags — `.int + .int` does integer addition, `.str + .str` concatenates, `1 + "a"` softly yields `.none` — and re-boxing. The `Int` addition happens *inside* on the unwrapped tag, not on a statically-typed `Int` we cast to and from. Container ops (`x[i]`, `len(x)`, `for e in x`) work the same way: they **delegate** to the boxed value's own `List`/`String` instance rather than reimplement anything.
+So `x + 1` is *one* operator (`PyAny.add`) looking at the tags — `.int + .int` does integer addition, `.str + .str` concatenates, `1 + "a"` softly yields `.none` — and re-boxing. The `Int` addition happens *inside* on the unwrapped tag, not on a statically-typed `Int` we cast to and from. Container ops (`x[i]`, `len(x)`, `for e in x`) work the same way: they **delegate** to the boxed value's own `List`/`String` instance rather than reimplement anything.
 
 </details>
 
@@ -97,7 +97,7 @@ def add(x, y):
 add(1, 2)              # 3
 add("Hello", "World")  # HelloWorld
 ```
-If no types are given (or can't be inferred), we box the params to `PyValue` so *one* definition works at every type. `add(1,2)` and `add("Hi","!")` both run off the same `def add (x : PyValue) (y : PyValue) := x +ₚ y` — the `+ₚ` (`PyValue.add`) dispatches on the runtime tags, exactly as above. Again: tag dispatch, not a cast round-trip.
+If no types are given (or can't be inferred), we box the params to `PyAny` so *one* definition works at every type. `add(1,2)` and `add("Hi","!")` both run off the same `def add (x : PyAny) (y : PyAny) := x +ₚ y` — the `+ₚ` (`PyAny.add`) dispatches on the runtime tags, exactly as above. Again: tag dispatch, not a cast round-trip.
 
 </details>
 
@@ -163,14 +163,14 @@ We donot support a lot of OOP features like polymorphism, very basic inheritance
 
 <details><summary>Exceptional Handling and IO</summary>
 
-`try`/`except`/`raise` live in the `PyExcept` monad, and `print`/`input` are `IO`. You'll notice the wrapper often carries a `_` blank return type — that's on purpose: Lean *infers* it. When the returns agree it becomes the concrete type (provable); when they disagree the function is boxed and the `_` becomes `PyValue`, so `try: return 1 / except: return "err"` just works (each branch coerces to `PyValue`).
+`try`/`except`/`raise` live in the `PyExcept` monad, and `print`/`input` are `IO`. You'll notice the wrapper often carries a `_` blank return type — that's on purpose: Lean *infers* it. When the returns agree it becomes the concrete type (provable); when they disagree the function is boxed and the `_` becomes `PyAny`, so `try: return 1 / except: return "err"` just works (each branch coerces to `PyAny`).
 
 ```python
 def describe(x):
     try:
         return x            # int
     except ValueError:
-        return "negative"   # str   ->  def describe : Int -> PyExcept PyValue
+        return "negative"   # str   ->  def describe : Int -> PyExcept PyAny
 ```
 
 </details>
@@ -187,7 +187,7 @@ Every function is emitted twice: a **provable** version (exact `ℚ` for floats,
 
 <details><summary>The catch — a boxed slot can't be proved</summary>
 
-`PyValue` makes us *total* (everything runs), but it is **not** a commutative ring, so `ring`/`nlinarith`/`taste?` die on it — a boxed function can't be proved. That's why boxing is a *last resort*: infer a concrete type wherever possible, box only the residue, and in prove mode a linter warns at every `PyValue` binder ("annotate the type to prove"). Provability is the whole point of the project, so we protect it.
+`PyAny` makes us *total* (everything runs), but it is **not** a commutative ring, so `ring`/`nlinarith`/`taste?` die on it — a boxed function can't be proved. That's why boxing is a *last resort*: infer a concrete type wherever possible, box only the residue, and in prove mode a linter warns at every `PyAny` binder ("annotate the type to prove"). Provability is the whole point of the project, so we protect it.
 
 </details>
 

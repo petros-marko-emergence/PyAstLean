@@ -8,7 +8,7 @@ open Std.Do
 
 set_option linter.all false
 set_option mvcgen.warning false
-set_option linter.pyValueProof true
+set_option linter.pyAnyProof true
 
 set_option maxHeartbeats 0
 
@@ -103,7 +103,7 @@ noncomputable def main' :=
               [w1⦋(1 : Int)⦌⦋(0 : Int)⦌ -ₚ lr *ₚ d_h1 *ₚ x⦋(0 : Int)⦌,
                 w1⦋(1 : Int)⦌⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1 *ₚ x⦋(1 : Int)⦌]
           b1 := [b1⦋(0 : Int)⦌ -ₚ lr *ₚ d_h0, b1⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1]
-        if h_1 : (epoch +ₚ (1 : Int)) %ₚ (1000 : Int) = (0 : Int) then 
+        if h_1 : (epoch +ₚ (1 : Int)) %ₚ (1000 : Int) = (0 : Int) then
           let _ ←
             PastaLean.ProofMode.pyPrintProof
                 [pyPrintArg s!"epoch {(epoch +ₚ (1 : Int))}: loss = {mean_squared_error xs ys w1 b1 w2 b2}"]
@@ -164,7 +164,7 @@ def main''rn :=
               [w1⦋(1 : Int)⦌⦋(0 : Int)⦌ -ₚ lr *ₚ d_h1 *ₚ x⦋(0 : Int)⦌,
                 w1⦋(1 : Int)⦌⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1 *ₚ x⦋(1 : Int)⦌]
           b1 := [b1⦋(0 : Int)⦌ -ₚ lr *ₚ d_h0, b1⦋(1 : Int)⦌ -ₚ lr *ₚ d_h1]
-        if h_1 : (epoch +ₚ (1 : Int)) %ₚ (1000 : Int) == (0 : Int) then 
+        if h_1 : (epoch +ₚ (1 : Int)) %ₚ (1000 : Int) == (0 : Int) then
           let _ ←
             pyPrintIO [pyPrintArg s!"epoch {(epoch +ₚ (1 : Int))}: loss = {mean_squared_error'rn xs ys w1 b1 w2 b2}"]
         else

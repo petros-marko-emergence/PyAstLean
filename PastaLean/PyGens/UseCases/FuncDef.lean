@@ -150,9 +150,9 @@ partial def annotationMentionsFloat (json : Json) : Bool :=
 
 /-- Read a Python function return annotation when it maps cleanly to a Lean runtime type. -/
 def functionReturnTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
-  -- A boxed function (returns disagree in type) returns `PyValue` regardless of any union annotation.
+  -- A boxed function (returns disagree in type) returns `PyAny` regardless of any union annotation.
   if json.getObjValAs? Bool "_box_return" == .ok true then
-    return some (mkIdent ``PastaLean.PyValue)
+    return some (mkIdent ``PastaLean.PyAny)
   -- The explicit `returns` annotation wins; else the type inferred by `TypeInfer` (`_ret_ty`).
   match (jsonFieldOption json "returns").orElse (fun _ => jsonFieldOption json "_ret_ty") with
   | some returnJson =>
@@ -278,10 +278,10 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     if bodyElems.any (fun b => jsonMutatesName b argIdent.getId.toString) then
       addVar argIdent.getId
       paramPrelude := paramPrelude.push (← `(doElem| let mut $argIdent:ident := $argIdent))
-  -- The monad codomain: `PyValue` when the returns disagree (`_box_return`), else a hole for Lean to
+  -- The monad codomain: `PyAny` when the returns disagree (`_box_return`), else a hole for Lean to
   -- infer. Without this an effectful boxed function would keep `_`, and Lean would fix the monad's
   -- type from the first `return` — forcing e.g. `Float`, so a later `return 0` (`ℤ`) fails to match.
-  let effCodomain : TSyntax `term ← if boxReturn then `(PastaLean.PyValue) else `(_)
+  let effCodomain : TSyntax `term ← if boxReturn then `(PastaLean.PyAny) else `(_)
   if usesProofExceptions || usesProofIO then
     -- Proof mode: use PyProofM (state monad with Python exceptions)
     let bodyStxArray ← monadicFunctionBodySyntax bodyElems
@@ -324,9 +324,9 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
     else
       mkLambda ioBody
   else
-    -- A boxed function's returns disagree in type, so ascribe the result to `PyValue`; each branch
-    -- then coerces (`return 1` / `return "neg"` both become `PyValue`).
-    let boxTy := mkIdent ``PastaLean.PyValue
+    -- A boxed function's returns disagree in type, so ascribe the result to `PyAny`; each branch
+    -- then coerces (`return 1` / `return "neg"` both become `PyAny`).
+    let boxTy := mkIdent ``PastaLean.PyAny
     try
       let bodyStx ← pureFunctionBodySyntax bodyElems
       let bodyStx ← if boxReturn then `(($bodyStx : $boxTy)) else pure bodyStx
@@ -720,7 +720,7 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         -- is NOT blanket-lifted, so its `ℚ` locals stay `ℚ`.
         let isReal := (← getNumericMode) == .exact && json.getObjValAs? Bool "_real_fn" == .ok true
         -- The inference pass marks a function whose returns disagree in type; its result is boxed as
-        -- `PyValue`, which is not provable — so it never gets the `[simp, taste_ingr]` tag below.
+        -- `PyAny`, which is not provable — so it never gets the `[simp, taste_ingr]` tag below.
         let boxReturn := json.getObjValAs? Bool "_box_return" == .ok true
         let argInfos ← functionArgInfos json
         let effectCmd? ← withBoxReturnContext boxReturn

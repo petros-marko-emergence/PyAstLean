@@ -1,7 +1,7 @@
 # Multiple return types and per-variable type mutation, both handled by inference boxing the slot to
-# PyValue (the dynamic fallback) and dispatching operations on the runtime tag.
+# PyAny (the dynamic fallback) and dispatching operations on the runtime tag.
 
-# A function whose branches return different types (str vs int) → its result is PyValue.
+# A function whose branches return different types (str vs int) → its result is PyAny.
 def classify(n):
     if n > 0:
         return "positive"
@@ -22,8 +22,8 @@ def add(a, b):
     return a + b
 
 
-# A try/except whose branches return different types (int vs str) → the whole function is PyValue,
-# so the `PyExcept _` codomain in Exceptions.lean infers `PyValue` on its own.
+# A try/except whose branches return different types (int vs str) → the whole function is PyAny,
+# so the `PyExcept _` codomain in Exceptions.lean infers `PyAny` on its own.
 def describe(x):
     try:
         if x < 0:

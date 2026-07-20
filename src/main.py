@@ -139,7 +139,7 @@ def cmd_json(args) -> int:
 
 def cmd_run(args) -> int:
     # Execution only needs the runnable Float twin: the prove twin adds noncomputable declarations
-    # and the prove-mode PyValue linter (whose warnings would pollute the program's stdout).
+    # and the prove-mode PyAny linter (whose warnings would pollute the program's stdout).
     mode = "run"
     source = prepasses.apply(args.file, args)
     with _session_from(args) as session:

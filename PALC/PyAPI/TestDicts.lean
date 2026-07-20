@@ -23,7 +23,7 @@ private def itemStrings (m : Std.HashMap String Int) : List String :=
 
 /-- info: [10, 20, 30] -/
 #guard_msgs in
-#eval sortInts <| pyValues (Std.HashMap.ofList [("x", 30), ("y", 10), ("z", 20)])
+#eval sortInts <| pyAnys (Std.HashMap.ofList [("x", 30), ("y", 10), ("z", 20)])
 
 /-- info: 0 -/
 #guard_msgs in

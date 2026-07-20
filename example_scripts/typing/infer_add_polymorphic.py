@@ -1,5 +1,5 @@
 # One `add` definition, called at int and str in the same program: the params are used at genuinely
-# different types (`.any`), so they box to PyValue and dispatch on the runtime tag. Runs off a single
+# different types (`.any`), so they box to PyAny and dispatch on the runtime tag. Runs off a single
 # definition -> prints 7 then xy.
 
 def add(a, b):

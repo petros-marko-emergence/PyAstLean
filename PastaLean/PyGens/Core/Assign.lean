@@ -369,10 +369,10 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
               else
                 let s ← getCode value `term
                 if jsonUsesMonadicEffect value then `((← $s:term)) else pure s
-            -- In a boxed-return function, ascribe each value to `PyValue` so `try/catch` branches
+            -- In a boxed-return function, ascribe each value to `PyAny` so `try/catch` branches
             -- coerce individually (Lean would otherwise unify the branch types from the first return).
             let valueStx ← if (← getBoxReturnContext)
-              then `(($valueStx : PastaLean.PyValue)) else pure valueStx
+              then `(($valueStx : PastaLean.PyAny)) else pure valueStx
             -- A simple atom (`return x` / `return 42`) is always narrow, so return it directly.
             -- A wide expression placed directly after `return`, however, can be split onto the
             -- next line by the pretty-printer, which re-parses as `return` (Unit) followed by a

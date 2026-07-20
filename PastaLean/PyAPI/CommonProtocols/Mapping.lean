@@ -20,12 +20,12 @@ def pyKeys {α κ : Type} [inst : PyKeys α κ] (m : α) : List κ :=
   inst.pyKeys m
 
 /-- Protocol for Python-style `values()`. -/
-class PyValues (α : Type) (ν : outParam Type) where
-  pyValues : α → List ν
+class PyAnys (α : Type) (ν : outParam Type) where
+  pyAnys : α → List ν
 
 /-- Public runtime surface for Python `values()`. -/
-def pyValues {α ν : Type} [inst : PyValues α ν] (m : α) : List ν :=
-  inst.pyValues m
+def pyAnys {α ν : Type} [inst : PyAnys α ν] (m : α) : List ν :=
+  inst.pyAnys m
 
 instance [BEq κ] [Hashable κ] : PyItems (Std.HashMap κ ν) κ ν where
   pyItems m := pyDictItems m
@@ -33,7 +33,7 @@ instance [BEq κ] [Hashable κ] : PyItems (Std.HashMap κ ν) κ ν where
 instance [BEq κ] [Hashable κ] : PyKeys (Std.HashMap κ ν) κ where
   pyKeys m := pyDictKeys m
 
-instance [BEq κ] [Hashable κ] : PyValues (Std.HashMap κ ν) ν where
-  pyValues m := pyDictValues m
+instance [BEq κ] [Hashable κ] : PyAnys (Std.HashMap κ ν) ν where
+  pyAnys m := pyDictValues m
 
 end PastaLean

@@ -81,7 +81,7 @@ To iterate while staying a **single term**, replace the loop with a value-produc
 | `sum(xs)` / `sum(f(x) for x in xs)` | `pySum xs` / `pySum (List.map …)` | ✅ |
 | `[f(x) for x in xs]` | `List.map (fun x => …) (pyIter xs)` | ✅ |
 | `[x for x in xs if p(x)]` | `pyFilter …` | ✅ |
-| `all(p(x) for x in xs)` / `any(...)` | `pyAll …` / `pyAny …` | ✅ |
+| `all(p(x) for x in xs)` / `any(...)` | `pyAll …` / `PyStdAny …` | ✅ |
 | `min(xs)` / `max(xs)` | `pyMin …` / `pyMax …` | ✅ |
 | `reduce(lambda a,b: …, xs, init)` (from `functools`) | `Libraries.functools.pyReduce …` | ✅ |
 | `zip(xs, ys)` | `pyZip xs ys` | ✅ |

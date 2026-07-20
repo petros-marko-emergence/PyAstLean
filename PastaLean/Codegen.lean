@@ -37,12 +37,12 @@ initialize realContextRef : IO.Ref Bool ← IO.mkRef false
 /-- Read whether we're lowering inside a real-valued (`ℝ`) function body. -/
 def getRealContext : IO Bool := realContextRef.get
 
-/-- True while lowering the body of a function whose return is boxed to `PyValue` (its branches
-return disagreeing types). Each `return e` then ascribes `(e : PyValue)`, so `try/catch` branches
+/-- True while lowering the body of a function whose return is boxed to `PyAny` (its branches
+return disagreeing types). Each `return e` then ascribes `(e : PyAny)`, so `try/catch` branches
 coerce individually instead of Lean unifying their types from the first return. -/
 initialize boxReturnRef : IO.Ref Bool ← IO.mkRef false
 
-/-- Read whether we're lowering inside a `PyValue`-boxed-return function body. -/
+/-- Read whether we're lowering inside a `PyAny`-boxed-return function body. -/
 def getBoxReturnContext : IO Bool := boxReturnRef.get
 
 /-- True while lowering a *condition position* — the direct test of an `if`/`while` — where a

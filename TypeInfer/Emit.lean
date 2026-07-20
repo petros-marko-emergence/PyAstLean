@@ -5,7 +5,7 @@ import TypeInfer.PyType
 
 `toTypeSyntax?` turns a known `PyType` into the Lean type the runtime uses for it, and returns
 `none` for anything still `unknown`/`any` — the caller then leaves the binder untyped (today) or
-boxes it as `PyValue`.
+boxes it as `PyAny`.
 
 `float` has no fixed answer: it is `ℚ` in exact mode, `ℝ` in a real-marked context and `Float`
 under `--approx`. The caller resolves that and passes the type in as `floatTy`.

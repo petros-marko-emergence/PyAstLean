@@ -246,8 +246,8 @@ def classify(x):
     return 0
 ```
 
-There is no Lean type that is both `String` and `Int`, so PastaLean boxes the result as `PyValue` —
-a single runtime type that holds any Python value. The function compiles as returning `PyValue`, and
+There is no Lean type that is both `String` and `Int`, so PastaLean boxes the result as `PyAny` —
+a single runtime type that holds any Python value. The function compiles as returning `PyAny`, and
 `classify(5)` prints `positive`, `classify(-3)` prints `0`, exactly like Python. This is the *total
 fallback*: inference makes it rare, but when a value really is dynamic, boxing means the program
 still compiles instead of failing. (A boxed value can't be reasoned about by the prover, so it's a
@@ -282,6 +282,6 @@ production functions with `native_decide`.
 | `Solve.lean` | `inferFunction` (the per-function fixpoint), `collectSigs` / `inferModule` (the cross-function pass), and `stampNode` (write `_ty` back onto the IR) |
 | `Lattice.lean` | the proofs: the lattice laws, the partial order, and gradual-typing consistency |
 
-The `PyValue` runtime fallback lives in `PastaLean/PyAPI/PyValue.lean`. Tests are in
+The `PyAny` runtime fallback lives in `PastaLean/PyAPI/PyAny.lean`. Tests are in
 `PastaLeanTest/TypeInfer/TestLattice.lean` and `TestInfer.lean` (unit checks on the lattice and the
 rules) and `PastaLeanTest/PastaLeanCheck/Typing/` (worked programs).
