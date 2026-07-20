@@ -90,14 +90,14 @@ failure that keeps the operation total. -/
 
 namespace PyAny
 
-private def asNum : PyAny → Option (Sum Int Rat)
+def asNum : PyAny → Option (Sum Int Rat)
   | .int n => some (.inl n)
   | .bool b => some (.inl (if b then 1 else 0))
   | .float q => some (.inr q)
   | _ => .none
 
 /-- Apply integer/rational ops to two numeric boxes, promoting to `float` if either is a float. -/
-private def numBinop (fi : Int → Int → Int) (fq : Rat → Rat → Rat) (a b : PyAny) : Option PyAny :=
+def numBinop (fi : Int → Int → Int) (fq : Rat → Rat → Rat) (a b : PyAny) : Option PyAny :=
   match asNum a, asNum b with
   | some (.inl x), some (.inl y) => some (.int (fi x y))
   | some x, some y =>

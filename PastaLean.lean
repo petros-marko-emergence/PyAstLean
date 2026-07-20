@@ -6,4 +6,5 @@ import Libraries
 import Mathlib
 import PastaLean.PyAPI.UnsupportedLinter
 import PastaLean.PyAPI.PyAnyLinter
+import PastaLean.PyAPI.PyAnyProof
 import PastaLean.PyVerify.AssertTactic
