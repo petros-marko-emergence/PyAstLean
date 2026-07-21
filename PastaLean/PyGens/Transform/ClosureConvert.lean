@@ -201,8 +201,12 @@ partial def rewriteHelperCalls (old new : String) (captures : Array String) (jso
               | _ => pure (Json.mkObj [])
             return (json.setObjVal! "func" (nameNode new)).setObjVal! "args" (Json.arr args)
               |>.setObjVal! "keywords" keywords
+      -- `old` as a VALUE (`sort(key=old)`): a capture-free helper is a real top-level def → just `new`.
+      -- A capturing one can't be a bare value (captures come after its params), so reject it.
       if jsonNodeType? json == some "Name" && json.getObjValAs? String "id" == .ok old then
-        throwError s!"nested function '{old}' is used as a value; only direct calls are supported."
+        if captures.isEmpty then return nameNode new
+        else throwError s!"nested function '{old}' captures variables and is used as a value; \
+          only direct calls are supported."
       let rewritten ← fields.toList.mapM fun (k, v) => do
         return (k, ← rewriteHelperCalls old new captures v)
       return Json.mkObj rewritten
@@ -462,8 +466,10 @@ private def liftHelper (outerName : String) (outerJson innerJson : Json) :
   let readOnly := captures.filter fun c => !threaded.contains c
   let ordered := readOnly ++ threaded
 
-  if usedAsValue innerName inner || usedAsValue innerName (Json.arr outerBody) then
-    throwError s!"nested function '{innerName}' is used as a value; only direct calls are supported."
+  -- A capture-free helper used as a value (`sort(key=f)`) is fine — lifted to a plain reference. A
+  -- capturing one can't be (captures come after its params), so reject that case.
+  if (usedAsValue innerName inner || usedAsValue innerName (Json.arr outerBody)) && !captures.isEmpty then
+    throwError s!"nested function '{innerName}' captures variables and is used as a value; unsupported."
 
   let hasValue := hasValuedReturn (Json.arr innerBody)
   unless threaded.isEmpty do
