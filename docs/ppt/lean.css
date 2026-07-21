@@ -430,7 +430,9 @@
    already carries its own token colours, so drop the grey chip. Plain
    `backtick` code (no `hl` class) keeps its chip. Works for any syntax. */
 .reveal code.hl.inline {
-  background: transparent;
+  /* `!important` beats Verso's slides-highlight.css `.reveal code.hl.lean.inline`, which otherwise
+     paints a grey `rgba(0,0,0,.25)` chip. We want the blue token text on the plain white page. */
+  background: transparent !important;
   padding: 0;
   font-size: 1em;
 }
@@ -551,4 +553,13 @@
   background: transparent;
   color: var(--muted);
   font-family: var(--mono);
+}
+
+/* build-time stamp (the {built} role) — a quiet footer on the title slide */
+.reveal .timeDay {
+  margin-top: 0.9em;
+  font-size: 1em;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  opacity: 0.75;
 }

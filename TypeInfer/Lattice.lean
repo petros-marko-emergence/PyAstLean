@@ -1,6 +1,8 @@
 import Mathlib
 import TypeInfer.PyType
 
+set_option linter.unnecessarySeqFocus false
+
 /-!
 # Verified properties of the type lattice
 

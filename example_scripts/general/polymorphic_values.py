@@ -14,7 +14,9 @@ def reassigned():
     x = x + 5          # int arithmetic
     x = "hi"           # now a string
     x = x + "world"    # string concatenation on the new type
-    return x
+    y = 3
+    y = x
+    return x + y
 
 
 # One `add` used at both int and str (the flagship polymorphic case).

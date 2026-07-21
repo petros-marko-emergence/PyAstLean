@@ -22,22 +22,24 @@ def classify'rn := fun (n : Int) ↦ (if decide (n > (0 : Int)) then "positive" 
 
 -- A parameter/local rebound to a different type mid-function, with operations on each type.
 def reassigned :=
-  (let x := (1 : Int)
-    let x := x +ₚ (5 : Int)
-    let x := "hi"
-    let x := x +ₚ "world"
-    x :
-    PastaLean.PyAny)
+  let x := (1 : Int)
+  let x := x +ₚ (5 : Int)
+  let x := "hi"
+  let x := x +ₚ "world"
+  let y := (3 : Int)
+  let y := x
+  x +ₚ y
 
-attribute [simp] reassigned
+attribute [simp, taste_ingr] reassigned
 
 def reassigned'rn :=
-  (let x := (1 : Int)
-    let x := x +ₚ (5 : Int)
-    let x := "hi"
-    let x := x +ₚ "world"
-    x :
-    PastaLean.PyAny)
+  let x := (1 : Int)
+  let x := x +ₚ (5 : Int)
+  let x := "hi"
+  let x := x +ₚ "world"
+  let y := (3 : Int)
+  let y := x
+  x +ₚ y
 
 -- One `add` used at both int and str (the flagship polymorphic case).
 def add := fun (a : PyAny) ↦ fun (b : PyAny) ↦ a +ₚ b

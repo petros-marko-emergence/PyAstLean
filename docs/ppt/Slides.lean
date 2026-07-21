@@ -2,6 +2,7 @@ import VersoSlides
 import Verso.Doc.Concrete
 import PastaLean
 import Libraries
+import Std
 import Std.Tactic.Do
 
 set_option verso.code.warnLineLength 500
@@ -12,6 +13,19 @@ set_option verso.slides.warnOnImage false
 
 open VersoSlides
 open PastaLean Libraries Libraries.numpy Libraries.passta Std.Do
+
+/- A `timeDay` inline role: renders the wall-clock date at the moment this doc is built (elaborated),
+e.g. "21 July 2026" — invoke as `{timeDay}`·``. It re-runs whenever this file is recompiled, so a
+fresh `lake build` / `lake exe slides` refreshes it. -/
+open Verso Doc Elab ArgParse in
+open Lean Elab Widget in
+open Lean.Doc.Syntax in
+@[role]
+meta def timeDay : RoleExpanderOf Unit
+  | (), _ => do
+    let out ← IO.Process.run { cmd := "date", args := #["+%d %B %Y"] }
+    let html := Verso.Output.Html.text false out.trimAscii.toString
+    ``(Verso.Doc.Inline.other (VersoSlides.InlineExt.ofHtml $(quote html)) #[])
 
 #doc (Slides) "PastaLean" =>
 
@@ -35,10 +49,8 @@ _Transpiling_ and _Verifying_ Python in Lean 4 — without LLMs
 *Siddhartha Gadgil* · Professor · IISc Bengaluru
 :::
 
-:::class "event"
-*Summer School: Lean for Programming* · IISc Bengaluru · 9 July 2026
-
-Organized by *IISc Bengaluru* × *Emergence AI*
+:::class "timeDay"
+{timeDay}`·`
 :::
 
 :::class "links"
@@ -343,13 +355,15 @@ PastaLean converts each function in Python into 2 functions each with it's own p
 :::
 ::::
 
-## Examples
+# Example of Provable/Computable Function
 
 %%%
 state := "examples"
 %%%
 
+:::fragment
 One Python function forks into two Lean definitions:
+:::
 
 ::::::vstack
 :::class "pytop" "fragment"
@@ -466,6 +480,7 @@ Most everyday Python is convertable into Lean4. Extending new Python syntax is m
 
 :::fragment
 and more...
+_↓ press down to see the constructs by area, with examples._
 :::
 
 ## Control flow
@@ -824,7 +839,16 @@ state := "showcase"
 vertical := some true
 %%%
 
-Real programs — transpiled, type-checked, and (for the pure parts) _proved_. Full code on [_GitHub_](https://github.com/AnirudhG07/PyAstLean/tree/master/example_scripts/showcase). Press ↓.
+Real programs — _transpiled_, _type-checked_, and (for the pure parts) _proved_. Full code on [_GitHub_](https://github.com/AnirudhG07/PyAstLean/tree/master/example_scripts/showcase).
+
+```html
+<div class="stats">
+  <div class="stat">6<small>real programs</small></div>
+  <div class="stat">~560<small>lines of Python</small></div>
+  <div class="stat">~1,330<small>lines of verified Lean</small></div>
+  <div class="stat">&lt; 8s<small>each · type-check + prove</small></div>
+</div>
+```
 
 :::table +colHeaders +rowSeps +border
 *
@@ -871,15 +895,19 @@ Real programs — transpiled, type-checked, and (for the pure parts) _proved_. F
   * 2×2 matrix algebra · all _proved_
 :::
 
-:::class "punch"
-~560 lines of Python → ~1,330 lines of _verified_ Lean — each type-checked and verified within seconds.
+:::class "punch" "fragment"
+~560 lines of Python → ~1,330 lines of _verified_ Lean — every one type-checked, the pure parts _proved_, all in seconds.
 :::
 
 :::fragment
-Below are some Showcases for PastaLean's transpilation abilities.
+_↓ press down to walk through three of our showcases._
 :::
 
 ## Orbital Physics · conserved quantities
+
+:::fragment
+_Vector algebra where the Python `assert`s — conserved momentum, a central spring force — become *theorems*, closed automatically._
+:::
 
 ::::hstack
 :::class "showpy" "fragment"
@@ -953,6 +981,10 @@ theorem spring_force_is_central :
 
 ## cnn · a CNN, transpiled
 
+:::fragment
+_A from-scratch convolution — nested loops, `self.kernel`, value-semantics mutation — transpiled verbatim._
+:::
+
 ::::hstack
 :::class "showpy" "fragment"
 ```code python
@@ -1005,6 +1037,10 @@ noncomputable def CNN.conv := fun (self : CNN) ↦ fun (img : List (List Rat)) �
 ::::
 
 ## numpy + exceptions
+
+:::fragment
+_`np.mean` and `matmul` inside `try`/`except` — a library call, real control flow, both twins._
+:::
 
 ::::vstack
 :::class "showpy" "fragment"
@@ -1211,28 +1247,238 @@ New syntax, new library, new container — each is a _local, additive_ change.
 ```
 :::
 
-# {name}`PyAny` - Opening the door to Python's dynamic typing
+## 7 · Nested functions: lambda lifting
+
+:::class "dhook"
+A nested `def` reads its parent's locals — you can't just move it to the top level.
+:::
+
+:::class "steps"
+* *Problem* — `def score(x): return x*w` inside `outer` closes over `w`; `w` _feels_ global to `score` but belongs to `outer`. Lift the `def` naïvely and `w` is lost.
+* *We do* — **lambda lifting**: every captured variable (`reads ∩ outer's binders`) becomes an _extra parameter_, passed at each call site. Genuine globals/builtins fall outside the intersection, untouched.
+* *Why* — the helper lifts to a sibling `private partial def`, so `outer` stays a plain _provable_ `def` (not `partial`). Mutated captures (`nonlocal`) are _threaded_: parameter in, value out.
+:::
+
+:::class "dcode" "fragment"
+```lean
+-- `def score(x): return x * w`  (w free) ↦ sibling def, w lifted to a parameter:
+private def _demo_score := fun (x : Int) ↦ fun (w : Int) ↦ x *ₚ w
+
+def demoOuter := fun (xs : List Int) (w : Int) ↦
+  xs.map (fun (x : Int) ↦ _demo_score x w)   -- w supplied at the call site
+
+#eval demoOuter [1, 2, 3] 10                  -- [10, 20, 30]
+```
+:::
+
+# A major Problem: Python is dynamically typed
 
 %%%
-state := "pyanu"
+state := "dynprob"
+%%%
+
+:::class "steps"
+* In Python a *name has no fixed type* — it is just a label on a value, and the type is checked only at _runtime_.
+* One function serves _every_ type (duck typing), and a variable can even _change_ type mid-body.
+:::
+
+::::hstack
+:::class "excode" "fragment"
+```code python
+# one function, many types
+def add(a, b):
+    return a + b
+
+add(1, 2)          # 3
+add("Hi", "!")     # "Hi!"
+
+# one name, two types
+x = 1              # int
+x = "hello"        # now str
+```
+:::
+
+:::class "arrow-right" "fragment"
+→
+:::
+
+:::class "step" "fragment"
+* *Lean is statically typed* — every binder needs _one_ type, fixed _before_ the body runs.
+* `def add (a : ?) (b : ?)` — which type? `Int`? `String`? both?
+* `let mut x : Int` _cannot_ later hold a `String`.
+:::
+::::
+
+::::fragment
+:::class "steps"
+* *Native Lean can't paper over it* — you'd write an explicit, _closed_ union `Int ⊕ String ⊕ …` and pattern-match at every single use.
+* Python code _never declares that union_ — and it spreads _virally_ through every caller and return.
+* Worse. Even `len(x)`, `x[i]`, `+` need a _concrete_ type for instance resolution; a bare "any" leaves them *stuck*.
+:::
+::::
+
+# …and Python ignores its own type hints
+
+:::class "steps"
+* Moreover, Python allows multiple return Types from a function!
+* Python doesn't even follow it's own type hints, so we can only rely on them with a pinch of salt.
+:::
+
+::::hstack
+:::class "excode" "fragment"
+```code python
+# one function, many types
+def add(a: int, b: int) -> int:
+    return a + b
+
+add("Hi", "!")  # This works!
+```
+:::
+
+:::class "arrow-right" "fragment"
+→
+:::
+
+:::class "step" "fragment"
+* *Lean is statically typed* — every binder needs _one_ type, fixed _before_ the body runs.
+* How do we *Solve*? this big issue?
+:::
+::::
+
+:::class "punch" "fragment"
+We need Python's dynamism _without_ poisoning everything with unions.
+:::
+
+
+# {name}`PyAny` — opening the door to dynamic typing
+
+%%%
+state := "pyany"
 vertical := some true
 %%%
 
-
 :::class "steps"
-* *Problem* — Python is dynamically typed; a variable can change type at runtime.
-* *We do* — `PyAny` is a _type-erased_ wrapper;
-* Idea: Gradual Typing — a variable of type `PyAny`, which can be intercasted to any other type, and the type is inferred at runtime.
+* {lean}`PyAny` is a total fallback type inspired from Gradual Typing: infer a concrete Lean type wherever we can, and box _only_ the slots we genuinely can't pin.
+* *Why* — one definition then runs at every type; `+ₚ` dispatches on the runtime tag.
+* *Assumption* - Any type hints given to Python, are correct. Misuse of type hints i.e. wrong input type(which may work in Python), will be flagged as an error in Lean.
 :::
 
--- 1st slide should have gist of what it is, 1 python code example of add
--- to the left, -> it's lean code
--- in next vertical slide, talk aobut multiple return types, type mutation on 1 variable, and how we handle it with PyAny.
--- For computation, it will directly infer type from the variable and use the correct type for computation(show 3-4 instances for Add)
--- for proving, we use `pyany_cases` to break down. see PyAnyTest.lean and PyAnyProofTest.lean(whatever the file name is) for examples.
+::::hstack
+:::class "excode" "fragment"
+```code python
+# no types given → one def, every type
+def add(a, b):
+    return a + b
+```
+:::
 
-## Powers it gives
+:::class "arrow-right" "fragment"
+→
+:::
 
+:::class "excode" "fragment"
+```lean
+-- un-inferred params box to PyAny:
+def add := fun (a : PyAny) ↦
+          fun (b : PyAny) ↦ a +ₚ b
+```
+:::
+::::
+
+:::class "punch" "fragment"
+{lean}`PyAny` is a tagged union; `+ₚ` inspects both tags and delegates.
+:::
+
+:::class "steps"
+* PastaLean also has it's own *Type Inference engine*, which infers the types of the variables and functions, and boxes them to {lean}`PyAny` only when it is necessary.
+:::
+
+:::fragment
+_More below ↓_
+:::
+
+## Type Mutations and Multiple Return Types
+
+If two branches of a function return different types, the function is boxed to {lean}`PyAny`.
+
+::::hstack
+:::class "excode" "fragment"
+```code python
+# branches disagree → PyAny
+def classify(n):
+    if n > 0:
+        return "positive"   # str
+    return 0                # int
+```
+:::
+
+:::class "arrow-right" "fragment"
+→
+:::
+
+:::class "excode" "fragment"
+```lean
+def classify_num := fun (n : Int) ↦
+  (if decide (n > 0) then "positive"
+   else (0 : Int) : PyAny)
+```
+:::
+::::
+
+:::fragment
+If a variable is reassigned types, then it can be inferred to be of type {lean}`PyAny`:
+:::
+
+::::hstack
+:::class "excode" "fragment"
+```code python
+def reassigned():
+    x = 1
+    x = x + 5          # int arithmetic
+    x = "hi"           # now a string
+    x = x + "world"    # string concatenation on the new type
+    return x
+```
+:::
+
+:::class "arrow-right" "fragment"
+→
+:::
+
+:::class "excode" "fragment"
+```lean
+def reassigned :=
+  (let x := (1 : Int)
+   let x := x +ₚ (5 : Int)
+   let x := "hi"
+   let x := x +ₚ "!"
+   x : PyAny)
+```
+:::
+::::
+
+:::class "steps"
+* By default, only one return Type is allowed in a function, but if two branches of a function return different types, the function is boxed to {lean}`PyAny`.
+* Useful for Exceptional Handling, where you may return a value in `try` case, but an error/string in `except` case.
+:::
+
+## Computation · dispatch on the tag
+
+At runtime the box carries its type; `+ₚ` (`PyAny.add`) unwraps it, runs the real operation, and re-boxes into {lean}`PyAny`:
+
+:::class "gbox" "fragment"
+```lean
+#eval add 3 4          -- int   + int   → int
+#eval add "x" "y"      -- str   ++ str  → str
+
+-- In python, `True + True = 2`
+#eval add true true     -- bool  + bool  → int
+```
+:::
+
+:::class "punch" "fragment"
+A genuine mismatch (`1 + "a"`) folds to `none` — total, never a crash.
+:::
 
 # Limitations — where the line is
 
@@ -1505,10 +1751,57 @@ theorem sum_upto_n_spec : ⦃⌜n ≥ (0 : Int)⌝⦄ sum_to_n n ⦃⇓_ => ⌜T
 `Invariant` / `Ensures` → {name}`pyPassInvariant` / {name}`pyPassEnsures`; `mvcgen` using Hoare Triples, discharges Goals to prove.
 :::
 
+# Proving in {lean}`PyAny` with `pyany_cases`
+
+%%%
+state := "pyanyproving"
+vertical := some true
+%%%
+
+{lean}`PyAny` is not a commutative ring, so `ring`/`grind` stall on it directly. `pyany_cases` splits a goal into one goal _per relevant runtime type_; the mismatched tags close on their own:
+
+:::class "step"
+* All goals must be satisfied for the proof to be complete.
+* They are unfolded from the instances supported by the operation applied to the {lean}`PyAny` variables.
+* Any goal that makes no sense / has no instance is discharged automatically — e.g. `1 + "a"`.
+* `pyany_cases` is wired into `taste?` — whenever {lean}`PyAny` appears, a best-effort proof attempt runs in the pipeline.
+:::
+
+::::hstack
+:::class "excode" "fragment"
+```lean
+example (a b : PyAny) :
+    (a +ₚ b) +ₚ b = a +ₚ (b +ₚ b) := by
+  pyany_cases a b <;> grind +locals
+```
+:::
+
+:::class "arrow-right" "fragment"
+→
+:::
+
+:::class "excode" "fragment"
+
+```code python
+10 goals
+case int.int
+a b : ℤ
+⊢ a + b + b = a + (b + b)
+case int.bool
+a : ℤ
+b : Bool
+⊢ ((a + if b = true then 1 else 0) + if b = true then 1 else 0) =
+  a + ((if b = true then 1 else 0) + if b = true then 1 else 0)
+...
+```
+:::
+::::
+
 # Recap
 
 * _Deterministic transpiler_, not an LLM translator — the elaborator is the oracle.
 * Broad language surface: control flow, comprehensions, exceptions, _classes_, libraries.
+* Python behaviours like dynamic typing, multiple return types, and mutation are faithfully modeled in Lean with {lean}`PyAny`.
 * _Monadic vs non-monadic_ picks the proof strategy:
   * Non-monadic pure function → `taste?`
   * Monadic functions in `do` blocks → `mvcgen`

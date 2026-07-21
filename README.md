@@ -114,6 +114,31 @@ The runtime helper returns a *new* container, and codegen stores it back into th
 
 </details>
 
+<details><summary>Nested Functions & Closures (lambda lifting)</summary>
+
+Python lets you define a function *inside* another, and the inner one reads variables of the outer — they *feel* like globals to the inner function, but they're really **free variables** it closes over. You can't just move that `def` to the top level in Lean: it would lose those variables.
+
+So we do **lambda lifting** (closure conversion): every captured variable becomes an **extra parameter**, supplied at each call site.
+
+```python
+def outer(xs, w):
+    def score(x):
+        return x * w          # w is free in score; it belongs to outer
+    return sorted(xs, key=score)
+```
+```lean
+private def _outer_score := fun x ↦ fun w ↦ x *ₚ w   -- w hoisted to a parameter
+def outer := fun xs w ↦ … pySortBy (_outer_score · w) …
+```
+
+**What gets lifted** is exactly `(names the inner reads) ∩ (names the outer binds)`. That intersection is the whole trick: outer's locals (`w`, `xs`) become parameters, while genuine globals and builtins (`len`, `range`) fall outside it and are left alone — they already resolve at the top level.
+
+**Mutation** (`nonlocal ans; ans += 1`) needs more than a read-only parameter, so such a capture is *threaded*: it's both a parameter and part of the return, and each call rebinds it (`ans := _outer_add x ans`).
+
+We lift to a **sibling `private partial def`**, not `where`/`let rec`: `let rec` can't be `partial` (non-structural recursion fails termination), and `where` forces the *outer* def to become `partial` — losing its `[simp, taste_ingr]` tag and provability. A sibling def keeps `outer` a plain provable `def`. Lifting is **outermost-first** so a two-level nest captures the outer scope before the innermost def is lifted. It all lives in Lean (`PyGens/Transform/ClosureConvert.lean`), per the "all rewrites in Lean" rule — no Python pass.
+
+</details>
+
 <details><summary>None and Optional</summary>
 
 Python's `None` and `Optional[T]` map to Lean's `Option`. Tree/linked-list fields default to `None`, so `TreeNode.left : Option TreeNode`; a field access then unwraps:
