@@ -51,6 +51,9 @@ def runTranslateTask (jsonTask : Json) (ctx : Core.Context) (env : Environment) 
   -- failure to codegen, which then reports a confusing "no 'node_type' field" instead.
   let .ok json := jsonTask.getObjVal? "ast"
     | return errorResponse "Invalid JSON: missing 'ast' field"
+  -- The whole-module `inferTypes` pass (run by the driver) marks each statement `_inferred`; only fall
+  -- back to the context-free per-statement stamp when it did not run (a bare term, or on failure).
+  let alreadyInferred := (json.getObjVal? "_inferred").toOption.isSome
   -- Syntactic desugaring (nested `for` targets, walrus) runs before codegen; see
   -- `PyGens/Transform/Desugar.lean`.
   let json ← match PastaLean.desugarAst json with
@@ -58,7 +61,7 @@ def runTranslateTask (jsonTask : Json) (ctx : Core.Context) (env : Environment) 
     | .error message => return errorResponse s!"Error generating code: {message}"
   -- Type inference stamps `_ty` on binders whose Lean type the code generator would otherwise
   -- leave for Lean to guess (and get stuck on). See `TypeInfer/`.
-  let json := TypeInfer.stampNode json
+  let json := if alreadyInferred then json else TypeInfer.stampNode json
   let code? ← getCodeIO json target.toName ctx env checkCode
   pure <| match code? with
     | .ok code => successResponse target code

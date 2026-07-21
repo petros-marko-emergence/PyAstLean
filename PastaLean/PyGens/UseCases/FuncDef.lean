@@ -891,11 +891,14 @@ def ifHeadSyntax : (kind : SyntaxNodeKind) → Json →
           s!"If node does not have an 'orelse' field or it is not a JSON array: {json}"
         let .ok rest := json.getObjValAs? (List Json) "rest" | throwError
           s!"If node does not have a 'rest' field or it is not a JSON value: {json}"
-        if !rest.isEmpty &&
-            (!statementListDefinitelyReturns bodyElems.toList ||
-              !statementListDefinitelyReturns orelseElems.toList) then
+        -- Pure lowering is safe as long as the `if` *body* definitely returns: the then-branch is
+        -- then self-contained and `rest` is reached only through the else path (`if c then body else
+        -- rest`), so no binding leaks across branches. This is the common `if c: return x⏎ return y`
+        -- shape. If the body falls through, `rest` would be duplicated into both branches while the
+        -- body's own bindings live only in the then-branch — keep that on the monadic path.
+        if !rest.isEmpty && !statementListDefinitelyReturns bodyElems.toList then
           throwError
-            "If branches that fall through into later statements require monadic lowering."
+            "If body falls through into later statements; requires monadic lowering."
         let testStx ← getCode testJson `term
         let thenBranch ← withoutCheck do
           let splitThen ← splitList (bodyElems.toList ++ rest)

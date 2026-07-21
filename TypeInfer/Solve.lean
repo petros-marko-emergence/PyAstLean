@@ -551,8 +551,11 @@ def inferModule (module : Json) : Json :=
   -- Module-level globals (`inf = float('inf')`, config constants) seed every function so a body that
   -- reads a global sees its type — e.g. `f = [[inf]*k for _ in range(n)]` becomes `list[list[float]]`.
   let globals : Env := (topLevelStmts module).foldl (applyStmt sigs) {}
+  -- Mark each statement `_inferred` so the per-request fallback pass (which lacks module context and
+  -- would re-derive worse types, e.g. a global-fed `float` local mis-stamped `int`) skips it.
+  let mark (s : Json) : Json := (stampNodeWith sigs params globals s).setObjVal! "_inferred" (Json.bool true)
   match module.getObjValAs? (Array Json) "body" with
-  | .ok body => module.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs params globals)))
-  | _ => stampNodeWith sigs params globals module
+  | .ok body => module.setObjVal! "body" (Json.arr (body.map mark))
+  | _ => mark module
 
 end TypeInfer

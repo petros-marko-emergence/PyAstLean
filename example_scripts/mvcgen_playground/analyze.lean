@@ -8,7 +8,6 @@ open Std.Do
 
 set_option linter.all false
 set_option mvcgen.warning false
-set_option linter.pyAnyProof true
 
 set_option maxHeartbeats 800000
 

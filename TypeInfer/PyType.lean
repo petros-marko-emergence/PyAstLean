@@ -85,6 +85,11 @@ against what the RHS actually elaborates to (e.g. a numpy `Float`). Parameters a
 separately — this governs only locals. -/
 def needsAscription : PyType → Bool
   | .int | .bool | .str => true
+  -- A container of concrete scalars (`list[int]`, `set[str]`, `list[list[int]]`) is unambiguous, so
+  -- ascribing it is safe *and* needed: without it a `List Int` local can be silently unified up to
+  -- `List ℚ` by a cross-variable link (`vk = stk.pop()` with `vk` a float), which then fails when the
+  -- element is read as an `Int`. `float`/`unknown` elements stay unascribed (the numpy-`Float` hazard).
+  | .list e | .set e => needsAscription e
   | _ => false
 
 /-- Least upper bound.

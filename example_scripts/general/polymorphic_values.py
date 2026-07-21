@@ -21,6 +21,9 @@ def reassigned():
 def add(a, b):
     return a + b
 
+def add_thm(a,b):
+    assert (a + b) + b == a + (b + b)
+
 
 # A try/except whose branches return different types (int vs str) → the whole function is PyAny,
 # so the `PyExcept _` codomain in Exceptions.lean infers `PyAny` on its own.

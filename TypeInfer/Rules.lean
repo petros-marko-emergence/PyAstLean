@@ -111,7 +111,9 @@ partial def typeOfExpr (sigs : Sigs) (env : Env) (e : Json) : PyType :=
       match field e "value" with
       | some c =>
           let ct := typeOfExpr sigs env c
-          match ct with
+          -- A slice (`xs[a:b]`, `xs[::-1]`) returns the *same* container type; a plain index projects.
+          if (field e "slice").any (fun s => nodeType? s == some "Slice") then ct
+          else match ct with
           -- `t[k]` for a literal index projects the k-th element; otherwise the elements join.
           | .tuple es =>
               match (field e "slice").bind literalIndex? with

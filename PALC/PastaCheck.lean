@@ -68,14 +68,13 @@ def translateAll (pyBin : String) (dir : System.FilePath) : IO (Array Json) := d
 def expectUnsupported : List String := ["unsupported_demo.py"]
 
 /-- Directories whose generated `.lean` is written next to the `.py` (reviewable output). -/
-def writeInPlaceDirs : List String := ["showcase", "mvcgen_playground", "random"]
+def writeInPlaceDirs : List String := ["showcase", "mvcgen_playground", "random", "general", "typing", "terms", "proof_mode",  "commands"]
 
 /-- Non-program helper scripts (drivers/figures), not transpiler inputs. -/
 def skipNames : List String := ["run_showcase.py", "fetch_data.py"]
 
 /-- Directories skipped by the per-file checker: `terms/` are single expressions (`--target term`),
-and `imports/` are a cross-file import test that needs the imported module elaborated first (a
-multi-file check this per-file runner doesn't do). -/
+and `imports/` are a cross-file import test that needs the imported module elaborated first -/
 def skipDirs : List String := ["terms", "imports"]
 
 /-- The verdict for one program. -/

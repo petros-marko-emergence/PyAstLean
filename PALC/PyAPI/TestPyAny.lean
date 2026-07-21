@@ -28,5 +28,31 @@ private def classify (x : Int) : PyAny := if x > 0 then "positive" else (0 : Int
 #guard pyTruthy (PyAny.list []) == false
 #guard pyTruthy (PyAny.list [.int 1]) == true
 
+def add (a b : PyAny) : PyAny := a +ₚ b
+
+/-- info: PastaLean.PyAny.int 8 -/
+#guard_msgs in
+#eval add 3 5
+
+/-- info: PastaLean.PyAny.str "hiworld" -/
+#guard_msgs in
+#eval add "hi" "world"
+
+/-- info: PastaLean.PyAny.none -/
+#guard_msgs in
+#eval add 3 "neg" -- type mismatch: int + str is not defined
+
+/-
+If this seems odd, the below snippet is from Python Repl:
+```python
+>>> True + True
+2
+```
+-/
+/-- info: PastaLean.PyAny.int 2 -/
+#guard_msgs in
+#eval add true true
+
+
 -- Boxing round-trips by equality.
 #guard (toValue (5 : Int)) == PyAny.int 5
