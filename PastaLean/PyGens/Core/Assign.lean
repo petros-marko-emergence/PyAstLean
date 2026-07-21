@@ -310,6 +310,19 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
                   `((← $valueStx))
                 else
                   pure valueStx
+            -- Ascribe to the value's inferred type when the inference pass stamped one (a `c[i] = v`
+            -- into a float container: put an `Int` value into the container's `ℚ`/`Float` element).
+            let rhs ← match ← stampedTypeSyntax? value with
+              | some tyStx =>
+                  -- A bare int literal must be re-emitted as an `OfNat` in the target type (`(0 : Float)`);
+                  -- an ascribed `((0 : Int) : Float)` fails — there is no `Int → Float` coercion.
+                  match jsonNodeType? value, value.getObjValAs? Int "value" with
+                  | some "Constant", .ok i =>
+                      let n := Syntax.mkNumLit (toString i.natAbs)
+                      let lit : TSyntax `term ← if i < 0 then `(- $n:num) else pure ⟨n⟩
+                      `(($lit : $tyStx))
+                  | _, _ => `(($rhs : $tyStx))
+              | none => pure rhs
             -- `self.X = v` inside a class method (where `self` is the `let mut` shadow) rebuilds
             -- `self` via record update. The `hasVar self` guard keeps top-level `obj.x = v`
             -- (no mutable `self` in scope) on its normal path.

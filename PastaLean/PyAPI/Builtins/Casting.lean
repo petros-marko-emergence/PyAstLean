@@ -64,8 +64,14 @@ def pyList {α β : Type} [PyIterable α β] (x : α) : List β :=
   pyIter x
 
 /-- Convert an `Int` to a `Float` (no `Float.ofInt` in core; build from the magnitude). -/
-private def floatOfInt (x : Int) : Float :=
+def floatOfInt (x : Int) : Float :=
   if x ≥ 0 then Float.ofNat x.toNat else - Float.ofNat (-x).toNat
+
+/-- Python widens `int` to `float` implicitly (`xs[i] = 0` into a float list, `f = g[i]` from an int
+matrix into a float one). Mirror it so an `Int` value flows into a `Float` slot. Only relevant in
+`--approx` (Float) mode; exact mode uses `ℚ`, which already has `IntCast`. -/
+instance : Coe Int Float := ⟨floatOfInt⟩
+instance : Coe Nat Float := ⟨Float.ofNat⟩
 
 /--
 Typeclass for Python-style `float(...)` coercions.

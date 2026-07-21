@@ -407,6 +407,19 @@ partial def stampStmt (sigs : Sigs) (env : Env) (s : Json) : Json :=
     | some "Assign" | some "AnnAssign" | some "AugAssign" | some "For" =>
         if let some t := getField s "target" then s := s.setObjVal! "target" (stampTarget env t)
     | _ => pure ()
+    -- `c[i] = v` into a float-element container: stamp the *value* so codegen ascribes it to the
+    -- element type. An un-ascribed `Int` value otherwise pins `PySetItem`'s value `outParam` to `ℤ`,
+    -- which never resolves against a `List ℚ` / `Float` container (`dp = [float('inf')]*n; dp[0]=0`).
+    if nodeTypeOf s == some "Assign" then
+      match getField s "target", getField s "value" with
+      | some target, some value =>
+          -- `typeOfExpr` on the lvalue descends any subscript depth (`dp[i]`, `f[i][j]`) and dicts,
+          -- so this covers 1-D and N-D float containers alike.
+          if nodeTypeOf target == some "Subscript" && (getField value "_ty").isNone
+             && typeOfExpr sigs env target == .float then
+            if let some ann := toAnnotation? .float then
+              s := s.setObjVal! "value" (value.setObjVal! "_ty" ann)
+      | _, _ => pure ()
     for f in #["body", "orelse", "finalbody"] do
       if let .ok elems := s.getObjValAs? (Array Json) f then
         s := s.setObjVal! f (Json.arr (elems.map (stampStmt sigs env)))
@@ -511,30 +524,35 @@ partial def collectSigs (module : Json) : Sigs × ParamSigs := Id.run do
 /-- Stamp `_ty` across one top-level node, resolving calls with `sigs` and seeding each function's
 unannotated params from `params`. The driver sends one statement per request; a `FunctionDef`, a
 `ClassDef` (each method) or a `Module` (a mutual group) is stamped, anything else is unchanged. -/
-partial def stampNodeWith (sigs : Sigs) (params : ParamSigs) (s : Json) : Json :=
+partial def stampNodeWith (sigs : Sigs) (params : ParamSigs) (globals : Env) (s : Json) : Json :=
+  -- Seed a function with module-level globals, minus any name its own parameters shadow (params win).
+  let outerFor (fn : Json) : Env := (paramNames fn).foldl (·.erase ·) globals
   match nodeTypeOf s with
-  | some "FunctionDef" => stampFunction sigs {} (hintsFor params s) s
+  | some "FunctionDef" => stampFunction sigs (outerFor s) (hintsFor params s) s
   | some "ClassDef" =>
       match s.getObjValAs? (Array Json) "body" with
       | .ok methods => s.setObjVal! "body" (Json.arr (methods.map fun m =>
-          if nodeTypeOf m == some "FunctionDef" then stampFunction sigs {} (hintsFor params m) m else m))
+          if nodeTypeOf m == some "FunctionDef" then stampFunction sigs (outerFor m) (hintsFor params m) m else m))
       | _ => s
   | some "Module" =>
       match s.getObjValAs? (Array Json) "body" with
-      | .ok body => s.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs params)))
+      | .ok body => s.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs params globals)))
       | _ => s
   | _ => s
 
 /-- Intraprocedural stamping of a single node (no cross-function info). Used per-request as a
 fallback; `inferModule` supersedes it when the whole module is available. -/
-partial def stampNode (s : Json) : Json := stampNodeWith {} {} s
+partial def stampNode (s : Json) : Json := stampNodeWith {} {} {} s
 
 /-- Whole-module inference: co-evolve return and parameter types to a fixpoint, then stamp each
 top-level node with that knowledge. This is what the `inferTypes` backend task runs. -/
 def inferModule (module : Json) : Json :=
   let (sigs, params) := collectSigs module
+  -- Module-level globals (`inf = float('inf')`, config constants) seed every function so a body that
+  -- reads a global sees its type — e.g. `f = [[inf]*k for _ in range(n)]` becomes `list[list[float]]`.
+  let globals : Env := (topLevelStmts module).foldl (applyStmt sigs) {}
   match module.getObjValAs? (Array Json) "body" with
-  | .ok body => module.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs params)))
-  | _ => stampNodeWith sigs params module
+  | .ok body => module.setObjVal! "body" (Json.arr (body.map (stampNodeWith sigs params globals)))
+  | _ => stampNodeWith sigs params globals module
 
 end TypeInfer

@@ -9,12 +9,14 @@ open Lean Meta Elab Term Qq Std
 namespace PastaLean
 
 def intToStx (n : Int) : MetaM <| TSyntax `term := do
+  let intIdent := mkIdent ``Int
   if n < 0 then
+    -- Ascribe negatives to `Int` too — a bare `- 1` otherwise defaults to `Neg ℚ`, which e.g. types
+    -- a `x[-1]` index as `ℚ` and fails `PyGetItem (List _) Int _`.
     let nStx := Syntax.mkNumLit (toString (-n))
-    `(- $nStx:term)
+    `((- $nStx : $intIdent))
   else
     let nStx := Syntax.mkNumLit (toString (n))
-    let intIdent := mkIdent ``Int
     `(($nStx : $intIdent))
 
 def numToStx (mantissa : Int) (exponent : Nat) : MetaM <| TSyntax `term := do
@@ -24,7 +26,10 @@ def numToStx (mantissa : Int) (exponent : Nat) : MetaM <| TSyntax `term := do
       if mantissa % 10 = 0 then
         numToStx (mantissa / 10) k
       else
-        let mantissaStx ← intToStx mantissa
+        -- A bare signed numeral ascribed to `Rat` (not via `intToStx`, whose `: Int` ascription
+        -- would nest awkwardly as `((-15 : Int) : Rat)`).
+        let mantAbs := Syntax.mkNumLit (toString mantissa.natAbs)
+        let mantissaStx ← if mantissa < 0 then `(- $mantAbs:num) else pure (⟨mantAbs⟩ : TSyntax `term)
         let exponentStx := Syntax.mkNumLit (toString <| (10).pow exponent)
         let ratIdent := mkIdent ``Rat
         `(($mantissaStx : $ratIdent) / $exponentStx)

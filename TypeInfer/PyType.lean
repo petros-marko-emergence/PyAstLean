@@ -96,8 +96,11 @@ def needsAscription : PyType → Bool
 partial def join : PyType → PyType → PyType
   | .unknown, t | t, .unknown => t
   | .any, _ | _, .any => .any
-  -- `bool <: int` in Python.
+  -- Python's numeric tower `bool <: int <: float`: the join widens rather than becoming a union, so
+  -- e.g. a `[float('inf')]*n` list also written with ints stays `list[float]` (not `list[Any]`), and
+  -- the int values coerce (`Int → ℚ`) instead of failing container resolution.
   | .int, .bool | .bool, .int => .int
+  | .float, .int | .int, .float | .float, .bool | .bool, .float => .float
   | .none, .none => .none
   -- `opt` before `none`, or `None ⊔ Optional[int]` would nest to `Optional[Optional[int]]`.
   | .opt a, .opt b => .opt (join a b)
@@ -120,7 +123,10 @@ def joinAll (ts : List PyType) : PyType := ts.foldl join .unknown
 consistent with each other. -/
 partial def consistent : PyType → PyType → Bool
   | .any, _ | _, .any | .unknown, _ | _, .unknown => true
+  -- Python's numeric tower `bool <: int <: float` — consistent so `join` (which widens to `float`)
+  -- stays consistent with each operand.
   | .int, .bool | .bool, .int => true
+  | .float, .int | .int, .float | .float, .bool | .bool, .float => true
   | .list a, .list b | .set a, .set b | .opt a, .opt b => consistent a b
   | .opt a, b | b, .opt a => b.beq .none || consistent a b
   | .dict k₁ v₁, .dict k₂ v₂ => consistent k₁ k₂ && consistent v₁ v₂

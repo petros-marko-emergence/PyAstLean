@@ -122,6 +122,21 @@ partial def typeOfExpr (sigs : Sigs) (env : Env) (e : Json) : PyType :=
           | _ => ct.elemType
       | none => .unknown
   | some "Call" => typeOfCall sigs env e
+  -- Comprehensions: bind each generator target from its iterable's element type, then type the
+  -- element/key/value in that extended env (so `[[float('inf')]*k for _ in range(n)]` is
+  -- `list[list[float]]`, not `list[Any]`).
+  | some "ListComp" | some "SetComp" | some "GeneratorExp" | some "DictComp" =>
+      let gens := (e.getObjValAs? (Array Json) "generators").toOption.getD #[]
+      let env' := gens.foldl (fun env gen =>
+        match (field gen "target").bind (fun t => (t.getObjValAs? String "id").toOption), field gen "iter" with
+        | some name, some iter => env.insert name (typeOfExpr sigs env iter).elemType
+        | _, _ => env) env
+      match nodeType? e with
+      | some "DictComp" =>
+          .dict ((field e "key").elim .unknown (typeOfExpr sigs env'))
+                ((field e "value").elim .unknown (typeOfExpr sigs env'))
+      | some "SetComp" => .set ((field e "elt").elim .unknown (typeOfExpr sigs env'))
+      | _ => .list ((field e "elt").elim .unknown (typeOfExpr sigs env'))
   | _ => .unknown
 
 /-- The type a call returns. -/
