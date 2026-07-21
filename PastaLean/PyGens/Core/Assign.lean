@@ -237,7 +237,10 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
             -- function call returning a `tuple[...]` (the Python pre-pass only leaves such
             -- tuple-returning calls as native unpacking — list-returning RHSs are pre-split
             -- into subscripts and never reach here, so a `Call` here means a `Prod` result).
-            let isTuple := jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call"
+            -- `_list_unpack` (stamped when the RHS is list-typed, e.g. `np.shape(x)` returns a list)
+            -- forces list-index access even for a `Call` RHS that would otherwise be read as a `Prod`.
+            let isTuple := (jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call")
+              && target.getObjValAs? Bool "_list_unpack" != .ok true
             let mut cmds : Array (TSyntax `command) := #[cmd0]
             for i in List.range n do
               let acc ← unpackAccessTerm isTuple unpackTmpIdent i n
@@ -283,7 +286,10 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
             -- function call returning a `tuple[...]` (the Python pre-pass only leaves such
             -- tuple-returning calls as native unpacking — list-returning RHSs are pre-split
             -- into subscripts and never reach here, so a `Call` here means a `Prod` result).
-            let isTuple := jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call"
+            -- `_list_unpack` (stamped when the RHS is list-typed, e.g. `np.shape(x)` returns a list)
+            -- forces list-index access even for a `Call` RHS that would otherwise be read as a `Prod`.
+            let isTuple := (jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call")
+              && target.getObjValAs? Bool "_list_unpack" != .ok true
             let mut binds : Array (TSyntax `doElem) := #[bindValueTmp, bindUnpackTmp]
             for i in List.range n do
               let acc ← unpackAccessTerm isTuple unpackTmpIdent i n

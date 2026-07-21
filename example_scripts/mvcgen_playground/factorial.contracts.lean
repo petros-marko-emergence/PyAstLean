@@ -29,7 +29,7 @@ theorem factorial_spec : ⦃⌜n ≥ (0 : Int)⌝⦄ factorial n ⦃⇓result =>
   · ⇓⟨cur, result⟩ =>
     ⌜let i := (cur.prefix.length : Int);
       ((1 : Int) ≤ i ∧ i ≤ n +ₚ (1 : Int)) ∧ result ≥ (1 : Int)⌝
-  simp_all (config := { zetaDelta := true }) [taste_ingr]; sorry; sorry; omega
+  simp_all (config := { zetaDelta := true }) [taste_ingr]; sorry; sorry; pyany_cases <;> grind +locals
 
 def factorial'rn := fun (n : Int) ↦
   Id.run

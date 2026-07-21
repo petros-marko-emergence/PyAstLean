@@ -143,7 +143,7 @@ theorem det_multiplicative :
                     det (mul11 a b c d e f g h) (mul12 a b c d e f g h) (mul21 a b c d e f g h)
                         (mul22 a b c d e f g h) =
                       det a b c d *ₚ det e f g h :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem trace_cyclic :
@@ -156,20 +156,20 @@ theorem trace_cyclic :
                 ∀ (g : Rat),
                   ∀ (h : Rat),
                     mul11 a b c d e f g h +ₚ mul22 a b c d e f g h = mul11 e f g h a b c d +ₚ mul22 e f g h a b c d :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
-theorem det_transpose : ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), det a c b d = det a b c d := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+theorem det_transpose : ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), det a c b d = det a b c d := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem det_scale :
     ∀ (k : Rat),
       ∀ (a : Rat),
         ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), det (k *ₚ a) (k *ₚ b) (k *ₚ c) (k *ₚ d) = k *ₚ k *ₚ det a b c d :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
-theorem det_adjugate : ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), det d (-b) (-c) a = det a b c d := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+theorem det_adjugate : ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), det d (-b) (-c) a = det a b c d := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem trace_additive :
@@ -180,26 +180,26 @@ theorem trace_additive :
             ∀ (e : Rat),
               ∀ (f : Rat),
                 ∀ (g : Rat), ∀ (h : Rat), trace (a +ₚ e) (b +ₚ f) (c +ₚ g) (d +ₚ h) = trace a b c d +ₚ trace e f g h :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem adjugate_inverse_diag :
-    ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), mul11 a b c d d (-b) (-c) a = det a b c d := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+    ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), mul11 a b c d d (-b) (-c) a = det a b c d := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem adjugate_inverse_offdiag :
-    ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), mul12 a b c d d (-b) (-c) a = (0 : Int) := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+    ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), mul12 a b c d d (-b) (-c) a = (0 : Int) := by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem cayley_hamilton_diag :
     ∀ (a : Rat),
       ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), mul11 a b c d a b c d -ₚ trace a b c d *ₚ a +ₚ det a b c d = (0 : Int) :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem cayley_hamilton_offdiag :
     ∀ (a : Rat), ∀ (b : Rat), ∀ (c : Rat), ∀ (d : Rat), mul12 a b c d a b c d -ₚ trace a b c d *ₚ b = (0 : Int) := by
-  intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 -- ----------------------------------------------------------------------------------------------
 -- Provable invariants: constrained laws  (`if`-guard -> hypotheses; ring / nlinarith)
@@ -216,7 +216,7 @@ theorem rotation_preserves_norm :
           ∀ (y : Rat),
             c *ₚ c +ₚ s *ₚ s = (1 : Int) →
               (c *ₚ x -ₚ s *ₚ y) *ₚ (c *ₚ x -ₚ s *ₚ y) +ₚ (s *ₚ x +ₚ c *ₚ y) *ₚ (s *ₚ x +ₚ c *ₚ y) = x *ₚ x +ₚ y *ₚ y :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; nlinarith
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem det_nonneg_of_symmetric_psd :

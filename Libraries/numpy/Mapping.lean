@@ -120,7 +120,7 @@ def numpyMemberReturn? (member : String) : Option (TypeInfer.PyType → TypeInfe
   -- Field-preserving matrix ops (`… → List (List α)`): result has the arg's shape and field.
   else if ["add", "subtract", "multiply", "scale", "matmul"].contains member then some id
   else if ["argmax", "argmin", "searchsorted"].contains member then some (fun _ => .int)
-  else if ["argsort", "nonzero"].contains member then some (fun _ => .list .int)
+  else if ["argsort", "nonzero", "shape"].contains member then some (fun _ => .list .int)
   else if ["any", "all"].contains member then some (fun _ => .bool)
   -- Reductions/elementwise/creators always return `Float` (never the caller's `ℚ`), so leave them
   -- unascribed and let Lean infer `Float` — forcing `ℚ` in exact mode would clash with the shim.

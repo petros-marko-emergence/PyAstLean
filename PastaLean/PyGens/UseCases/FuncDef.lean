@@ -252,7 +252,7 @@ inside a nested function do not leak into the enclosing scope's `let`/`let mut` 
 leak would otherwise cause a later same-named outer assignment to be emitted as a reassignment
 of a variable that was never declared `let mut`. -/
 def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `term))) (bodyElems : Array Json)
-    (boxReturn : Bool := false) :
+    (boxReturn : Bool := false) (retFloat : Bool := false) :
     PygenM (TSyntax `term) := withFreshVariables do
   let usesExceptions := bodyNeedsExceptionMonad bodyElems
   let usesRealIO := bodyNeedsIOMonad bodyElems
@@ -325,11 +325,18 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
       mkLambda ioBody
   else
     -- A boxed function's returns disagree in type, so ascribe the result to `PyAny`; each branch
-    -- then coerces (`return 1` / `return "neg"` both become `PyAny`).
+    -- then coerces (`return 1` / `return "neg"` both become `PyAny`). A `retFloat` (float-returning,
+    -- non-`ℝ`) function instead pins the result to `ℚ`/`Float`, so a `return <int>` mixed with a
+    -- `return <float>` all coerce rather than the first int return fixing the type to `ℤ`.
     let boxTy := mkIdent ``PastaLean.PyAny
+    let floatTy? : Option (TSyntax `term) ←
+      if retFloat then pure (some (if (← getNumericMode) == .exact then mkIdent ``Rat else mkIdent ``Float))
+      else pure none
+    let ascribeResult (body : TSyntax `term) : PygenM (TSyntax `term) :=
+      if boxReturn then `(($body : $boxTy))
+      else match floatTy? with | some t => `(($body : $t)) | none => pure body
     try
-      let bodyStx ← pureFunctionBodySyntax bodyElems
-      let bodyStx ← if boxReturn then `(($bodyStx : $boxTy)) else pure bodyStx
+      let bodyStx ← ascribeResult (← pureFunctionBodySyntax bodyElems)
       if argInfos.isEmpty then
         pure bodyStx
       else
@@ -338,10 +345,9 @@ def functionValueSyntax (argInfos : Array (TSyntax `ident × Option (TSyntax `te
       IO.eprintln s!"Could not generate pure function term: {← e.toMessageData.toString}"
       let bodyStxArray ← monadicFunctionBodySyntax bodyElems
       let idRunIdent := mkIdent ``Id.run
-      let runBody ← `($idRunIdent do
+      let runBody ← ascribeResult (← `($idRunIdent do
             $[$paramPrelude:doElem]*
-            $[$bodyStxArray:doElem]*)
-      let runBody ← if boxReturn then `(($runBody : $boxTy)) else pure runBody
+            $[$bodyStxArray:doElem]*))
       if argInfos.isEmpty then
         pure runBody
       else
@@ -722,6 +728,11 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
         -- The inference pass marks a function whose returns disagree in type; its result is boxed as
         -- `PyAny`, which is not provable — so it never gets the `[simp, taste_ingr]` tag below.
         let boxReturn := json.getObjValAs? Bool "_box_return" == .ok true
+        -- A float-returning body gets its result pinned to `ℚ`/`Float`, EXCEPT for an `ℝ`-valued
+        -- function (`_real_fn`, incl. transitively via a callee) in exact mode — its float is `ℝ`,
+        -- which a `ℚ` ascription would clash with, so it is left for Lean to infer.
+        let retFloat := (json.getObjValAs? Bool "_ret_float" == .ok true) &&
+          ((← getNumericMode) != .exact || json.getObjValAs? Bool "_real_fn" != .ok true)
         let argInfos ← functionArgInfos json
         let effectCmd? ← withBoxReturnContext boxReturn
           (functionCommandWithEffectSignature? nameIdent argInfos json isReal)
@@ -739,7 +750,7 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
               -- with the body built un-wrapped so it reads the binders directly.
               match ← functionParamBinders? json argInfos with
               | some binders =>
-                  let body ← functionValueSyntax #[] bodyElems boxReturn
+                  let body ← functionValueSyntax #[] bodyElems boxReturn retFloat
                   let rt? ← if isRecursive then functionReturnTypeSyntax? json else pure none
                   match isRecursive, nc, rt? with
                   | true, true, some rt => `(noncomputable partial def $nameIdent $binders* : $rt := $body)
@@ -749,7 +760,7 @@ def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
                   | false, true, _ => `(noncomputable def $nameIdent $binders* := $body)
                   | false, false, _ => `(def $nameIdent $binders* := $body)
               | none =>
-              let valueStx ← functionValueSyntax argInfos bodyElems boxReturn
+              let valueStx ← functionValueSyntax argInfos bodyElems boxReturn retFloat
               -- take care of recursion function Type
               if isRecursive then
                 let fullTy? ← match ← functionReturnTypeSyntax? json with

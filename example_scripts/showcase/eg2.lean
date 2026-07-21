@@ -85,8 +85,8 @@ def run_example :=
       -- Note: np.shape returns (rows, cols)
       let __unpack_value_1 := Libraries.numpy.pyNumpyShape dataset
       let __unpack_pair_1 := __unpack_value_1
-      let mut rows := Prod.fst __unpack_pair_1
-      let mut cols := Prod.snd __unpack_pair_1
+      let mut rows := PastaLean.pyListGetItem __unpack_pair_1 (0 : Int)
+      let mut cols := PastaLean.pyListGetItem __unpack_pair_1 (1 : Int)
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
       -- 4. Error Handling Simulation
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
@@ -117,8 +117,8 @@ def run_example'rn :=
       -- Note: np.shape returns (rows, cols)
       let __unpack_value_1 := Libraries.numpy.pyNumpyShape dataset
       let __unpack_pair_1 := __unpack_value_1
-      let mut rows := Prod.fst __unpack_pair_1
-      let mut cols := Prod.snd __unpack_pair_1
+      let mut rows := PastaLean.pyListGetItem __unpack_pair_1 (0 : Int)
+      let mut cols := PastaLean.pyListGetItem __unpack_pair_1 (1 : Int)
       let _ ← pyPrintIO [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
       -- 4. Error Handling Simulation
       let _ ← pyPrintIO [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]

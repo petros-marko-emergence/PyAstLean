@@ -116,7 +116,7 @@ theorem mass_balance :
                   depot_rate ka depot +ₚ central_rate ka ke k12 k21 depot central periph +ₚ
                       periph_rate k12 k21 central periph =
                     -ke *ₚ central :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem distribution_conserves :
@@ -137,7 +137,7 @@ theorem conserved_without_elimination :
                 depot_rate ka depot +ₚ central_rate ka (0 : Int) k12 k21 depot central periph +ₚ
                     periph_rate k12 k21 central periph =
                   (0 : Int) :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem step_mass_balance :
@@ -153,7 +153,7 @@ theorem step_mass_balance :
                     let new_central := central +ₚ central_rate ka ke k12 k21 depot central periph *ₚ dt
                     let new_periph := periph +ₚ periph_rate k12 k21 central periph *ₚ dt
                     new_depot +ₚ new_central +ₚ new_periph = depot +ₚ central +ₚ periph -ₚ ke *ₚ central *ₚ dt :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem depot_nonincreasing :

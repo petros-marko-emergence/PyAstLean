@@ -385,6 +385,23 @@ partial def stampFunction (sigs : Sigs) (outer hints : Env) (fn : Json) : Json :
         let annotated := match getField fn "returns" with | some r => !r.isNull | none => false
         let retType := if annotated then ofAnnotation ((getField fn "returns").getD Json.null)
                        else (sigs.get? name).getD .unknown
+        -- Flag a body that mixes `int` and `float` return statements (types read under the
+        -- *global-seeded* `env` — `sigs`/`returnTypeOf` run globals-free and miss a global `inf`).
+        -- ONLY a mix needs it: the first `return <int>` would pin the `Id.run` codomain to `ℤ`, then a
+        -- later `return <float>` fails; codegen ascribes the codomain to `ℚ`/`Float` (gated on
+        -- `!_real_fn`) so both coerce. A pure-`float` body needs no ascription (Lean infers it).
+        -- `sawOther` covers `int`/`bool` and `unknown` (a `return t` whose `t` TypeInfer left unknown
+        -- but Lean will infer `ℤ`) — anything that could pin the codomain to `ℤ` ahead of the float.
+        let (sawOther, sawFloat) : Bool × Bool := Id.run do
+          let mut so := false; let mut sf := false
+          for st in flatStmts ((fn.getObjValAs? (Array Json) "body").toOption.getD #[]).toList do
+            if nodeTypeOf st == some "Return" then
+              match (getField st "value").bind (fun v => if v.isNull then none else some (typeOfExpr sigs env v)) with
+              | some .float => sf := true
+              | some .int | some .bool | some .unknown => so := true
+              | _ => pure ()
+          return (so, sf)
+        let fn := if sawOther && sawFloat then fn.setObjVal! "_ret_float" (Json.bool true) else fn
         if retType == (.any : PyType) then fn.setObjVal! "_box_return" (Json.bool true)
         else if !annotated && retType.isKnown then
           match toAnnotation? retType with
@@ -419,6 +436,25 @@ partial def stampStmt (sigs : Sigs) (env : Env) (s : Json) : Json :=
              && typeOfExpr sigs env target == .float then
             if let some ann := toAnnotation? .float then
               s := s.setObjVal! "value" (value.setObjVal! "_ty" ann)
+      | _, _ => pure ()
+    -- A tuple target unpacked from a *list* value (not a tuple) uses list indexing, not `Prod`:
+    -- `for a, b in edges` with `edges : list[list[int]]`, or `a, b = np.shape(x)` (returns a list).
+    -- Mark the target so codegen can tell.
+    if nodeTypeOf s == some "For" then
+      match getField s "target", getField s "iter" with
+      | some target, some iter =>
+          if nodeTypeOf target == some "Tuple" then
+            match (typeOfExpr sigs env iter).elemType with
+            | .list _ => s := s.setObjVal! "target" (target.setObjVal! "_list_unpack" (Json.bool true))
+            | _ => pure ()
+      | _, _ => pure ()
+    if nodeTypeOf s == some "Assign" then
+      match getField s "target", getField s "value" with
+      | some target, some value =>
+          if nodeTypeOf target == some "Tuple" then
+            match typeOfExpr sigs env value with
+            | .list _ => s := s.setObjVal! "target" (target.setObjVal! "_list_unpack" (Json.bool true))
+            | _ => pure ()
       | _, _ => pure ()
     for f in #["body", "orelse", "finalbody"] do
       if let .ok elems := s.getObjValAs? (Array Json) f then

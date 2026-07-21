@@ -1068,13 +1068,12 @@ The choices that make a _faithful_, _provable_ translation possible — press �
 ## 1 · The logic subset
 
 :::class "dhook"
-Not all of Python — only the part that _has_ a static meaning.
+Not all of Python is supported, however, efforts into supporting the _provable_ subset are made.
 :::
 
 :::class "steps"
 * *Problem* — Python is dynamic: `eval`, `yield`, monkey-patching — no single static meaning.
 * *We do* — target the typed "logic" subset; anything else degrades to a flagged {name}`pyUnsupported`.
-* *Why* — a faithful, _provable_ Lean model only exists for the static part. Refuse loudly, never miscompile.
 :::
 
 :::class "dcode" "fragment"
@@ -1212,13 +1211,35 @@ New syntax, new library, new container — each is a _local, additive_ change.
 ```
 :::
 
+# {name}`PyAny` - Opening the door to Python's dynamic typing
+
+%%%
+state := "pyanu"
+vertical := some true
+%%%
+
+
+:::class "steps"
+* *Problem* — Python is dynamically typed; a variable can change type at runtime.
+* *We do* — `PyAny` is a _type-erased_ wrapper;
+* Idea: Gradual Typing — a variable of type `PyAny`, which can be intercasted to any other type, and the type is inferred at runtime.
+:::
+
+-- 1st slide should have gist of what it is, 1 python code example of add
+-- to the left, -> it's lean code
+-- in next vertical slide, talk aobut multiple return types, type mutation on 1 variable, and how we handle it with PyAny.
+-- For computation, it will directly infer type from the variable and use the correct type for computation(show 3-4 instances for Add)
+-- for proving, we use `pyany_cases` to break down. see PyAnyTest.lean and PyAnyProofTest.lean(whatever the file name is) for examples.
+
+## Powers it gives
+
+
 # Limitations — where the line is
 
 Honest about what PastaLean does _not_ do:
 
 :::class "steps"
 * *Not all of Python* — only the static "logic" subset; no `async`, `yield`, `eval`, or monkey-patching.
-* *One return type per function* — returning `int` on one path and `str` on another has no single Lean type.
 * *Proofs aren't free* — `taste?` / `mvcgen` are _best-effort_ automation; hard goals still need a manual proof.
 * *Libraries are hand-written* — a new library's functions are implemented + mapped once, then reused everywhere.
 * *Unsupported → {lean}`pyUnsupported`* — anything out of scope degrades to a flagged placeholder, so the rest of the file _still compiles_.

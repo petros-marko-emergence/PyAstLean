@@ -175,9 +175,16 @@ def forTargetBinder (targetJson : Json) :
         idents := idents.push (← getCode elt `ident)
       let n := idents.size
       let pairIdent := mkIdent (← freshName `_pair)
+      -- When the inference pass marked the iterable's element a *list* (`for a,b in edges` with
+      -- `edges : list[list[int]]`), unpack by list index; otherwise it is a tuple, unpacked via `Prod`.
+      let listUnpack := targetJson.getObjValAs? Bool "_list_unpack" == .ok true
       let mut prelude : Array (TSyntax `doElem) := #[]
       for i in List.range n do
-        let acc ← tupleAccessTerm pairIdent i n
+        let acc ←
+          if listUnpack then
+            let iStx ← intToStx (i : Int)
+            `($(mkIdent ``PastaLean.pyListGetItem) $pairIdent $iStx)
+          else tupleAccessTerm pairIdent i n
         prelude := prelude.push (← `(doElem| let $(idents[i]!) := $acc))
       pure (pairIdent, prelude)
   | _ =>
