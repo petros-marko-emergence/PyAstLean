@@ -25,6 +25,13 @@ instance (priority := high) : PyHAdd Rat Rat Rat where
 instance (priority := high) : PyHAdd Int Int Int where
   hAdd := fun a b => a + b
 
+/-- Python's `bool` is an `int`: `True + 1 = 2`. Lets the common `cnt += a > b` idiom lower. -/
+def pyBoolToInt (b : Bool) : Int := if b then 1 else 0
+
+instance (priority := high) : PyHAdd Int Bool Int where hAdd a b := a + pyBoolToInt b
+instance (priority := high) : PyHAdd Bool Int Int where hAdd a b := pyBoolToInt a + b
+instance (priority := high) : PyHAdd Bool Bool Int where hAdd a b := pyBoolToInt a + pyBoolToInt b
+
 instance : PyHAdd String String String where
   hAdd := String.append
 
@@ -57,6 +64,9 @@ infixl:65 " -ₚ " => PyHSub.hSub
 instance (priority := low) {α β γ} [HSub α β γ] : PyHSub α β γ where
   hSub := HSub.hSub
 
+instance (priority := high) : PyHSub Int Bool Int where hSub a b := a - pyBoolToInt b
+instance (priority := high) : PyHSub Bool Int Int where hSub a b := pyBoolToInt a - b
+
 instance (priority := high) : PyHSub Nat Nat Int where
   hSub := fun a b => (a : Int) - (b : Int)
 
@@ -80,6 +90,9 @@ infixl:70 " *ₚ " => PyHMul.hMul
 @[default_instance]
 instance {α β γ} [HMul α β γ] : PyHMul α β γ where
   hMul := HMul.hMul
+
+instance (priority := high) : PyHMul Int Bool Int where hMul a b := a * pyBoolToInt b
+instance (priority := high) : PyHMul Bool Int Int where hMul a b := pyBoolToInt a * b
 
 instance : PyHMul String Nat String where
   hMul := fun s n => String.intercalate "" (List.replicate n s)
@@ -201,6 +214,10 @@ infixl:70 " /ₚ " => PyHDiv.hDiv
 instance {α β γ} [HDiv α β γ] : PyHDiv α β γ where
   hDiv := HDiv.hDiv
 
+-- `@[default_instance 10001]` (as with `PyHAdd Int Int Int`) pins otherwise-unconstrained division
+-- operands — e.g. `def divide(a, b): return a / b` with untyped params — to `Int /ₚ Int : Rat`,
+-- matching Python's `/` always yielding a float (exact ℚ in prove mode).
+@[default_instance 10001]
 instance (priority := high) : PyHDiv Int Int Rat where
   hDiv := fun a b => (a : Rat) / (b : Rat)
 

@@ -1,5 +1,6 @@
 import Mathlib
 import PastaLean.PyAPI.Operators
+import PastaLean.PyAPI.PyAnyProof
 import PastaLean.PyVerify.Pastafolio
 import PastaLean.PyVerify.HelperLemmas
 
@@ -26,6 +27,8 @@ def tasteProfile : Profile where
     ← `(tactic| push_cast at *)
   ]
   closers := do return #[
+    -- Split a boxed `PyAny` goal into one goal per relevant runtime type, then close each (no-op with no `PyAny`).
+    ← `(tactic| pyany_cases <;> grind +locals),
     ← `(tactic| ring),
     ← `(tactic| positivity),
     ← `(tactic| omega),

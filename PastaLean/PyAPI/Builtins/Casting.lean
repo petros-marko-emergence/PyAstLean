@@ -64,8 +64,14 @@ def pyList {α β : Type} [PyIterable α β] (x : α) : List β :=
   pyIter x
 
 /-- Convert an `Int` to a `Float` (no `Float.ofInt` in core; build from the magnitude). -/
-private def floatOfInt (x : Int) : Float :=
+def floatOfInt (x : Int) : Float :=
   if x ≥ 0 then Float.ofNat x.toNat else - Float.ofNat (-x).toNat
+
+/-- Python widens `int` to `float` implicitly (`xs[i] = 0` into a float list, `f = g[i]` from an int
+matrix into a float one). Mirror it so an `Int` value flows into a `Float` slot. Only relevant in
+`--approx` (Float) mode; exact mode uses `ℚ`, which already has `IntCast`. -/
+instance : Coe Int Float := ⟨floatOfInt⟩
+instance : Coe Nat Float := ⟨Float.ofNat⟩
 
 /--
 Typeclass for Python-style `float(...)` coercions.
@@ -82,6 +88,9 @@ def pyFloat {α : Type} [PyFloatCast α] (x : α) : Float :=
   PyFloatCast.pyFloat x
 
 instance : PyFloatCast Float where pyFloat x := x
+-- `@[default_instance]` pins an otherwise-unconstrained `pyFloat x` (e.g. the run twin of
+-- `a / b` with untyped params, emitted as `pyFloat a /ₚ b`) to `Int`.
+@[default_instance]
 instance : PyFloatCast Int where pyFloat x := floatOfInt x
 instance : PyFloatCast Nat where pyFloat x := Float.ofNat x
 instance : PyFloatCast Bool where
@@ -132,8 +141,15 @@ instance : PyFloatCast String where
 
 In the default (exact) numeric mode `float(x)` lowers to `pyRat`, producing an exact rational.
 Notably a decimal string parses *exactly* (`float("0.1") = 1/10`), and `int`/`bool`/`Rat` inputs
-coerce losslessly. `inf`/`nan` have no `ℚ` value, so the string parser degrades them to `0`
-(exact mode does not model them — use `--mode run` for `float('inf')`). -/
+coerce losslessly. `inf`/`nan` have no `ℚ` value, so the string parser degrades them to `0`; a
+*literal* `float('inf')` lowers to `pyRatNonFinite` instead, leaving this path reachable only for a
+runtime-computed string. -/
+
+/-- Exact-mode stand-in for a non-finite float literal (`float('inf')`, `float('nan')`), which `ℚ`
+cannot represent. Returns the sentinel `-1`, and keeps `literal` in the emitted code so the
+placeholder is greppable. `--mode run` lowers these to `Float`, which represents them exactly, so
+the runnable `'rn` twin is unaffected. -/
+def pyRatNonFinite (_literal : String) : Rat := -1
 
 /-- Typeclass for exact-mode `float(...)` coercions producing `ℚ`. -/
 class PyRatCast (α : Type) where

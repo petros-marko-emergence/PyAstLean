@@ -9,12 +9,14 @@ open Lean Meta Elab Term Qq Std
 namespace PastaLean
 
 def intToStx (n : Int) : MetaM <| TSyntax `term := do
+  let intIdent := mkIdent ``Int
   if n < 0 then
+    -- Ascribe negatives to `Int` too — a bare `- 1` otherwise defaults to `Neg ℚ`, which e.g. types
+    -- a `x[-1]` index as `ℚ` and fails `PyGetItem (List _) Int _`.
     let nStx := Syntax.mkNumLit (toString (-n))
-    `(- $nStx:term)
+    `((- $nStx : $intIdent))
   else
     let nStx := Syntax.mkNumLit (toString (n))
-    let intIdent := mkIdent ``Int
     `(($nStx : $intIdent))
 
 def numToStx (mantissa : Int) (exponent : Nat) : MetaM <| TSyntax `term := do
@@ -24,7 +26,10 @@ def numToStx (mantissa : Int) (exponent : Nat) : MetaM <| TSyntax `term := do
       if mantissa % 10 = 0 then
         numToStx (mantissa / 10) k
       else
-        let mantissaStx ← intToStx mantissa
+        -- A bare signed numeral ascribed to `Rat` (not via `intToStx`, whose `: Int` ascription
+        -- would nest awkwardly as `((-15 : Int) : Rat)`).
+        let mantAbs := Syntax.mkNumLit (toString mantissa.natAbs)
+        let mantissaStx ← if mantissa < 0 then `(- $mantAbs:num) else pure (⟨mantAbs⟩ : TSyntax `term)
         let exponentStx := Syntax.mkNumLit (toString <| (10).pow exponent)
         let ratIdent := mkIdent ``Rat
         `(($mantissaStx : $ratIdent) / $exponentStx)
@@ -47,12 +52,11 @@ def floatDecimalString (magnitude exponent : Nat) : String :=
     let cut := chars.length - exponent
     String.ofList (chars.take cut) ++ "." ++ String.ofList (chars.drop cut)
 
-/-- Preserve Python float literals as Lean `Float`s, even when the decimal part is `.0`.
+/-- Preserve Python float literals as Lean `Float`s, even with a trailing `.0`.
 
-When the source was written in scientific notation (`1e5`), keep the explicit
-`Float.ofScientific magnitude true exponent` form. Otherwise emit a readable decimal literal
-ascribed to `Float` (e.g. `(0.25 : Float)`). The `: Float` ascription is required because a bare
-decimal literal would otherwise resolve to `Rat` via the default instances. -/
+Keep scientific notation as `Float.ofScientific magnitude true exponent`; otherwise emit a
+decimal literal ascribed to `Float` (e.g. `(0.25 : Float)`). The ascription is needed because a
+bare decimal literal would otherwise resolve to `Rat`. -/
 def floatNumToStx (mantissa : Int) (exponent : Nat) (scientific : Bool) :
     MetaM <| TSyntax `term := do
   let magnitude := Int.natAbs mantissa
@@ -113,10 +117,9 @@ def constantSyntax : (kind : SyntaxNodeKind) → Json →
 def jsonLibraryMappedName? (json : Json) : PygenM (Option Lean.Name) := do
   match json.getObjValAs? String "library_module", json.getObjValAs? String "library_member" with
   | .ok moduleName, .ok memberName =>
-      -- In exact mode prefer the `ℝ`/`noncomputable` variant for transcendentals so generated
-      -- code is provable; everything else (and all of `--mode run`) uses the regular mapping.
-      -- Exact mode: a transcendental → `ℝ` (real map); else a computable-but-non-Float override
-      -- like `math.pow`→rational (exact map); else the regular (often `Float`) mapping.
+      -- Exact mode prefers provable `ℝ`/`noncomputable` mappings for transcendentals; otherwise
+      -- use the regular mapping (`--mode run` always does). Example: `math.pow` → rational in the
+      -- exact map, else the regular (often `Float`) mapping.
       let realName? ← if (← getNumericMode) == .exact
         then pure (Libraries.pythonLibraryMapReal? moduleName memberName
                     <|> Libraries.pythonLibraryMapExact? moduleName memberName)
@@ -126,6 +129,14 @@ def jsonLibraryMappedName? (json : Json) : PygenM (Option Lean.Name) := do
       | none => throwError s!"Unsupported imported library member '{moduleName}.{memberName}'."
   | _, _ => pure none
 
+/-- The in-place mutation spec (from `Libraries`) for a call's callee, if it is a library member that
+mutates its first argument (e.g. `heapq.heappush`). Lets codegen lower mutators without naming any
+specific library. -/
+def libraryMutatorOf? (funcJson : Json) : Option Libraries.LibraryMutator :=
+  match funcJson.getObjValAs? String "library_module", funcJson.getObjValAs? String "library_member" with
+  | .ok m, .ok mem => Libraries.libraryMutator? m mem
+  | _, _ => none
+
 /-- Resolve a Python builtin name to its Lean runtime name, honouring the numeric mode: in exact
 mode the `pythonBuiltinMapExact?` overrides (e.g. `float` → `pyRat`) win over the regular table. -/
 def builtinMappedName? (name : String) : PygenM (Option Lean.Name) := do
@@ -133,6 +144,29 @@ def builtinMappedName? (name : String) : PygenM (Option Lean.Name) := do
     return pythonBuiltinMapExact? name <|> pythonBuiltinMap? name
   else
     return pythonBuiltinMap? name
+
+/-- The literal of a non-finite `float('inf')` / `float('-inf')` / `float('nan')` call. -/
+def nonFiniteFloatLiteral? (funcJson : Json) (argsArray : Array Json) : Option String := do
+  guard (funcJson.getObjValAs? String "node_type" == .ok "Name")
+  guard (funcJson.getObjValAs? String "id" == .ok "float")
+  let argJson ← argsArray[0]?
+  guard (argJson.getObjValAs? String "node_type" == .ok "Constant")
+  let .ok (Json.str raw) := argJson.getObjValAs? Json "value" | none
+  let normalized := raw.toLower.trimAscii
+  let body := if normalized.startsWith "-" || normalized.startsWith "+"
+    then normalized.drop 1 else normalized
+  guard (body == "inf" || body == "infinity" || body == "nan")
+  return raw
+
+/-- In exact mode, lower a literal `float('inf')`/`float('nan')` to the `ℚ` sentinel
+`pyRatNonFinite`, because `pyRat` would silently degrade it to `0`. `none` leaves the call on its
+normal path: `--mode run` lowers `float` to `pyFloat`, and `Float` represents these exactly. -/
+def nonFiniteFloatTerm? (funcJson : Json) (argsArray : Array Json) :
+    PygenM (Option (TSyntax `term)) := do
+  unless (← getNumericMode) == .exact do return none
+  let some raw := nonFiniteFloatLiteral? funcJson argsArray | return none
+  let nonFiniteIdent := mkIdent ``PastaLean.pyRatNonFinite
+  return some (← `($nonFiniteIdent $(Syntax.mkStrLit raw)))
 
 @[pygen "Name"]
 def nameSyntax : (kind : SyntaxNodeKind) → Json →
@@ -145,7 +179,17 @@ def nameSyntax : (kind : SyntaxNodeKind) → Json →
           s!"Name node does not have an 'id' field or it is not a string: {json}"
         -- In a run-twin, a reference to a user function/class is suffixed (`bar` → `bar'rn`,
         -- `CNN` → `CNN'rn`); locals and library names are left as-is.
-        return mkIdent (← suffixIfUserName id).toName
+        let suffixed ← suffixIfUserName id
+        -- A reference to a user-defined top-level function/class is `_root_`-qualified ONLY when the
+        -- name actually collides with an existing global (`dist`, `gcd`, …), so it resolves to the
+        -- user's own definition rather than a Mathlib export — the endless-clash fix, no namespace.
+        -- A local shadows the global, and a non-clashing name (e.g. a recursive self-reference not
+        -- yet in the environment) is left bare so its reference still resolves.
+        if (← userNamesRef.get).contains id && !(← hasVar id.toName)
+            && !(← resolveGlobalName id.toName).isEmpty then
+          return mkIdent (`_root_ ++ suffixed.toName)
+        else
+          return mkIdent suffixed.toName
   | `ident, json => do
     match ← jsonLibraryMappedName? json with
     | some leanName => pure (mkIdent leanName)
@@ -325,6 +369,8 @@ def unaryOpApplyTerm (op : String) (operandCode : TSyntax `term) :
   | "not" => `(! $operandCode)
   | "neg" => `(- $operandCode)
   | "pos" => `($operandCode)
+  -- `~x` is Python's bitwise complement: `-x - 1` on `Int`.
+  | "invert" => `(- $operandCode - 1)
   | _ => throwError s!"Unsupported unary operator: {op}"
 
 /-- Whether a condition's IR already lowers to a `Bool` (a comparison, boolean operator,
@@ -358,28 +404,19 @@ def isStringyJson (json : Json) : Bool :=
       | _ => false
   | _ => false
 
-/-- Apply a Python comparison operator to already-lowered operand terms. `leftJson` is the
-left operand's IR, used only to decide membership lowering: a string literal on the left of
-`in`/`not in` means *substring* containment (`pyStrContainsSubstr`); otherwise membership
-dispatches through `pyContains`, whose `outParam` element type pins the element from the
-container. -/
+/-- Apply a Python comparison operator to already-lowered terms. `leftJson` only affects
+membership lowering: a string literal on the left of `in`/`not in` means substring containment
+(`pyStrContainsSubstr`); otherwise membership uses `pyContains`, whose `outParam` element type
+pins the element from the container. -/
 def compareApplyTerm (op : String) (leftJson : Json) (leftCode rightCode : TSyntax `term)
     (rightJson : Option Json := none) : PygenM (TSyntax `term) := do
   -- `x is None` / `x is not None`: lower to `Option.isNone`/`Option.isSome` rather than
-  -- `== none`/`!= none`. This needs no `BEq` and works even when `x`'s element type is still an
-  -- unresolved metavariable — exactly the `[None] * n` placeholder pattern, where the list's
-  -- `Option` element type is only pinned later. (`is`/`is not` against a non-`None` operand keep
-  -- the plain `==`/`!=` lowering below.)
+  -- `== none`/`!= none`. Works with unresolved `Option` element types (e.g., `[None] * n`).
   if (op == "is" || op == "isnot") && (rightJson.any isNoneConstantJson) then
     if op == "is" then return ← `($(mkIdent ``Option.isNone) $leftCode)
     else return ← `($(mkIdent ``Option.isSome) $leftCode)
-  -- In a *condition position* (`prop` — the direct test of an `if`/`while`, see `withPropCondition`)
-  -- a comparison lowers to a provable `Prop`, paired with the `if h : …` hypothesis: ordering →
-  -- `a < b` (decidable for every numeric type, so it works in any mode), equality → `a = b` / `a ≠ b`
-  -- but ONLY in exact mode (ℚ/ℤ/ℝ have `DecidableEq`; `Float` does NOT, so it keeps `==`).
-  -- In a *value position* (`!prop` — a comprehension element, an `and`/`or` operand, an `any`/`all`
-  -- generator) the result must be a `Bool`: ordering goes through `decide`, equality through `==`.
-  -- (`Prop` has no `Bool`/`PyBool` instance, so it cannot be a plain value.)
+  -- *Condition position* (`prop`): comparison yields `Prop` (e.g., `a < b`, `a = b` in exact mode).
+  -- *Value position* (`!prop`): comparison yields `Bool` (e.g., `decide (a < b)`, `a == b`).
   let prop ← getPropCondition
   let exact ← numericModeIsExact
   match op with
@@ -416,10 +453,7 @@ def binOpSyntax : (kind : SyntaxNodeKind) → Json →
       s!"BinOp node does not have a 'right' field or it is not a JSON value: {json}"
     let leftCode ←  getCode leftJson `term
     let rightCode ← getCode rightJson `term
-    -- List repetition `[..] * n` / `n * [..]`: when an operand is a list literal, target the
-    -- plain `pyListRepeat` (result type concretely `List α`) instead of the `outParam`-result
-    -- `*ₚ`. Otherwise a `[None] * n` placeholder leaves the whole list type postponed, stalling
-    -- every later `pyIter`/`pyGetItem`/`pySetItem` whose element type is only pinned afterwards.
+    -- Use `pyListRepeat` for list literals so the result type is fixed immediately.
     if op == "mul" then
       let repeatIdent := mkIdent ``PastaLean.pyListRepeat
       if leftJson.getObjValAs? String "node_type" == .ok "List" then
@@ -441,7 +475,14 @@ def unaryOpSyntax : (kind : SyntaxNodeKind) → Json →
     -- `p` itself a `Prop`. Otherwise `not` is the `Bool` `!`, so its operand must be `Bool`.
     let propNot := op == "not" && (← getPropCondition) && (← numericModeIsExact)
     let operandCode ← withPropCondition propNot (getCode operandJson `term)
-    if propNot then `(¬ $operandCode) else unaryOpApplyTerm op operandCode
+    if op == "not" then
+      -- `not x` is a truthiness context too: a bare non-boolean operand needs `pyTruthy`
+      -- (same missing coercion as `if x:` / bool operands), else `¬`/`!` gets a raw value.
+      let b ← if conditionIsBoolean operandJson then pure operandCode
+              else if propNot then `($(mkIdent ``PastaLean.pyTruthy) $operandCode = true)
+                   else `($(mkIdent ``PastaLean.pyTruthy) $operandCode)
+      if propNot then `(¬ $b) else `(! $b)
+    else unaryOpApplyTerm op operandCode
   | _, _ => throwError s!"Unsupported syntax category for UnaryOp node"
 
 @[pygen "BoolOp"]
@@ -452,12 +493,16 @@ def boolOpSyntax : (kind : SyntaxNodeKind) → Json →
       s!"BoolOp node does not have an 'op' field or it is not a string: {json}"
     let .ok valuesJson := json.getObjValAs? Json "values" | throwError
       s!"BoolOp node does not have a 'values' field or it is not a JSON value: {json}"
-    -- In a `Prop` position in exact mode (`assert`/theorem, or an `if` test over ℚ/ℤ/ℝ) `and`/`or`
-    -- become `∧`/`∨` over `Prop` operands — no `decide`. Otherwise `&&`/`||` need `Bool` operands, so
-    -- lower them in value position: `if a < b and c < d` → `decide (a<b) && decide (c<d)`.
+    -- In exact `Prop` positions, `and`/`or` become `∧`/`∨`; otherwise lower to `Bool`.
     let opProp := (← getPropCondition) && (← numericModeIsExact)
+    -- Each `and`/`or` operand is a truthiness context, so non-booleans must be coerced with `pyTruthy`.
+    let lowerOperand (valueJson : Json) : PygenM (TSyntax `term) := do
+      let code ← withPropCondition opProp (getCode valueJson `term)
+      if conditionIsBoolean valueJson then pure code
+      else if opProp then `($(mkIdent ``PastaLean.pyTruthy) $code = true)
+      else `($(mkIdent ``PastaLean.pyTruthy) $code)
     let valuesCodes ← match valuesJson with
-      | .arr arr => arr.mapM (fun valueJson => withPropCondition opProp (getCode valueJson `term))
+      | .arr arr => arr.mapM lowerOperand
       | _ => throwError s!"BoolOp node 'values' field is not an array: {valuesJson}"
     let l := valuesCodes.toList.length
     if l = 0 then throwError s!"BoolOp node 'values' array is empty: {valuesJson}"

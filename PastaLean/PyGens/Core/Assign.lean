@@ -21,6 +21,18 @@ def tupleAssignTargetNames? (target : Json) : PygenM (Option (Array (TSyntax `id
     idents := idents.push (← getCode elt `ident)
   return some idents
 
+/-- The elements of a tuple-assignment target (arity ≥ 2), or `none` if it is not a `Tuple`.
+Unlike `tupleAssignTargetNames?`, elements may be any target shape — e.g. the `Subscript`s in
+`a[i], a[j] = a[j], a[i]`. -/
+def tupleTargetElts? (target : Json) : PygenM (Option (Array Json)) := do
+  unless jsonNodeType? target == some "Tuple" do
+    return none
+  let .ok elts := target.getObjValAs? (Array Json) "elts" | throwError
+    s!"Tuple assignment target does not have an 'elts' field or it is not a JSON value: {target}"
+  if elts.size < 2 then
+    throwError "Tuple assignment target must have at least two elements."
+  return some elts
+
 /-- Build the accessor term to reach element `idx` of an N-element right-nested pair `pairIdent`.
 `buildTuple` produces `(e0, (e1, (e2, e3)))`, so:
   - element 0 → `Prod.fst p`
@@ -53,12 +65,17 @@ def unpackAccessTerm (isTuple : Bool) (sourceIdent : TSyntax `ident) (idx n : Na
     let idxStx ← intToStx (Int.ofNat idx)
     `($getIdent $sourceIdent $idxStx)
 
-/-- Emit either a fresh `let mut` or a reassignment for one local binding. -/
-def bindOrAssignLocal (nameIdent : TSyntax `ident) (rhs : TSyntax `term) : PygenM (TSyntax `doElem) := do
+/-- Emit either a fresh `let mut` or a reassignment for one local binding. On the first binding an
+inferred type (`ty?`) is ascribed — `let mut x : T := …` — which stops Lean defaulting an
+unconstrained element/index to `ℚ`. A reassignment never re-ascribes. -/
+def bindOrAssignLocal (nameIdent : TSyntax `ident) (rhs : TSyntax `term)
+    (ty? : Option (TSyntax `term) := none) : PygenM (TSyntax `doElem) := do
   if ← hasVar nameIdent.getId then
     `(doElem| $nameIdent:ident := $rhs)
   else
-    let stx ← `(doElem| let mut $nameIdent:ident := $rhs)
+    let stx ← match ty? with
+      | some ty => `(doElem| let mut $nameIdent:ident : $ty := $rhs)
+      | none => `(doElem| let mut $nameIdent:ident := $rhs)
     addVar nameIdent.getId
     pure stx
 
@@ -94,6 +111,26 @@ def subscriptSetDoElem (containerIdent : TSyntax `ident) (indexTerm value : TSyn
   let setItemIdent := mkIdent ``PastaLean.pySetItem
   `(doElem| $containerIdent:ident := $setItemIdent $containerIdent $indexTerm $value)
 
+/-- If `target` is `self.X` (an `Attribute` whose base is the `Name` `self`), return the attribute
+name `X`. Used to lower attribute writes inside a class method to a `self` record update. -/
+def selfAttrTarget? (target : Json) : Option String :=
+  if jsonNodeType? target == some "Attribute" then
+    match (target.getObjVal? "value").toOption, (target.getObjValAs? String "attr").toOption with
+    | some v, some attr =>
+        if jsonNodeType? v == some "Name" && v.getObjValAs? String "id" == .ok "self" then
+          some attr
+        else none
+    | _, _ => none
+  else none
+
+/-- Emit `self := { self with X := rhs }` — the value-semantics lowering of `self.X = rhs` inside a
+class method body (`self` is the method's `let mut` shadow). -/
+def selfRecordUpdateDoElem (attr : String) (rhs : TSyntax `term) : PygenM (TSyntax `doElem) := do
+  let selfId := mkIdent `self
+  let attrId := mkIdent attr.toName
+  let fields := #[← `(Lean.Parser.Term.structInstField| $attrId:ident := $rhs)]
+  `(doElem| $selfId:ident := { $selfId:term with $fields:structInstField,* })
+
 /-- Lower a possibly-nested subscript assignment `a[i]…[k] = value` to a reassignment of the
 base variable. Each level is rebuilt innermost-first with `pySetItem`: `a[i][j] = v` becomes
 `a := pySetItem a i (pySetItem (pyGetItem a i) j v)`. This mirrors Python, where mutating the
@@ -118,9 +155,28 @@ partial def nestedSubscriptSetDoElem? (target : Json) (value : TSyntax `term) :
       return some (← `(doElem| $containerIdent:ident := $newContainer))
   | some "Subscript" =>
       nestedSubscriptSetDoElem? containerJson newContainer
+  | some "Attribute" =>
+      -- `self.c[i] = v` in a class method rebuilds the field: `self := { self with c := … }`.
+      let some attr := selfAttrTarget? containerJson
+        | throwError "Subscript assignment through an attribute is only supported on `self`."
+      unless ← hasVar `self do
+        throwError "`self.X[i] = v` is only supported inside a class method body."
+      return some (← selfRecordUpdateDoElem attr newContainer)
   | _ =>
       throwError "Subscript assignment requires the base container to be a variable \
         (`a[i]…[k] = v`); got an unsupported container expression."
+
+/-- Assign one element of a tuple target from `acc`, which reads it out of the already-evaluated
+RHS temp. `Subscript` elements rebuild their container, so the swap `a[i], a[j] = a[j], a[i]`
+works: the temp is evaluated before any write-back. -/
+def tupleElementAssignDoElem (elt : Json) (acc : TSyntax `term) : PygenM (TSyntax `doElem) := do
+  match ← nestedSubscriptSetDoElem? elt acc with
+  | some setStx => pure setStx
+  | none =>
+    unless jsonNodeType? elt == some "Name" do
+      throwError s!"Unsupported tuple-assignment target element (only `Name` and subscript \
+        `a[i]` targets are supported): {elt}"
+    bindOrAssignLocal (← getCode elt `ident) acc
 
 /-- Lower an optional slice bound expression to a `some _`/`none` `Option Int` term. -/
 def sliceBoundOptTerm (boundJson? : Option Json) : PygenM (TSyntax `term) := do
@@ -149,26 +205,6 @@ def sliceTargetParts? (target : Json) :
   let lowerTerm ← sliceBoundOptTerm (jsonFieldOption sliceJson "lower")
   let upperTerm ← sliceBoundOptTerm (jsonFieldOption sliceJson "upper")
   return some (containerIdent, lowerTerm, upperTerm)
-
-/-- If `target` is `self.X` (an `Attribute` whose base is the `Name` `self`), return the attribute
-name `X`. Used to lower attribute writes inside a class method to a `self` record update. -/
-def selfAttrTarget? (target : Json) : Option String :=
-  if jsonNodeType? target == some "Attribute" then
-    match (target.getObjVal? "value").toOption, (target.getObjValAs? String "attr").toOption with
-    | some v, some attr =>
-        if jsonNodeType? v == some "Name" && v.getObjValAs? String "id" == .ok "self" then
-          some attr
-        else none
-    | _, _ => none
-  else none
-
-/-- Emit `self := { self with X := rhs }` — the value-semantics lowering of `self.X = rhs` inside a
-class method body (`self` is the method's `let mut` shadow). -/
-def selfRecordUpdateDoElem (attr : String) (rhs : TSyntax `term) : PygenM (TSyntax `doElem) := do
-  let selfId := mkIdent `self
-  let attrId := mkIdent attr.toName
-  let fields := #[← `(Lean.Parser.Term.structInstField| $attrId:ident := $rhs)]
-  `(doElem| $selfId:ident := { $selfId:term with $fields:structInstField,* })
 
 /-- Simple returned expressions can stay unparenthesized; more complex or effectful ones
 keep parentheses so Lean parses multiline `return` expressions reliably. -/
@@ -201,7 +237,10 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
             -- function call returning a `tuple[...]` (the Python pre-pass only leaves such
             -- tuple-returning calls as native unpacking — list-returning RHSs are pre-split
             -- into subscripts and never reach here, so a `Call` here means a `Prod` result).
-            let isTuple := jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call"
+            -- `_list_unpack` (stamped when the RHS is list-typed, e.g. `np.shape(x)` returns a list)
+            -- forces list-index access even for a `Call` RHS that would otherwise be read as a `Prod`.
+            let isTuple := (jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call")
+              && target.getObjValAs? Bool "_list_unpack" != .ok true
             let mut cmds : Array (TSyntax `command) := #[cmd0]
             for i in List.range n do
               let acc ← unpackAccessTerm isTuple unpackTmpIdent i n
@@ -221,9 +260,19 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
           s!"Assign node does not have a 'target' field or it is not a JSON value: {json}"
         let .ok value := json.getObjVal? "value" | throwError
           s!"Assign node does not have a 'value' field or it is not a JSON value: {json}"
-        match ← tupleAssignTargetNames? target with
-        | some idents => do
-            let n := idents.size
+        match ← tupleTargetElts? target with
+        | some elts => do
+            let n := elts.size
+            -- RHS both yields a value (a tuple) and mutates its receiver (`d, node = heappop(h)`):
+            -- bind the value first (reads the original receiver), apply the mutation, then unpack.
+            if let some (valueTerm, update) ← mutatingCallRhsLowering? value then
+              let valueTmpIdent := mkIdent (← freshName `__unpack_value)
+              let bindValueTmp ← `(doElem| let $valueTmpIdent:ident := $valueTerm)
+              let mut binds : Array (TSyntax `doElem) := #[bindValueTmp, update]
+              for i in List.range n do
+                let acc ← unpackAccessTerm true valueTmpIdent i n
+                binds := binds.push (← tupleElementAssignDoElem elts[i]! acc)
+              return ⟨mkNullNode (binds.map TSyntax.raw)⟩
             let valueStx ← getCode value `term
             let valueTmpIdent := mkIdent (← freshName `__unpack_value)
             let unpackTmpIdent := mkIdent (← freshName `__unpack_pair)
@@ -237,11 +286,14 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
             -- function call returning a `tuple[...]` (the Python pre-pass only leaves such
             -- tuple-returning calls as native unpacking — list-returning RHSs are pre-split
             -- into subscripts and never reach here, so a `Call` here means a `Prod` result).
-            let isTuple := jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call"
+            -- `_list_unpack` (stamped when the RHS is list-typed, e.g. `np.shape(x)` returns a list)
+            -- forces list-index access even for a `Call` RHS that would otherwise be read as a `Prod`.
+            let isTuple := (jsonNodeType? value == some "Tuple" || jsonNodeType? value == some "Call")
+              && target.getObjValAs? Bool "_list_unpack" != .ok true
             let mut binds : Array (TSyntax `doElem) := #[bindValueTmp, bindUnpackTmp]
             for i in List.range n do
               let acc ← unpackAccessTerm isTuple unpackTmpIdent i n
-              binds := binds.push (← bindOrAssignLocal idents[i]! acc)
+              binds := binds.push (← tupleElementAssignDoElem elts[i]! acc)
             -- Return the bindings as siblings (a flattened null-node), NOT wrapped in a
             -- nested `do` — wrapping would scope the unpacked names away from following
             -- statements. Consumers flatten via `appendDoElems`.
@@ -264,6 +316,19 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
                   `((← $valueStx))
                 else
                   pure valueStx
+            -- Ascribe to the value's inferred type when the inference pass stamped one (a `c[i] = v`
+            -- into a float container: put an `Int` value into the container's `ℚ`/`Float` element).
+            let rhs ← match ← stampedTypeSyntax? value with
+              | some tyStx =>
+                  -- A bare int literal must be re-emitted as an `OfNat` in the target type (`(0 : Float)`);
+                  -- an ascribed `((0 : Int) : Float)` fails — there is no `Int → Float` coercion.
+                  match jsonNodeType? value, value.getObjValAs? Int "value" with
+                  | some "Constant", .ok i =>
+                      let n := Syntax.mkNumLit (toString i.natAbs)
+                      let lit : TSyntax `term ← if i < 0 then `(- $n:num) else pure ⟨n⟩
+                      `(($lit : $tyStx))
+                  | _, _ => `(($rhs : $tyStx))
+              | none => pure rhs
             -- `self.X = v` inside a class method (where `self` is the `let mut` shadow) rebuilds
             -- `self` via record update. The `hasVar self` guard keeps top-level `obj.x = v`
             -- (no mutable `self` in scope) on its normal path.
@@ -282,7 +347,7 @@ def assignSyntax : (kind : SyntaxNodeKind) → Json →
                 pure setStx
             | none =>
                 let nameIdent ← getCode target `ident
-                bindOrAssignLocal nameIdent rhs
+                bindOrAssignLocal nameIdent rhs (← stampedTypeSyntax? target)
     | _, _ => throwError s!"Unsupported syntax category for Assign node"
 
 /--
@@ -322,15 +387,25 @@ def returnSyntax : (kind : SyntaxNodeKind) → Json →
         let .ok value := json.getObjVal? "value" | throwError
           s!"Return node does not have a 'value' field or it is not a JSON value: {json}"
         match value with
+        -- A bare `return` (Python `return`, i.e. `None`) → `return default`, which is `()` for a
+        -- `Unit`/void function but also matches a (mis-)annotated non-`Unit` return type.
         | .null =>
-            `(doElem| return (()))
+            `(doElem| return default)
         | _ =>
             let valueStx ←
-              if jsonUsesIOEffect value then
+              -- A call that both yields a value and mutates its receiver (`return heappop(h)`):
+              -- the mutation is unobservable after a `return`, so return the value component.
+              if let some (valueTerm, _) ← mutatingCallRhsLowering? value then
+                pure valueTerm
+              else if jsonUsesIOEffect value then
                 inlineIOTerm value
               else
                 let s ← getCode value `term
                 if jsonUsesMonadicEffect value then `((← $s:term)) else pure s
+            -- In a boxed-return function, ascribe each value to `PyAny` so `try/catch` branches
+            -- coerce individually (Lean would otherwise unify the branch types from the first return).
+            let valueStx ← if (← getBoxReturnContext)
+              then `(($valueStx : PastaLean.PyAny)) else pure valueStx
             -- A simple atom (`return x` / `return 42`) is always narrow, so return it directly.
             -- A wide expression placed directly after `return`, however, can be split onto the
             -- next line by the pretty-printer, which re-parses as `return` (Unit) followed by a

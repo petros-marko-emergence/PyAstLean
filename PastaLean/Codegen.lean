@@ -37,6 +37,14 @@ initialize realContextRef : IO.Ref Bool ← IO.mkRef false
 /-- Read whether we're lowering inside a real-valued (`ℝ`) function body. -/
 def getRealContext : IO Bool := realContextRef.get
 
+/-- True while lowering the body of a function whose return is boxed to `PyAny` (its branches
+return disagreeing types). Each `return e` then ascribes `(e : PyAny)`, so `try/catch` branches
+coerce individually instead of Lean unifying their types from the first return. -/
+initialize boxReturnRef : IO.Ref Bool ← IO.mkRef false
+
+/-- Read whether we're lowering inside a `PyAny`-boxed-return function body. -/
+def getBoxReturnContext : IO Bool := boxReturnRef.get
+
 /-- True while lowering a *condition position* — the direct test of an `if`/`while` — where a
 comparison may be a `Prop` (`a < b`, and `a = b`/`a ≠ b` in exact mode) so it is provable, paired
 with the `if h : …` hypothesis. False everywhere else (the default): a comparison used as a *value*
@@ -139,6 +147,18 @@ def withRealContext {α : Type} (b : Bool) (x : PygenM α) : PygenM α := do
     return r
   catch e =>
     realContextRef.set saved
+    throw e
+
+/-- Run `x` with the boxed-return flag set to `b` (restoring it afterwards). -/
+def withBoxReturnContext {α : Type} (b : Bool) (x : PygenM α) : PygenM α := do
+  let saved ← boxReturnRef.get
+  boxReturnRef.set b
+  try
+    let r ← x
+    boxReturnRef.set saved
+    return r
+  catch e =>
+    boxReturnRef.set saved
     throw e
 
 /-- Run `x` with the prop-condition flag set to `b` (restoring it afterwards). `if`/`while` set it
@@ -441,6 +461,13 @@ def getCodeIO (json: Json) (kind: SyntaxNodeKind) (ctx : Core.Context) (env: Env
     (checkCode : Bool := true) :
   IO <| Except String Format := do
   let code := getCodeCore json kind checkCode
+  -- Codegen runs unbounded (`maxHeartbeats := 0`): the budget exists to stop runaway *proof search*,
+  -- and there is no proof search here — just elaboration of the emitted syntax, which must scale to
+  -- arbitrarily long programs. It also has to be disabled rather than merely raised: `IO.getNumHeartbeats`
+  -- counts from thread start and `CoreM.run'` keeps the caller's `initHeartbeats`, so the persistent
+  -- backend server (`py2lean --server`) shares one budget across every request it ever serves. Once the
+  -- process crosses the ceiling, each further translation fails at `isDefEq` however small its program is.
+  let ctx := { ctx with maxHeartbeats := 0, options := ctx.options.insert `maxHeartbeats (.ofNat 0) }
   let eio := code.run' ctx {env := env}
   match ← eio.toIO' with
   | .ok code =>

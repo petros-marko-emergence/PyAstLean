@@ -13,39 +13,77 @@ only the files you actually need.
 
 ## The pipeline (Python text → Lean text)
 
-Three stages. The orchestrator is **`src/py2lean.py`** (run it; don't call the stages by hand).
+Three stages, orchestrated by **`src/transpile/driver.py`**. Don't call the stages by hand — go
+through the CLI or the `Session` API below.
 
 ```
 Python source
   │
-  ├─ src/annotate_python.py   pre-pass: walks the Python AST, attaches type/scope
-  │                           annotations (e.g. inferred param types, mutated-name sets).
+  ├─ src/transpile/annotate_python.py  pre-pass: walks the Python AST, attaches type/scope
+  │                                    annotations (inferred param types, mutated-name sets).
   │
-  ├─ src/node_visitor.py      Python AST → a JSON IR. Each node is {"node_type": "...", ...}.
-  │                           Holds the operator/compare maps (BINOP_MAP, COMPAREOP_MAP, ...).
+  ├─ src/transpile/node_visitor.py     Python AST → a JSON IR. Each node is {"node_type": "...", ...}.
+  │                                    Holds the operator/compare maps (BINOP_MAP, COMPAREOP_MAP, ...).
   │
-  ├─ src/toplevel_state.py    further IR annotations for top-level state threading and
-  │                           if/loop scope analysis (Lean has no top-level mutation).
+  ├─ src/transpile/toplevel_state.py   further IR annotations for top-level state threading and
+  │                                    if/loop scope analysis (Lean has no top-level mutation).
   │
-  └─ Lean backend (exe `py2lean`)   JSON IR → Lean Syntax → pretty-printed Lean text.
+  └─ Lean backend (exe `py2lean`)      JSON IR → Lean Syntax → pretty-printed Lean text.
 ```
 
-`py2lean.py` boots **one persistent Lean backend process** and streams JSON translation
-requests to it (one per top-level statement), so Lean isn't restarted per node.
+The driver boots **one persistent Lean backend process** and streams JSON translation requests to
+it (one per top-level statement), so Lean isn't restarted per node.
 
 - `--target term` emits an expression; `--target command` emits top-level declarations
   (this is what you want for whole programs — it produces `def main : IO Unit := ...` when the
   source has a `main`/`__main__`).
 - `--verbose` dumps the intermediate JSON IR and Lean syntax — invaluable when debugging.
 
+---
+
+## The Python side: `src/` (the `pastalean` package)
+
+`src/` *is* the package: `import pastalean` loads `src/__init__.py`. (It cannot sit at the repo
+root — `PastaLean/`, the Lean library, is already there, and the two names collide on
+case-insensitive filesystems.) Install it with `uv pip install -e '.[server]'`.
+
+- `main.py` — **start here.** The `pastalean` console script / `python -m pastalean`; one thin
+  `cmd_*` per subcommand, delegating to `api` and `backend`.
+- `api.py` — `Session` (warm backend, many files), `translate`/`translate_file` (one-shot),
+  `TranslationResult`.
+- `server.py` — `pastalean serve`: a FastAPI app over one `Session`, serving the `static/` web
+  playground at `/` and its generated reference at `/api`.
+- `pyexec.py` — runs the *original* Python, so the UI can diff it against the Lean twin.
+- `backend/` — everything that talks to Lean: `client.py` (the persistent `py2lean --server`
+  process) and `lean.py` (`compile_check` / `run_program` via `lake env lean`).
+- `transpile/` — everything that manipulates Python AST/IR (the three stages above, plus
+  `normalize_loops.py`, `contract_passta.py`, `llm.py`).
+- `prepasses.py` — the optional LLM source rewrites (`--contracts`, `--redesign`).
+- `paths.py` — every filesystem location, resolved from `__file__`. Never derive paths from the cwd.
+
 ```bash
-python3 src/py2lean.py <file.py> --target command          # see the Lean output
-python3 src/py2lean.py <file.py> --target command --verbose # + intermediate stages
+pastalean translate <file.py>                      # Lean on stdout, then compile-check it
+pastalean translate <file.py> --no-check           # codegen only (skip `lake env lean`) — faster
+pastalean translate <file.py> -v                   # + intermediate stages
+pastalean run <file.py> < input.txt                # translate, compile, execute
+pastalean json <file.py>                           # dump the JSON IR
+pastalean batch example_scripts/commands --check   # many files, one warm backend
+pastalean serve                                    # web UI at /, API reference at /api
+```
+
+`uv run pastalean ...` works without installing anything. `uv run src/main.py` does not — the
+package uses relative imports.
+
+```python
+from pastalean import Session
+with Session(target="command", mode="run") as s:      # one Lean boot for all of them
+    for result in s.translate_files(paths):
+        print(result.lean_code if result.ok else result.error)
 ```
 
 The low-level backend is the Lean executable defined by `py2lean.lean`; it takes a JSON task
 string directly (`lake exe py2lean '{"task":"translate","ast":{...}}' term`). You rarely call
-this directly — `src/py2lean.py` drives it.
+this directly — `backend/client.py` drives it.
 
 ---
 
@@ -127,10 +165,12 @@ await into the pure position rather than letting a raw `IO _` leak — see `inli
     changing emitted syntax will.
   - `PastaLeanTest/PyAPI/`, `.../Libraries/` — runtime unit checks (`#eval`/`#check`).
 - **`cp_harness/`** — an end-to-end harness over real competitive-programming Python solutions
-  (`cp_harness/dataset/<problem>/solutions/sol_*.py`). `convert.py` wraps bare top-level code in
-  a `__main__` guard, translates with `py2lean.py --target command`, compile-checks the Lean,
-  and tallies `ok | convert_fail | compile_fail` into `dataset/convert_summary.json`.
-  `convert.py` is slow; treat `convert_summary.json` as the source of truth for coverage.
+  (`cp_harness/dataset*/<problem>/solutions/sol_*.py`). `cpasta_eval.py` wraps bare top-level code
+  in a `__main__` guard, translates it through one warm `Session`, compile-checks the Lean, and
+  tallies `ok | convert_fail | compile_fail` into `<dataset>/convert_summary.json`. The convert
+  stage is slow; treat `convert_summary.json` as the source of truth for coverage.
+- **`tests/`** — Python-side tests (e.g. `test_normalize_loops.py`, a differential test for the
+  `while → for` rewrite).
 
 ## Build / run quick reference
 
@@ -142,8 +182,8 @@ lake exe palc <dir|file>    # run PALC checks directly
 ```
 
 - Toolchain pinned by `lean-toolchain`; deps in `lakefile.toml` (Mathlib, lean-regex).
-- The Python side uses a uv venv at `.venv/` (`pyproject.toml` / `requirements.txt`); activate
-  it before running `src/py2lean.py`.
+- The Python side uses a uv venv at `.venv/`; `uv pip install -e '.[server]'` puts the `pastalean`
+  console script on PATH. The `server` extra (fastapi/uvicorn) is only needed for `pastalean serve`.
 
 ## Conventions worth knowing
 
@@ -152,6 +192,11 @@ lake exe palc <dir|file>    # run PALC checks directly
   (glue) + the implementation in `PyAPI/`.
 - **Extensible protocols use `outParam`, not associated types** (see `CommonProtocols/`).
 - **`def main` appears only when the source has a `main`/`__main__`.** The general transpiler
-  never auto-wraps bare code; only `cp_harness/convert.py` adds a `__main__` guard for the
+  never auto-wraps bare code; only `cp_harness/cpasta_eval.py` adds a `__main__` guard for the
   harness.
 - Generated programs start with `import PastaLean` / `import Libraries` and `open` both.
+
+## Code writing tips
+
+- Keep comments concise and only important notes should be in the code. Don't stuff paragraphs of them.
+- Think about robustness solution for the same, touching a generic problem, then just a temporary solution for the same. This will help in future bugs, to avoid code duplication and will help in maintainability of the code.

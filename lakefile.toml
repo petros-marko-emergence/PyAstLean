@@ -2,7 +2,7 @@ name = "PastaLean"
 version = "0.1.0"
 keywords = ["math"]
 defaultTargets = ["PastaLean", "py2lean"]
-testDriver = "PastaLeanTest"
+testDriver = "palc"
 
 [leanOptions]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
@@ -12,6 +12,11 @@ name = "mathlib"
 scope = "leanprover-community"
 rev = "v4.31.0"
 
+[[require]]
+name = "verso-slides"
+scope = "leanprover"
+rev = "v4.31.0"
+
 [[lean_lib]]
 name = "PastaLean"
 
@@ -19,7 +24,20 @@ name = "PastaLean"
 name = "Libraries"
 
 [[lean_lib]]
-name = "PastaLeanTest"
+name = "TypeInfer"
+
+[[lean_lib]]
+name = "PALC"
+
+[[lean_lib]]
+name = "Slides"
+srcDir = "docs/ppt"
+
+[[lean_exe]]
+name = "slides"
+srcDir = "docs/ppt"
+root = "SlidesMain"
+supportInterpreter = true
 
 [[lean_exe]]
 name="py2lean"
@@ -27,4 +45,5 @@ supportInterpreter = true
 
 [[lean_exe]]
 name="palc"
+root = "PALC.PastaCheck"
 supportInterpreter = true

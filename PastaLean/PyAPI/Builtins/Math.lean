@@ -84,4 +84,22 @@ def pyRoundDigits (x : Float) (ndigits : Int) : Float :=
   -- round-half-to-even on the scaled value, then unscale
   (Float.ofInt (pyRound scaled)) / p
 
+/-- `int.bit_length()`: bits needed to represent `|n|`, and `0` for `0`. `pyBitLength 5 = 3`. -/
+def pyBitLength (n : Int) : Int :=
+  let m := n.natAbs
+  if m == 0 then 0 else Int.ofNat (Nat.toDigits 2 m).length
+
+/-- `int.bit_count()`: number of one-bits in `|n|`. `pyBitCount 5 = 2`. -/
+def pyBitCount (n : Int) : Int :=
+  Int.ofNat ((Nat.toDigits 2 n.natAbs).count '1')
+
+/-- Python's `bin`/`hex`/`oct` prefixed radix strings; the sign leads, as in CPython.
+`pyBin 5 = "0b101"`, `pyBin (-5) = "-0b101"`, `pyHex 255 = "0xff"`, `pyOct 8 = "0o10"`. -/
+private def pyRadixString (tag : String) (base : Nat) (n : Int) : String :=
+  (if n < 0 then "-" else "") ++ tag ++ String.ofList (Nat.toDigits base n.natAbs)
+
+def pyBin (n : Int) : String := pyRadixString "0b" 2 n
+def pyHex (n : Int) : String := pyRadixString "0x" 16 n
+def pyOct (n : Int) : String := pyRadixString "0o" 8 n
+
 end PastaLean

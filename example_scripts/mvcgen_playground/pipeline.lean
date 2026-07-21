@@ -15,16 +15,16 @@ set_option maxHeartbeats 800000
 -- Accumulator-style invariants (acc = prefix sum, cnt = prefix length) — no closed form.
 def pipeline := fun (xs : List Int) ↦
   (do
-    let mut acc := (0 : Int)
+    let mut acc : Int := (0 : Int)
     for x in (PastaLean.pyIter xs)do
       acc := acc +ₚ x
     let _ := Libraries.passta.pyPassAssert (acc == PastaLean.pySum xs)
     acc := acc *ₚ (2 : Int)
-    let mut cnt := (0 : Int)
+    let mut cnt : Int := (0 : Int)
     for x in (PastaLean.pyIter xs)do
       cnt := cnt +ₚ (1 : Int)
     let _ := Libraries.passta.pyPassAssert (cnt == PastaLean.pyLen xs)
-    let mut result := acc +ₚ cnt
+    let mut result : Int := acc +ₚ cnt
     let _ := Libraries.passta.pyPassEnsures (result == (2 : Int) *ₚ PastaLean.pySum xs +ₚ PastaLean.pyLen xs)
     return result : Id _)
 
@@ -38,15 +38,15 @@ theorem pipeline_spec : ⦃⌜True⌝⦄ pipeline xs ⦃⇓_ => ⌜True⌝⦄ :=
 def pipeline'rn := fun (xs : List Int) ↦
   Id.run
     (do
-      let mut acc := (0 : Int)
+      let mut acc : Int := (0 : Int)
       for x in (PastaLean.pyIter xs)do
         acc := acc +ₚ x
       let _ := Libraries.passta.pyPassAssert (acc == PastaLean.pySum xs)
       acc := acc *ₚ (2 : Int)
-      let mut cnt := (0 : Int)
+      let mut cnt : Int := (0 : Int)
       for x in (PastaLean.pyIter xs)do
         cnt := cnt +ₚ (1 : Int)
       let _ := Libraries.passta.pyPassAssert (cnt == PastaLean.pyLen xs)
-      let mut result := acc +ₚ cnt
+      let mut result : Int := acc +ₚ cnt
       let _ := Libraries.passta.pyPassEnsures (result == (2 : Int) *ₚ PastaLean.pySum xs +ₚ PastaLean.pyLen xs)
       return result)

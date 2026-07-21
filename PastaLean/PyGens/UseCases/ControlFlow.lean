@@ -8,7 +8,11 @@ namespace PastaLean
 def exprStmtDoElemSyntax (valueJson : Json) : PygenM (TSyntax `doElem) := do
   try
     getCode valueJson `doElem
-  catch _ =>
+  catch e =>
+    -- Only fall back when the node has no `doElem` form at all. A `doElem` generator that ran and
+    -- *failed* must propagate: swallowing it silently discards statements such as `g[i].append(v)`.
+    let msg ← e.toMessageData.toString
+    unless msg.startsWith "Unsupported syntax category" do throw e
     let valueStx ← getCode valueJson `term
     -- If the expression carries an effect (e.g. a statement-position ternary
     -- `print(a) if c else print(b)`, whose branches are `IO`), it must be *run*, not merely
@@ -99,7 +103,12 @@ def augAssignSyntax : (kind : SyntaxNodeKind) → Json →
           s!"AugAssign node does not have an 'op' field or it is not a string: {json}"
         let .ok valueJson := json.getObjValAs? Json "value" | throwError
           s!"AugAssign node does not have a 'value' field or it is not a JSON value: {json}"
-        let valueCode ← getCode valueJson `term
+        -- A RHS that both yields a value and mutates its receiver (`s += heappop(pq)`): use the
+        -- value component here (it reads the original receiver) and apply the mutation afterwards.
+        let mutating? ← mutatingCallRhsLowering? valueJson
+        let valueCode ← match mutating? with
+          | some (valueTerm, _) => pure valueTerm
+          | none => getCode valueJson `term
         -- The current value: for a Name target this is the variable; for a subscript target
         -- `s[i]` it is the element read, so `s[i] += v` works on both.
         let curTerm ← getCode targetJson `term
@@ -120,18 +129,23 @@ def augAssignSyntax : (kind : SyntaxNodeKind) → Json →
           | "lshift" => `($(mkIdent ``PastaLean.pyShiftLeft) $curTerm $valueCode)
           | "rshift" => `($(mkIdent ``PastaLean.pyShiftRight) $curTerm $valueCode)
           | _ => throwError s!"Unsupported augmented assignment operator: {op}"
-        -- `self.X += v` inside a class method: `curTerm` already reads `self.X`, so rebuild
-        -- `self` with the updated field (value semantics). Guarded on a mutable `self` in scope.
-        if let some attr := selfAttrTarget? targetJson then
-          if ← hasVar `self then
-            return ← selfRecordUpdateDoElem attr updated
-        match ← nestedSubscriptSetDoElem? targetJson updated with
-        | some setStx =>
-            -- `s[i] += v` (and nested `g[i][j] += v`) rebuild the container with the new element.
-            pure setStx
-        | none =>
-            let targetIdent ← getCode targetJson `ident
-            `(doElem| $targetIdent:ident := $updated)
+        -- Build the base assignment, then (if the RHS was a mutating value+rest call) append its
+        -- receiver-mutation as a sibling statement.
+        let baseStx : TSyntax `doElem ←
+          -- `self.X += v` inside a class method: `curTerm` already reads `self.X`, so rebuild
+          -- `self` with the updated field (value semantics). Guarded on a mutable `self` in scope.
+          if (selfAttrTarget? targetJson).isSome && (← hasVar `self) then
+            selfRecordUpdateDoElem (selfAttrTarget? targetJson).get! updated
+          else match ← nestedSubscriptSetDoElem? targetJson updated with
+            | some setStx =>
+                -- `s[i] += v` (and nested `g[i][j] += v`) rebuild the container with the new element.
+                pure setStx
+            | none =>
+                let targetIdent ← getCode targetJson `ident
+                `(doElem| $targetIdent:ident := $updated)
+        match mutating? with
+        | some (_, update) => pure ⟨mkNullNode #[baseStx.raw, update.raw]⟩
+        | none => pure baseStx
     | _, _ => throwError s!"Unsupported syntax category for AugAssign node"
 
 /-- Lower a for-loop target into a binder and optional destructuring prelude. -/
@@ -161,9 +175,16 @@ def forTargetBinder (targetJson : Json) :
         idents := idents.push (← getCode elt `ident)
       let n := idents.size
       let pairIdent := mkIdent (← freshName `_pair)
+      -- When the inference pass marked the iterable's element a *list* (`for a,b in edges` with
+      -- `edges : list[list[int]]`), unpack by list index; otherwise it is a tuple, unpacked via `Prod`.
+      let listUnpack := targetJson.getObjValAs? Bool "_list_unpack" == .ok true
       let mut prelude : Array (TSyntax `doElem) := #[]
       for i in List.range n do
-        let acc ← tupleAccessTerm pairIdent i n
+        let acc ←
+          if listUnpack then
+            let iStx ← intToStx (i : Int)
+            `($(mkIdent ``PastaLean.pyListGetItem) $pairIdent $iStx)
+          else tupleAccessTerm pairIdent i n
         prelude := prelude.push (← `(doElem| let $(idents[i]!) := $acc))
       pure (pairIdent, prelude)
   | _ =>

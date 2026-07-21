@@ -1,11 +1,18 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
-
+open Std.Do
 
 set_option linter.all false
-def f := fun a ↦ !a && a
+set_option mvcgen.warning false
 
-def f'rn := fun a ↦ !a && a
+set_option maxHeartbeats 0
+
+def f := fun (a : PyAny) ↦ !PastaLean.pyTruthy a && PastaLean.pyTruthy a
+
+attribute [simp, taste_ingr] f
+
+def f'rn := fun (a : PyAny) ↦ !PastaLean.pyTruthy a && PastaLean.pyTruthy a

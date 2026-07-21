@@ -45,18 +45,9 @@ theorem pyWhile_correct {σ : Type} {I Q : σ → Prop} (μ : σ → Nat) (c : �
   intro fuel
   induction fuel with
   | zero =>
-    intro s hI hμ
-    cases hcs : c s with
-    | false => exact hexit s hI hcs
-    | true => obtain ⟨_, hdec⟩ := hstep s hI hcs; exfalso; omega
+    grind [pyWhileFuel]
   | succ n ih =>
-    intro s hI hμ
-    cases hcs : c s with
-    | false => simpa [pyWhileFuel, hcs] using hexit s hI hcs
-    | true =>
-      obtain ⟨hIb, hdec⟩ := hstep s hI hcs
-      simp only [pyWhileFuel, hcs, if_true]
-      exact ih (body s) hIb (by omega)
+    grind [pyWhileFuel]
 
 /-! ## The `while → for` bridge -/
 
@@ -90,9 +81,7 @@ theorem pyWhileFuel_run {α : Type} (f : Int → α → α) (stop : Int) :
     have hEq' : (start + 1) + (n : Int) = stop := by push_cast at hEq ⊢; omega
     rw [hstep, ih (start + 1) (f start a0) hEq']
     simp only [foldl_range_succ_shift, Nat.cast_zero, add_zero]
-    have hf : ∀ (k : Nat), start + 1 + (k : Int) = start + ((k + 1 : Nat) : Int) := by
-      intro k; push_cast; ring
-    simp only [hf]
+    grind only
 
 /-- **The bridge.** The accumulator result of the counting `pyWhile` equals the range fold — exactly
 what a `for i in range(start, stop)` loop computes. Certifies the `while → for` normalization: the two
@@ -105,7 +94,6 @@ theorem pyWhile_count {α : Type} (stop : Int) (f : Int → α → α) (start : 
   by_cases h : start ≤ stop
   · exact pyWhileFuel_run f stop (stop - start).toNat start a0 (by omega)
   · have h0 : (stop - start).toNat = 0 := by omega
-    rw [h0]
-    simp [pyWhileFuel]
+    grind only [pyWhileFuel, = List.range_zero, = List.foldl_nil]
 
 end PastaLean

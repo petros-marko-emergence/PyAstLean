@@ -257,12 +257,81 @@ def resolveReceiverClass? (valueJson : Json) (attr : String) : PygenM (Option St
     | none => pure ()
   classOfMethod? attr
 
+/-- Store `newVal` back into the receiver an in-place method mutated. `xs` ⇒ `xs := newVal`;
+`g[i]` ⇒ `g := pySetItem g i newVal` (recursing for `g[i][j]`). -/
+partial def assignBackToReceiver (recvJson : Json) (newVal : TSyntax `term) :
+    PygenM (TSyntax `doElem) := do
+  match jsonNodeType? recvJson with
+  | some "Name" =>
+      let recvIdent ← getCode recvJson `ident
+      `(doElem| $recvIdent:ident := $newVal)
+  | some "Subscript" =>
+      let .ok containerJson := recvJson.getObjValAs? Json "value" | throwError
+        s!"Subscript receiver is missing a 'value' field: {recvJson}"
+      let .ok sliceJson := recvJson.getObjValAs? Json "slice" | throwError
+        s!"Subscript receiver is missing a 'slice' field: {recvJson}"
+      if jsonNodeType? sliceJson == some "Slice" then
+        throwError "A mutating method on a slice receiver (`xs[a:b].append(v)`) is not supported."
+      let indexTerm ← getCode sliceJson `term
+      let containerTerm ← getCode containerJson `term
+      let setItemIdent := mkIdent ``PastaLean.pySetItem
+      assignBackToReceiver containerJson (← `($setItemIdent $containerTerm $indexTerm $newVal))
+  | _ =>
+      throwError "A mutating method needs a variable or subscript receiver (`xs.append(v)`, \
+        `g[i].append(v)`) under value semantics."
+
+/-- Lower an in-place mutator `recv.m(args)` by rebuilding `recv` from `mkNewValue recv` and storing
+it back, so `g[i].append(v)` becomes `g := pySetItem g i (pyAppend g[i] v)` rather than a no-op. -/
+def mutatingMethodDoElem (recvJson : Json)
+    (mkNewValue : TSyntax `term → PygenM (TSyntax `term)) : PygenM (TSyntax `doElem) := do
+  let recvTerm ← getCode recvJson `term
+  assignBackToReceiver recvJson (← mkNewValue recvTerm)
+
+/-- Set methods that mutate the receiver in place, and the runtime function each lowers to. -/
+def setMutatorName? (attr : String) : Option Lean.Name :=
+  match attr with
+  | "add"     => some ``pySetAdd
+  | "discard" => some ``pySetDiscard
+  | "remove"  => some ``pySetRemove
+  | _         => none
+
+/-- Python methods that mutate the receiver in place and return `None`, with their arity. Their
+runtime functions return a new container, so a statement call must store the result back. `append`
+and the `setMutatorName?` methods have their own branches. -/
+def inPlaceMutatorArity? (attr : String) : Option Nat :=
+  match attr with
+  | "clear" | "reverse"      => some 0
+  | "extend" | "update"      => some 1
+  | "appendleft"             => some 1
+  | _                        => none
+
 /-- The class to construct for a call `f(...)` whose callee is the `Name` `funcName`: a registered
 class (`C(..)`), or `cls(..)` inside a class body (classmethod sugar). `none` for ordinary calls. -/
 def constructorClassOfName? (funcName : String) : PygenM (Option String) := do
   if ← isRegisteredClass funcName then return some funcName
   if funcName == "cls" then return (← get).currentClass
   return none
+
+/-- True when `name` already resolves to some existing global (a Mathlib/Lean/PastaLean
+declaration) — i.e. a bare reference to it would be an ambiguous clash. A fresh user name (a
+recursive helper, an ordinary function) resolves to nothing here, since user defs are not in the
+codegen environment. -/
+def nameClashesWithGlobal (name : String) : PygenM Bool :=
+  return !(← resolveGlobalName name.toName).isEmpty
+
+/-- The Lean callee term for a call to the user function `funcName` (after run-suffix + `leanName`).
+Only when the name *actually collides* with an existing global (`dist` → `Dist.dist`, `gcd` → …) is
+it `_root_`-qualified, so it resolves to the user's own definition rather than the Mathlib export.
+A non-clashing name (including a recursive self-call like `fibonacci`, which is not yet in the
+environment) is left bare — qualifying it would break the recursive reference. This is the general
+fix for user-name-vs-Mathlib clashes, without wrapping the program in a namespace. -/
+def userCallIdent (funcName : String) : PygenM (TSyntax `term) := do
+  let mapped ← leanName (← suffixIfUserName funcName).toName
+  if (← userNamesRef.get).contains funcName && !(← hasVar funcName.toName)
+      && (← nameClashesWithGlobal funcName) then
+    return (mkIdent (`_root_ ++ mapped) : TSyntax `term)
+  else
+    return (mkIdent mapped : TSyntax `term)
 
 @[pygen "Call"]
 def callSyntax : (kind : SyntaxNodeKind) → Json →
@@ -275,6 +344,8 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
     let argsArray ← match argsJson with
       | .arr arr => pure arr
       | _ => throwError s!"Call node 'args' field is not an array: {argsJson}"
+    if let some nonFinite ← nonFiniteFloatTerm? funcJson argsArray then
+      return nonFinite
     let argsCodes ← argsArray.mapM (fun argJson => getCode argJson `term)
 
     let .ok keyWordsJson := json.getObjVal? "keywords" | throwError
@@ -557,8 +628,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
             else match ← builtinMappedName? funcName with
             | some mappedName => funcIdent := (mkIdent mappedName : TSyntax `term)
             | none =>
-                let mappedName ← leanName (← suffixIfUserName funcName).toName
-                funcIdent := (mkIdent mappedName : TSyntax `term)
+                funcIdent ← userCallIdent funcName
         | _, _ =>
             funcIdent ← getCode funcJson `term
 
@@ -668,25 +738,35 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
           let some argJson := argsArray[0]? | throwError "append() expects exactly one positional argument."
           unless argsArray.size == 1 do
             throwError "append() expects exactly one positional argument."
-          let targetIdent ← getCode valueJson `ident
           let argCode ← getCode argJson `term
           let pyAppendIdent := mkIdent ``pyAppend
-          return ← `(doElem| $targetIdent:ident := $pyAppendIdent $targetIdent $argCode)
+          return ← mutatingMethodDoElem valueJson fun recv => `($pyAppendIdent $recv $argCode)
 
         -- Set mutators rebuild the set and reassign the variable, like `append`.
-        if attr == "add" || attr == "discard" || attr == "remove" then
+        if let some mutName := setMutatorName? attr then
           unless keyWordsMap.isEmpty do
             throwError s!"{attr}() calls do not support keyword arguments."
           let some argJson := argsArray[0]? | throwError s!"{attr}() expects exactly one positional argument."
           unless argsArray.size == 1 do
             throwError s!"{attr}() expects exactly one positional argument."
-          let targetIdent ← getCode valueJson `ident
           let argCode ← getCode argJson `term
-          let mutIdent := match attr with
-            | "add" => mkIdent ``pySetAdd
-            | "discard" => mkIdent ``pySetDiscard
-            | _ => mkIdent ``pySetRemove
-          return ← `(doElem| $targetIdent:ident := $mutIdent $targetIdent $argCode)
+          let mutIdent := mkIdent mutName
+          return ← mutatingMethodDoElem valueJson fun recv => `($mutIdent $recv $argCode)
+
+        -- `d.popleft()` as a statement drops the value but must still shorten the deque.
+        if attr == "popleft" && argsArray.isEmpty && keyWordsMap.isEmpty then
+          return ← mutatingMethodDoElem valueJson fun recv =>
+            `($(mkIdent ``pyPopLeftRest) $recv)
+
+        -- Claim the call only when the shape matches the container mutator; a user method sharing
+        -- the name (`tree.update(i, v)`) has a different arity and belongs on the normal path.
+        if let some arity := inPlaceMutatorArity? attr then
+          if keyWordsMap.isEmpty && argsArray.size == arity then
+            let some methodName := pythonMethodMap? attr
+              | throwError s!"No runtime function is registered for '{attr}'."
+            let methodIdent := mkIdent methodName
+            let mutArgCodes ← argsArray.mapM (fun argJson => getCode argJson `term)
+            return ← mutatingMethodDoElem valueJson fun recv => `($methodIdent $recv $mutArgCodes*)
 
         if attr == "get" then
           unless keyWordsMap.isEmpty do
@@ -888,8 +968,7 @@ def callSyntax : (kind : SyntaxNodeKind) → Json →
             match ← builtinMappedName? funcName with
             | some mappedName => funcIdent := (mkIdent mappedName : TSyntax `term)
             | none =>
-                let mappedName ← leanName (← suffixIfUserName funcName).toName
-                funcIdent := (mkIdent mappedName : TSyntax `term)
+                funcIdent ← userCallIdent funcName
         | _, _ =>
             funcIdent ← getCode funcJson `term
 
@@ -931,7 +1010,11 @@ def attributeSyntax : (kind : SyntaxNodeKind) → Json →
           s!"Attribute node does not have an 'attr' field or it is not a string: {json}"
         let valueCode ← getCode valueJson `term
         let attrId := mkIdent attr.toName
-        `($valueCode.$attrId)
+        -- `_unwrap_opt` (TypeInfer): the receiver is `Option _`, so unwrap before projecting the field
+        if json.getObjValAs? Bool "_unwrap_opt" == .ok true then
+          `((($valueCode).getD default).$attrId)
+        else
+          `($valueCode.$attrId)
   | `ident, json => do
     match ← jsonLibraryMappedName? json with
     | some leanName =>

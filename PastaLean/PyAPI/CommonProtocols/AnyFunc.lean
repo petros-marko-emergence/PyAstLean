@@ -5,17 +5,17 @@ import PastaLean.PyAPI.CommonProtocols.Iterable
 namespace PastaLean
 
 /-
-This file defines the `PyAny` protocol, which is for python's `any` function. The output of this function is simply False if all elements are 0, empty, or None, and True otherwise.
+This file defines the `PyStdAny` protocol, which is for python's `any` function. The output of this function is simply False if all elements are 0, empty, or None, and True otherwise.
 -/
 
-class PyAny (α : Type) where
-  pyAny : α → Bool
+class PyStdAny (α : Type) where
+  pyStdAny : α → Bool
 
-def pyAny {α : Type} [PyAny α] (x : α) : Bool :=
-  PyAny.pyAny x
+def pyStdAny {α : Type} [PyStdAny α] (x : α) : Bool :=
+  PyStdAny.pyStdAny x
 
-instance {α β : Type} [PyIterable α β] [PyBool β] : PyAny α where
-  pyAny x :=
+instance {α β : Type} [PyIterable α β] [PyBool β] : PyStdAny α where
+  pyStdAny x :=
     (pyIter x).any pyBool
 
 /-

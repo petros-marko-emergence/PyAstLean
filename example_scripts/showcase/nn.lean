@@ -9,7 +9,7 @@ open Std.Do
 set_option linter.all false
 set_option mvcgen.warning false
 
-set_option maxHeartbeats 800000
+set_option maxHeartbeats 0
 
 noncomputable def sigmoid := fun (x : Real) ↦ (1.0 : Rat) /ₚ ((1.0 : Rat) +ₚ Libraries.math.pyMathExpR (-x))
 
@@ -72,7 +72,7 @@ noncomputable def main' :=
       let mut w2 := [[(0.7 : Real), -(0.8 : Real)]]
       let mut b2 := [(0.3 : Real)]
       let mut lr := (0.5 : Rat)
-      let mut epochs := (4000 : Int)
+      let mut epochs : Int := (4000 : Int)
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "=== Training a neural net on XOR (NumPy + math) ==="]
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "initial loss: {mean_squared_error xs ys w1 b1 w2 b2}"]
       for epoch in (PastaLean.pyRange epochs)do
@@ -111,7 +111,7 @@ noncomputable def main' :=
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "learned predictions:"]
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
         let mut p := predict xs⦋i⦌ w1 b1 w2 b2
-        let mut label := if decide (p > (0.5 : Real)) then (1 : Int) else (0 : Int)
+        let mut label : Int := if decide (p > (0.5 : Real)) then (1 : Int) else (0 : Int)
         let _ ←
           PastaLean.ProofMode.pyPrintProof
               [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]) :
@@ -133,7 +133,7 @@ def main''rn :=
       let mut w2 := [[(0.7 : Float), -(0.8 : Float)]]
       let mut b2 := [(0.3 : Float)]
       let mut lr := (0.5 : Float)
-      let mut epochs := (4000 : Int)
+      let mut epochs : Int := (4000 : Int)
       let _ ← pyPrintIO [pyPrintArg "=== Training a neural net on XOR (NumPy + math) ==="]
       let _ ← pyPrintIO [pyPrintArg s! "initial loss: {mean_squared_error'rn xs ys w1 b1 w2 b2}"]
       for epoch in (PastaLean.pyRange epochs)do
@@ -171,7 +171,7 @@ def main''rn :=
       let _ ← pyPrintIO [pyPrintArg "learned predictions:"]
       for i in (PastaLean.pyRange (PastaLean.pyLen xs))do
         let mut p := predict'rn xs⦋i⦌ w1 b1 w2 b2
-        let mut label := if decide (p > (0.5 : Float)) then (1 : Int) else (0 : Int)
+        let mut label : Int := if decide (p > (0.5 : Float)) then (1 : Int) else (0 : Int)
         let _ ← pyPrintIO [pyPrintArg s! "  {xs⦋i⦌} -> {p }  (class {label }, target {PastaLean.pyInt ys⦋i⦌})"]) :
     IO _)
 

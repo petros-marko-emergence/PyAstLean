@@ -1,0 +1,29 @@
+# Keeps the build context small, and stops host artefacts — a .venv built against another Python,
+# stale .olean files — from being copied into a layer that then looks up to date.
+
+.git
+.gitignore
+.github
+.dockerignore
+Dockerfile
+
+# Rebuilt inside the image.
+.lake
+.venv
+*.egg-info
+**/__pycache__
+**/*.pyc
+
+docs/ppt
+
+# Test suites, goldens and the CP dataset: nothing `pastalean serve` touches.
+PastaLeanTest
+PastaLeanTest.lean
+palc.lean
+tests
+cp_harness
+example_scripts
+regen_examples.py
+
+# Credentials. The container takes an API key per request, or from `docker run -e GEMINI_API_KEY=…`.
+.env

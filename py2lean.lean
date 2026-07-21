@@ -1,5 +1,6 @@
 import Lean
 import PastaLean
+import TypeInfer
 open Lean Meta Elab Term Qq Std
 open PastaLean
 
@@ -46,8 +47,21 @@ def runTranslateTask (jsonTask : Json) (ctx : Core.Context) (env : Environment) 
   -- `userNames` lists the user's functions/classes whose references should also be suffixed.
   PastaLean.runSuffixRef.set (jsonTask.getObjValAs? String "runSuffix" |>.toOption.getD "")
   PastaLean.userNamesRef.set ((jsonTask.getObjValAs? (Array String) "userNames" |>.toOption.getD #[]).toList)
-  let .ok json := jsonTask.getObjValAs? Json "ast"
-    | return errorResponse "Invalid JSON: missing 'ast' field or it is not a JSON value"
+  -- `getObjVal?`, not `getObjValAs? Json`: the latter reads a missing key as `null` and defers the
+  -- failure to codegen, which then reports a confusing "no 'node_type' field" instead.
+  let .ok json := jsonTask.getObjVal? "ast"
+    | return errorResponse "Invalid JSON: missing 'ast' field"
+  -- The whole-module `inferTypes` pass (run by the driver) marks each statement `_inferred`; only fall
+  -- back to the context-free per-statement stamp when it did not run (a bare term, or on failure).
+  let alreadyInferred := (json.getObjVal? "_inferred").toOption.isSome
+  -- Syntactic desugaring (nested `for` targets, walrus) runs before codegen; see
+  -- `PyGens/Transform/Desugar.lean`.
+  let json ← match PastaLean.desugarAst json with
+    | .ok desugared => pure desugared
+    | .error message => return errorResponse s!"Error generating code: {message}"
+  -- Type inference stamps `_ty` on binders whose Lean type the code generator would otherwise
+  -- leave for Lean to guess (and get stuck on). See `TypeInfer/`.
+  let json := if alreadyInferred then json else TypeInfer.stampNode json
   let code? ← getCodeIO json target.toName ctx env checkCode
   pure <| match code? with
     | .ok code => successResponse target code
@@ -84,11 +98,20 @@ def runProveFileTask (jsonTask : Json) (env : Environment) : IO Json := do
     ("hasErrors", Json.bool hasErrors)
   ]
 
+/-- Whole-module type inference: stamp `_ty` on binders using interprocedural (return-type) flow,
+so a later per-statement `translate` sees types a single statement couldn't reveal. Returns the
+stamped AST for the driver to send back one node at a time. -/
+def runInferTypesTask (jsonTask : Json) : IO Json := do
+  let .ok ast := jsonTask.getObjVal? "ast"
+    | return errorResponse "inferTypes: missing 'ast' field"
+  pure <| Json.mkObj [("result", Json.bool true), ("ast", TypeInfer.inferModule ast)]
+
 def handleTaskJson (jsonTask : Json) (ctx : Core.Context) (env : Environment) : IO Json := do
   let .ok task := jsonTask.getObjValAs? String "task"
     | return errorResponse "Invalid JSON: missing 'task' field or it is not a string"
   match task with
   | "translate" => runTranslateTask jsonTask ctx env
+  | "inferTypes" => runInferTypesTask jsonTask
   | "proveFile" => runProveFileTask jsonTask env
   | _ => pure <| errorResponse s!"Unknown task: {task}"
 
@@ -97,19 +120,11 @@ def handleTaskString (payload : String) (ctx : Core.Context) (env : Environment)
   | .ok jsonTask => handleTaskJson jsonTask ctx env
   | .error err => pure <| errorResponse s!"Error parsing JSON: {err}"
 
-partial def readLine (stdin : IO.FS.Stream) : IO String := do
-  let mut bytes := ByteArray.empty
-  while true do
-    let chunk ← stdin.read 1
-    if chunk.isEmpty then
-      break
-    if chunk[0]! == '\n'.toUInt8 then
-      break
-    bytes := bytes.append chunk
-  return String.fromUTF8? bytes |>.getD ""
-
 partial def runServerLoop (stdin stdout : IO.FS.Stream) (ctx : Core.Context) (env : Environment) : IO UInt32 := do
-  let rawLine ← readLine stdin
+  -- `getLine` keeps the trailing newline, so only end-of-stream yields `""`. A hand-rolled
+  -- byte-at-a-time reader that strips the newline cannot tell a blank line from EOF, and would
+  -- shut the server down on one.
+  let rawLine ← stdin.getLine
   if rawLine.isEmpty then
     return 0
   let line := rawLine.trimAscii.toString

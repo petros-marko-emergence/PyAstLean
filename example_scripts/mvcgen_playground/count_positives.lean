@@ -15,7 +15,7 @@ set_option maxHeartbeats 800000
 -- Bounds invariant `0 <= cnt <= processed-so-far`; the count never exceeds the list length.
 def count_positives := fun (xs : List Int) ↦
   (do
-    let mut cnt := (0 : Int)
+    let mut cnt : Int := (0 : Int)
     for x in (PastaLean.pyIter xs)do
       let _ := Libraries.passta.pyPassInvariant (decide (cnt ≥ (0 : Int)))
       if h_1 : x > (0 : Int) then 
@@ -35,7 +35,7 @@ theorem count_positives_spec : ⦃⌜True⌝⦄ count_positives xs ⦃⇓_ => �
 def count_positives'rn := fun (xs : List Int) ↦
   Id.run
     (do
-      let mut cnt := (0 : Int)
+      let mut cnt : Int := (0 : Int)
       for x in (PastaLean.pyIter xs)do
         let _ := Libraries.passta.pyPassInvariant (decide (cnt ≥ (0 : Int)))
         if h_1 : x > (0 : Int) then 

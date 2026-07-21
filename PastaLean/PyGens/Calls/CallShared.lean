@@ -2,60 +2,40 @@ import Mathlib
 import PastaLean.Codegen
 import PastaLean.PyGens.Basic
 import PastaLean.PyGens.Core.Utils
+import TypeInfer
 
 open Lean Meta Elab Term Qq Std
 
 namespace PastaLean
 
+/-- Keyword-argument object in Python call JSON. -/
+abbrev PyKeywordArgs := Std.TreeMap.Raw String Json compare
+
+/-- The Lean type of a `PyType`, with `float` resolved against the current numeric mode. -/
+def pyTypeSyntax? (t : TypeInfer.PyType) : PygenM (Option (TSyntax `term)) := do
+  let floatTy : TSyntax `term ← match ← getNumericMode with
+    | .exact => pure (mkIdent (if (← getRealContext) then ``Real else ``Rat))
+    | .approx => pure (mkIdent ``Float)
+  TypeInfer.toTypeSyntax? floatTy t
+
+/-- The Lean type stamped on a node by the inference pass (`_ty`), if any. `_ty` is an annotation
+node, so it round-trips through `PyType` and the full emitter — covering lists, dicts, tuples and
+`Optional`, not just the shapes the annotation reader handles directly. -/
+def stampedTypeSyntax? (node : Json) : PygenM (Option (TSyntax `term)) := do
+  match jsonFieldOption node "_ty" with
+  | some ann => pyTypeSyntax? (TypeInfer.ofAnnotation ann)
+  | none => return none
+
 /-- Infer a simple runtime type from a value expression when the shape is obvious. -/
-def inferSimpleValueTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
-  match json.getObjValAs? String "node_type" with
-  | .ok "Constant" =>
-      let .ok value := json.getObjValAs? Json "value" | throwError
-        s!"Constant node does not have a 'value' field or it is not a JSON value: {json}"
-      match value with
-      | .num (JsonNumber.mk _ exponent) =>
-          if json.getObjValAs? String "python_literal_kind" == .ok "float" then
-            match ← getNumericMode with
-            | .exact => return some (mkIdent ``Rat)
-            | .approx => return some (mkIdent ``Float)
-          else if exponent == 0 then
-            return some (mkIdent ``Int)
-          else
-            return some (mkIdent ``Rat)
-      | .str _ => return some (mkIdent ``String)
-      | .bool _ => return some (mkIdent ``Bool)
-      | _ => return none
-  | _ => return none
+def inferSimpleValueTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) :=
+  pyTypeSyntax? (TypeInfer.ofValue json)
 
 /-- Infer a simple iterable element type from obvious literal iterables. -/
 def inferIterableElemTypeSyntax? (json : Json) : PygenM (Option (TSyntax `term)) := do
-  match json.getObjValAs? String "node_type" with
-  | .ok "List" => do
-      let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
-        s!"List node does not have an 'elts' field or it is not a JSON value: {json}"
-      match eltsJson with
-      | .arr arr =>
-          match arr[0]? with
-          | some first => inferSimpleValueTypeSyntax? first
-          | none => return none
-      | _ => return none
-  | .ok "Tuple" => do
-      let .ok eltsJson := json.getObjValAs? Json "elts" | throwError
-        s!"Tuple node does not have an 'elts' field or it is not a JSON value: {json}"
-      match eltsJson with
-      | .arr arr =>
-          match arr[0]? with
-          | some first => inferSimpleValueTypeSyntax? first
-          | none => return none
-      | _ => return none
-  | .ok "Constant" => do
-      let .ok value := json.getObjValAs? Json "value" | throwError
-        s!"Constant node does not have a 'value' field or it is not a JSON value: {json}"
-      match value with
-      | .str _ => return some (mkIdent ``Char)
-      | _ => return none
-  | _ => return none
+  -- Iterating a `String` yields `Char`, not a one-character `String`.
+  match TypeInfer.ofValue json with
+  | .str => return some (mkIdent ``Char)
+  | t => pyTypeSyntax? t.elemType
 
 /-- Read the positional parameter names from a lambda node without depending on `FuncDef.lean`. -/
 def lambdaArgIdents (json : Json) : PygenM (Array (TSyntax `ident)) := do
@@ -89,42 +69,67 @@ def typedBinaryLambdaCode (funcJson : Json) (fallback : TSyntax `term)
     | none => `(_)
   `(fun ($arg0 : $paramTy) ↦ fun ($arg1 : $paramTy) ↦ $bodyStx)
 
-/-- Recognize a `container.pop(...)` call whose receiver is a `Name` already in scope as a
-mutable variable. Returns the container ident and the optional index argument term (`none` for
-the no-argument `pop()`). A freshly-seen receiver is not a mutation site, so it returns `none`. -/
-def popCallParts? (value : Json) : PygenM (Option (TSyntax `ident × Option (TSyntax `term))) := do
+/-- Methods that both return a value and mutate the receiver, mapped to the runtime pair
+`(value, rest)` implementing them. `pop` also accepts an optional index; `popleft` takes none. -/
+def valueAndMutateMethod? (attr : String) : Option (Lean.Name × Lean.Name × Bool) :=
+  match attr with
+  | "pop"     => some (``PastaLean.pyPopValue, ``PastaLean.pyPopRest, true)   -- optional index
+  | "popleft" => some (``PastaLean.pyPopLeftValue, ``PastaLean.pyPopLeftRest, false)
+  | _         => none
+
+/-- Recognize `container.<m>(idx?)` for a value-and-mutate method `m` on an already-declared
+mutable variable. Returns the method's runtime pair, the container ident, and the optional index.
+A freshly-seen receiver is not a mutation site, so it returns `none`. -/
+def popCallParts? (value : Json) :
+    PygenM (Option ((Lean.Name × Lean.Name) × TSyntax `ident × Option (TSyntax `term))) := do
   unless jsonNodeType? value == some "Call" do return none
   let .ok funcJson := value.getObjVal? "func" | return none
   unless jsonNodeType? funcJson == some "Attribute" do return none
-  unless funcJson.getObjValAs? String "attr" == .ok "pop" do return none
+  let .ok attr := funcJson.getObjValAs? String "attr" | return none
+  let some (valueFn, restFn, takesIndex) := valueAndMutateMethod? attr | return none
   let .ok receiverJson := funcJson.getObjVal? "value" | return none
   unless jsonNodeType? receiverJson == some "Name" do return none
   let receiverIdent ← getCode receiverJson `ident
   unless (← hasVar receiverIdent.getId) do return none
   let args := (value.getObjValAs? (Array Json) "args").toOption.getD #[]
   match args.size with
-  | 0 => return some (receiverIdent, none)
-  | 1 => return some (receiverIdent, some (← getCode args[0]! `term))
+  | 0 => return some ((valueFn, restFn), receiverIdent, none)
+  | 1 => if takesIndex
+         then return some ((valueFn, restFn), receiverIdent, some (← getCode args[0]! `term))
+         else return none
   | _ => return none
 
 /-- Lower a call that both mutates its receiver and yields a value into a `(value, update)`
-pair: `value` is the term the call returns, and `update` is the statement that applies the
-mutation. The two are written so they each read the *original* container, so the caller must
-bind `value` first and then run `update` (binding the result does not touch the container).
-
-Currently this covers `container.pop(idx?)`: the value is the popped element (`pyPopValue`) and
-the update reassigns the container to itself with that element removed (`pyPopRest`). -/
+pair. They each read the *original* container, so the caller binds `value` first, then runs
+`update`. Covers `container.pop(idx?)` and `deque.popleft()`. -/
 def mutatingCallRhsLowering? (value : Json) :
     PygenM (Option (TSyntax `term × TSyntax `doElem)) := do
   match ← popCallParts? value with
-  | none => return none
-  | some (receiverIdent, index?) =>
+  | none =>
+      -- A library member that both mutates its first arg and returns a value (`x = heapq.heappop(h)`),
+      -- read from the `Libraries` mutator spec so no library names live in codegen.
+      match (value.getObjVal? "func").toOption.bind libraryMutatorOf? |>.bind (·.valueRest?) with
+      | some (valFn, restFn) =>
+          match value.getObjValAs? (Array Json) "args" with
+          | .ok args =>
+              if args.size ≥ 1 && jsonNodeType? args[0]! == some "Name" then
+                let recvIdent ← getCode args[0]! `ident
+                let argsCodes ← args.mapM (getCode · `term)
+                let valueTerm ← `($(mkIdent valFn) $argsCodes*)
+                let update ← `(doElem| $recvIdent:ident := $(mkIdent restFn) $argsCodes*)
+                return some (valueTerm, update)
+              else return none
+          | _ => return none
+      | none => return none
+  | some ((valueFn, restFn), receiverIdent, index?) =>
+      let valueIdent := mkIdent valueFn
+      let restIdent := mkIdent restFn
       let valueTerm ← match index? with
-        | none => `($(mkIdent ``PastaLean.pyPopValue) $receiverIdent)
-        | some idx => `($(mkIdent ``PastaLean.pyPopValue) $receiverIdent $idx)
+        | none => `($valueIdent $receiverIdent)
+        | some idx => `($valueIdent $receiverIdent $idx)
       let update ← match index? with
-        | none => `(doElem| $receiverIdent:ident := $(mkIdent ``PastaLean.pyPopRest) $receiverIdent)
-        | some idx => `(doElem| $receiverIdent:ident := $(mkIdent ``PastaLean.pyPopRest) $receiverIdent $idx)
+        | none => `(doElem| $receiverIdent:ident := $restIdent $receiverIdent)
+        | some idx => `(doElem| $receiverIdent:ident := $restIdent $receiverIdent $idx)
       return some (valueTerm, update)
 
 end PastaLean

@@ -49,13 +49,13 @@ Listed here as eventual real-support targets.
       (`PastaLean/PyAPI/PyPrint.lean`); `node_visitor` captures a constant `format_spec`,
       `joinedInterpTerm` (CallExpr.lean) wraps the value. Other specs fall back to default render.
 - [x] **Auto-avoid Mathlib name clashes** — a runnable program (has `main`) is wrapped in
-      `namespace «_PyProgram»` with a root `main` forwarder (`src/py2lean.py`), so top-level defs
+      `namespace «_PyProgram»` with a root `main` forwarder (`src/transpile/driver.py`), so top-level defs
       like `e`/`f`/`normalize` no longer collide ("ambiguous term"). Libraries (no `main`) stay
       un-namespaced so cross-file imports still resolve.
 - [x] **numpy 2-D indexing** — `a[i,j]` / `a[:,j]` (column) / `a[i,:]` (row) on `List (List _)`
       (`PastaLean/PyGens/Core/Subscript.lean`, Tuple-slice branch).
 - [x] **Best-effort now degrades *backend* failures too.** Previously a `with` statement (which
       `node_visitor` emits IR for but the Lean backend has no generator for) crashed the whole
-      transpile even in best-effort. `src/py2lean.py` now catches a per-top-level-statement backend
+      transpile even in best-effort. `src/transpile/driver.py` now catches a per-top-level-statement backend
       failure in best-effort mode and emits a `pyUnsupported` placeholder
       (`_backend_placeholder_command`) instead of aborting.

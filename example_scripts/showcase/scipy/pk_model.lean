@@ -42,7 +42,7 @@ def depot_rate'rn := fun (ka : Float) ↦ fun (depot : Float) ↦
   -/
   -ka *ₚ depot
 
-def central_rate := fun (ka : Rat) ↦ fun ke ↦ fun (k12 : Rat) ↦ fun (k21 : Rat) ↦ fun (depot : Rat) ↦
+def central_rate := fun (ka : Rat) ↦ fun (ke : Rat) ↦ fun (k12 : Rat) ↦ fun (k21 : Rat) ↦ fun (depot : Rat) ↦
   fun (central : Rat) ↦ fun (periph : Rat) ↦
   /-
   dC/dt -- absorption in, elimination out, exchange with the peripheral compartment.
@@ -51,8 +51,8 @@ def central_rate := fun (ka : Rat) ↦ fun ke ↦ fun (k12 : Rat) ↦ fun (k21 :
 
 attribute [simp, taste_ingr] central_rate
 
-def central_rate'rn := fun (ka : Float) ↦ fun ke ↦ fun (k12 : Float) ↦ fun (k21 : Float) ↦ fun (depot : Float) ↦
-  fun (central : Float) ↦ fun (periph : Float) ↦
+def central_rate'rn := fun (ka : Float) ↦ fun (ke : Float) ↦ fun (k12 : Float) ↦ fun (k21 : Float) ↦
+  fun (depot : Float) ↦ fun (central : Float) ↦ fun (periph : Float) ↦
   /-
   dC/dt -- absorption in, elimination out, exchange with the peripheral compartment.
   -/
@@ -116,7 +116,7 @@ theorem mass_balance :
                   depot_rate ka depot +ₚ central_rate ka ke k12 k21 depot central periph +ₚ
                       periph_rate k12 k21 central periph =
                     -ke *ₚ central :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem distribution_conserves :
@@ -137,7 +137,7 @@ theorem conserved_without_elimination :
                 depot_rate ka depot +ₚ central_rate ka (0 : Int) k12 k21 depot central periph +ₚ
                     periph_rate k12 k21 central periph =
                   (0 : Int) :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem step_mass_balance :
@@ -153,7 +153,7 @@ theorem step_mass_balance :
                     let new_central := central +ₚ central_rate ka ke k12 k21 depot central periph *ₚ dt
                     let new_periph := periph +ₚ periph_rate k12 k21 central periph *ₚ dt
                     new_depot +ₚ new_central +ₚ new_periph = depot +ₚ central +ₚ periph -ₚ ke *ₚ central *ₚ dt :=
-  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; ring
+  by intros; simp_all (config := { zetaDelta := true }) [taste_ingr]; pyany_cases <;> grind +locals
 
 @[taste_ingr]
 theorem depot_nonincreasing :
@@ -184,15 +184,15 @@ noncomputable def main' :=
       let mut vol := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
       let mut dose := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
       let mut dt := PastaLean.pyRat (← PastaLean.ProofMode.pyInputProof "")
-      let mut dose_step := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
-      let mut ndoses := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
-      let mut nsteps := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
-      let mut every := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut dose_step : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut ndoses : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut nsteps : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
+      let mut every : Int := PastaLean.pyInt (← PastaLean.ProofMode.pyInputProof "")
       let mut depot := (0.0 : Rat)
       let mut central := (0.0 : Rat)
       let mut periph := (0.0 : Rat)
       let mut t := (0.0 : Rat)
-      let mut dose_num := (0 : Int)
+      let mut dose_num : Int := (0 : Int)
       for step in (PastaLean.pyRange nsteps)do
         -- Administer a dose into the gut depot when one is due.
         if h_1 : step %ₚ dose_step = (0 : Int) then 
@@ -231,15 +231,15 @@ def main''rn :=
       let mut vol := PastaLean.pyFloat (← PastaLean.pyInputIO "")
       let mut dose := PastaLean.pyFloat (← PastaLean.pyInputIO "")
       let mut dt := PastaLean.pyFloat (← PastaLean.pyInputIO "")
-      let mut dose_step := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut ndoses := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut nsteps := PastaLean.pyInt (← PastaLean.pyInputIO "")
-      let mut every := PastaLean.pyInt (← PastaLean.pyInputIO "")
+      let mut dose_step : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
+      let mut ndoses : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
+      let mut nsteps : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
+      let mut every : Int := PastaLean.pyInt (← PastaLean.pyInputIO "")
       let mut depot := (0.0 : Float)
       let mut central := (0.0 : Float)
       let mut periph := (0.0 : Float)
       let mut t := (0.0 : Float)
-      let mut dose_num := (0 : Int)
+      let mut dose_num : Int := (0 : Int)
       for step in (PastaLean.pyRange nsteps)do
         -- Administer a dose into the gut depot when one is due.
         if h_1 : step %ₚ dose_step == (0 : Int) then 

@@ -1,4 +1,7 @@
+import PastaLean.PyGens.Calls.SpecialCalls.Collections
 import PastaLean.PyGens.Calls.SpecialCalls.Functools
+import PastaLean.PyGens.Calls.SpecialCalls.Itertools
+import PastaLean.PyGens.Calls.SpecialCalls.LibraryMutators
 
 open Lean Meta Elab Term Qq Std
 
@@ -9,12 +12,24 @@ def lowerSpecialCallTerm? (funcJson : Json) (argsArray : Array Json) (argsCodes 
     (keyWordsMap : PyKeywordArgs) : PygenM (Option (TSyntax `term)) := do
   match ← lowerFunctoolsCallTerm? funcJson argsArray argsCodes keyWordsMap with
   | some lowered => return some lowered
+  | none =>
+  match ← lowerItertoolsCallTerm? funcJson argsArray argsCodes keyWordsMap with
+  | some lowered => return some lowered
+  | none =>
+  match ← lowerCollectionsCallTerm? funcJson argsArray argsCodes keyWordsMap with
+  | some lowered => return some lowered
   | none => return none
 
 /-- Try each registered special `doElem` call lowerer until one claims the call. -/
 def lowerSpecialCallDoElem? (funcJson : Json) (argsArray : Array Json) (argsCodes : Array (TSyntax `term))
     (keyWordsMap : PyKeywordArgs) : PygenM (Option (TSyntax `doElem)) := do
   match ← lowerFunctoolsCallDoElem? funcJson argsArray argsCodes keyWordsMap with
+  | some lowered => return some lowered
+  | none =>
+  match ← lowerLibraryMutatorDoElem? funcJson argsArray argsCodes keyWordsMap with
+  | some lowered => return some lowered
+  | none =>
+  match ← lowerItertoolsCallDoElem? funcJson argsArray argsCodes keyWordsMap with
   | some lowered => return some lowered
   | none => return none
 

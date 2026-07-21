@@ -195,23 +195,26 @@ def pyStringCount : String → (sub : String) → Int
    | s, sub => (s.splitOn sub |>.length) - 1
 
 -- #check String.count
+-- TODO: Python also requires ≥1 cased char (`"123".islower()` is `False`); adding that breaks
+-- `pyLower_is_true_lower`/`pyUpper_is_true_upper`, which need a "has a cased char" hypothesis.
 def pyIsLower : String → Bool
   | s => s.toList.filter Char.isAlpha |>.all Char.isLower
 
 def pyIsUpper : String → Bool
   | s => s.toList.filter Char.isAlpha |>.all Char.isUpper
 
+-- Python's `str.isX()` predicates are all `False` on the empty string.
 def pyIsAlpha : String → Bool
-  | s => s.toList.all Char.isAlpha
+  | s => !s.isEmpty && s.toList.all Char.isAlpha
 
 def pyIsDecimal : String → Bool
-  | s => s.toList.all Char.isDigit
+  | s => !s.isEmpty && s.toList.all Char.isDigit
 
 def pyIsAlphanum : String → Bool
-  | s => s.toList.all Char.isAlphanum
+  | s => !s.isEmpty && s.toList.all Char.isAlphanum
 
 def pyIsWhitespace : String → Bool
-  | s => s.toList.all isPyWhitespace
+  | s => !s.isEmpty && s.toList.all isPyWhitespace
 
 
 def pyPartition : String → (sep : String) → (String × String × String)

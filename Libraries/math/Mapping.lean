@@ -1,3 +1,4 @@
+import TypeInfer.PyType
 import Mathlib
 import Libraries.math.MathDef
 
@@ -72,5 +73,16 @@ def pythonMathMemberMapExact? (member : String) : Option Lean.Name :=
   match member with
   | "pow" => some ``pyMathPowExact
   | _ => none
+
+/-- Return type of a `math` member, for TypeInfer. Mode-agnostic (`.float` becomes `ℚ`/`ℝ`/`Float`
+in codegen per numeric mode; transcendentals go to `ℝ` via the real-flow pass). -/
+def mathMemberReturn? (member : String) : Option TypeInfer.PyType :=
+  if ["sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "exp", "log",
+      "log2", "log10", "fabs", "pow", "atan2", "hypot", "expm1", "log1p", "copysign", "fmod",
+      "dist", "radians", "degrees"].contains member then some .float
+  else if ["floor", "ceil", "trunc", "factorial", "gcd", "lcm", "isqrt", "comb", "perm",
+           "prod"].contains member then some .int
+  else if ["isnan", "isinf", "isfinite"].contains member then some .bool
+  else none
 
 end Libraries.math

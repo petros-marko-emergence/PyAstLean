@@ -1,39 +1,40 @@
 import PastaLean
 import Libraries
+import Std.Tactic.Do
 
 open PastaLean
 open Libraries
+open Std.Do
 
 set_option linter.all false
+set_option mvcgen.warning false
 
--- Assert statements: inline (inside a function) and top-level (outside any function).
-@[simp, grind]
-def GREETING :=
-  "hi"
+set_option maxHeartbeats 800000
 
--- top-level assert — outside any function
-theorem assert_holds : ((PastaLean.pyLen GREETING == (2 : Int)) = true) := by 
-  rfl
-
-@[simp, grind .]
-def checked_add := fun (a : Int) ↦ fun (b : Int) ↦
+def maxWidthOfVerticalArea := fun (points : List (List Int)) ↦
   Id.run
     (do
-      -- inline asserts inside a function body
-      have ht : ((a == a) = true) := by
-        grind
-      have ht_1 : (decide (a +ₚ b ≥ a +ₚ b) = true) := by
-        grind
-      let __py_ret := a +ₚ b
-      return __py_ret)
+      let mut points := points
+      points := PastaLean.pySort points
+      let __py_ret_1 :=
+        PastaLean.pyMax
+          ((PastaLean.pyIter (Libraries.itertools.pyPairwise points)).map fun _pair_1 =>
+            let a := Prod.fst _pair_1;
+            let b := Prod.snd _pair_1;
+            b⦋(0 : Int)⦌ -ₚ a⦋(0 : Int)⦌)
+      return __py_ret_1)
 
-def checked_add'rn := fun (a : Int) ↦ fun (b : Int) ↦
+attribute [simp, taste_ingr] maxWidthOfVerticalArea
+
+def maxWidthOfVerticalArea'rn := fun (points : List (List Int)) ↦
   Id.run
     (do
-      -- inline asserts inside a function body
-      have ht : ((a == a) = true) := by
-        grind
-      have ht_1 : (decide (a +ₚ b ≥ a +ₚ b) = true) := by
-        grind
-      let __py_ret := a +ₚ b
-      return __py_ret)
+      let mut points := points
+      points := PastaLean.pySort points
+      let __py_ret_1 :=
+        PastaLean.pyMax
+          ((PastaLean.pyIter (Libraries.itertools.pyPairwise points)).map fun _pair_1 =>
+            let a := Prod.fst _pair_1;
+            let b := Prod.snd _pair_1;
+            b⦋(0 : Int)⦌ -ₚ a⦋(0 : Int)⦌)
+      return __py_ret_1)

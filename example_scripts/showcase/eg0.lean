@@ -9,7 +9,7 @@ open Std.Do
 set_option linter.all false
 set_option mvcgen.warning false
 
-set_option maxHeartbeats 800000
+set_option maxHeartbeats 0
 
 partial def fibonacci : Int → Int := fun (n : Int) ↦
   if decide (n ≤ (0 : Int)) then (0 : Int)

@@ -1,3 +1,4 @@
+import TypeInfer.PyType
 import Mathlib
 import Libraries.scipy.ScipyDef
 
@@ -37,5 +38,11 @@ def pythonScipyMemberMapReal? (member : String) : Option Lean.Name :=
   | "gmean" => some ``pyScipyGmeanR
   | "norm" => some ``pyScipyNormR
   | _ => none
+
+/-- Return type of a `scipy` member, for TypeInfer (all `.float` in this supported subset). -/
+def scipyMemberReturn? (member : String) : Option TypeInfer.PyType :=
+  if ["factorial", "comb", "perm", "gamma", "erf", "pi", "golden", "golden_ratio", "tmean",
+      "gmean", "hmean", "norm", "det"].contains member then some .float
+  else none
 
 end Libraries.scipy

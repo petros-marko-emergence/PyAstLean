@@ -9,7 +9,7 @@ open Std.Do
 set_option linter.all false
 set_option mvcgen.warning false
 
-set_option maxHeartbeats 800000
+set_option maxHeartbeats 0
 
 def process_data := fun (data : List (List Rat)) ↦ fun (weights : List (List Rat)) ↦
   ((do
@@ -41,21 +41,17 @@ attribute [simp] process_data
 def process_data'rn : List (List Float) → List (List Float) → PastaLean.PyExcept (List (List Float)) :=
   fun (data : List (List Float)) ↦ fun (weights : List (List Float)) ↦ do
   try
-    let __py_try_val_1 ←
-      PastaLean.PyExcept.captureIOErrors
-          (do
-            -- Calculate mean of the dataset
-            let mut m := Libraries.numpy.pyNumpyMean data
-            let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
-            -- Center the data by subtracting the mean
-            -- (Using a manual broadcast-like subtraction for this example)
-            -- Note: np.subtract is mapped to pyNumpySubtract
-            let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
-            -- Perform matrix multiplication
-            -- Note: np.matmul is mapped to pyNumpyMatmul
-            let mut result := Libraries.numpy.pyNumpyMatmul centered weights
-            return result)
-    return __py_try_val_1
+    -- Calculate mean of the dataset
+    let mut m := Libraries.numpy.pyNumpyMean data
+    let _ ← pyPrintIO [pyPrintArg s! "Dataset Global Mean: {m}"]
+    -- Center the data by subtracting the mean
+    -- (Using a manual broadcast-like subtraction for this example)
+    -- Note: np.subtract is mapped to pyNumpySubtract
+    let mut centered := Libraries.numpy.pyNumpySubtract data [[m, m], [m, m]]
+    -- Perform matrix multiplication
+    -- Note: np.matmul is mapped to pyNumpyMatmul
+    let mut result := Libraries.numpy.pyNumpyMatmul centered weights
+    return result
   catch caught =>
     if (caught).OfKind == "ValueError" then 
       let e := caught
@@ -85,9 +81,12 @@ def run_example :=
             [pyPrintArg s! "Identity Matrix (2x2):\n{Libraries.numpy.pyNumpyEye (2 : Int)}"]
       let _ ←
         PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Flattened Weights: {Libraries.numpy.pyNumpyFlatten weights}"]
-      let mut __py_unpack1 := Libraries.numpy.pyNumpyShape dataset
-      let mut rows := __py_unpack1⦋(0 : Int)⦌
-      let mut cols := __py_unpack1⦋(1 : Int)⦌
+      -- 3. Shape Info
+      -- Note: np.shape returns (rows, cols)
+      let __unpack_value_1 := Libraries.numpy.pyNumpyShape dataset
+      let __unpack_pair_1 := __unpack_value_1
+      let mut rows := PastaLean.pyListGetItem __unpack_pair_1 (0 : Int)
+      let mut cols := PastaLean.pyListGetItem __unpack_pair_1 (1 : Int)
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
       -- 4. Error Handling Simulation
       let _ ← PastaLean.ProofMode.pyPrintProof [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]
@@ -114,9 +113,12 @@ def run_example'rn :=
       let _ ← pyPrintIO [pyPrintArg "\n[2] Structural Operations:"]
       let _ ← pyPrintIO [pyPrintArg s! "Identity Matrix (2x2):\n{Libraries.numpy.pyNumpyEye (2 : Int)}"]
       let _ ← pyPrintIO [pyPrintArg s! "Flattened Weights: {Libraries.numpy.pyNumpyFlatten weights}"]
-      let mut __py_unpack1 := Libraries.numpy.pyNumpyShape dataset
-      let mut rows := __py_unpack1⦋(0 : Int)⦌
-      let mut cols := __py_unpack1⦋(1 : Int)⦌
+      -- 3. Shape Info
+      -- Note: np.shape returns (rows, cols)
+      let __unpack_value_1 := Libraries.numpy.pyNumpyShape dataset
+      let __unpack_pair_1 := __unpack_value_1
+      let mut rows := PastaLean.pyListGetItem __unpack_pair_1 (0 : Int)
+      let mut cols := PastaLean.pyListGetItem __unpack_pair_1 (1 : Int)
       let _ ← pyPrintIO [pyPrintArg s! "Dataset Shape: {rows }x{cols}"]
       -- 4. Error Handling Simulation
       let _ ← pyPrintIO [pyPrintArg "\n[3] Exception Handling (Mismatched Dimensions):"]

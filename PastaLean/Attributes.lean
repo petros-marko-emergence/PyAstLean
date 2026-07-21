@@ -27,20 +27,28 @@ def pythonMethodMap? (attr : String) : Option Lean.Name :=
   | "islower"    => some ``pyIsLower
   | "isupper"    => some ``pyIsUpper
   | "isalpha"    => some ``pyIsAlpha
+  -- `isdigit`/`isnumeric`/`isdecimal` coincide on ASCII digits.
   | "isdecimal"  => some ``pyIsDecimal
+  | "isdigit"    => some ``pyIsDecimal
+  | "isnumeric"  => some ``pyIsDecimal
   | "isalphanum" => some ``pyIsAlphanum
+  | "isalnum"    => some ``pyIsAlphanum
   | "isspace"    => some ``pyIsWhitespace
   | "partition"  => some ``pyPartition
   | "capitalize" => some ``pyStringCapitalize
   -- List Only
   | "append"     => some ``pyAppend
+  | "appendleft" => some ``pyAppendLeft
   | "extend"     => some ``pyExtend
   | "reverse"    => some ``pyReverse
   | "copy"       => some ``pyCopy
   -- Dict Only
   | "items"      => some ``pyItems
   | "keys"       => some ``pyKeys
-  | "values"     => some ``pyValues
+  | "values"     => some ``pyAnys
+  -- Int only
+  | "bit_length" => some ``pyBitLength
+  | "bit_count"  => some ``pyBitCount
   -- Dunder methods
   | "__len__"    => some ``pyLen
   -- Common
