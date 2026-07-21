@@ -214,6 +214,10 @@ infixl:70 " /ₚ " => PyHDiv.hDiv
 instance {α β γ} [HDiv α β γ] : PyHDiv α β γ where
   hDiv := HDiv.hDiv
 
+-- `@[default_instance 10001]` (as with `PyHAdd Int Int Int`) pins otherwise-unconstrained division
+-- operands — e.g. `def divide(a, b): return a / b` with untyped params — to `Int /ₚ Int : Rat`,
+-- matching Python's `/` always yielding a float (exact ℚ in prove mode).
+@[default_instance 10001]
 instance (priority := high) : PyHDiv Int Int Rat where
   hDiv := fun a b => (a : Rat) / (b : Rat)
 

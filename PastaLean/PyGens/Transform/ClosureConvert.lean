@@ -523,34 +523,127 @@ private def liftHelper (outerName : String) (outerJson innerJson : Json) :
   let helper := if threaded.isEmpty then helper else helper.setObjVal! "returns" Json.null
   return (helper, outerJson.setObjVal! "body" rewrittenOuter)
 
-/-- Lift every nested `def` out of `fnJson`, innermost-first. Returns the helper functions (to be
-emitted as sibling `partial def`s, before `fnJson`) and the rewritten function. -/
-partial def closureConvertFunction (fnJson : Json) : PygenM (Array Json × Json) := do
-  let .ok body := fnJson.getObjValAs? (Array Json) "body" | return (#[], fnJson)
-  let .ok outerName := fnJson.getObjValAs? String "name" | return (#[], fnJson)
-  let nested := body.filter (jsonNodeType? · == some "FunctionDef")
-  if nested.isEmpty then return (#[], fnJson)
+/-- Group nested defs that reference one another into one cluster each (weakly-connected components
+of the sibling-reference graph, in first-seen order). A cluster of size ≥ 2 needs a `mutual` block;
+a lone def is its own singleton. Ordering within a cluster is source order. -/
+def nestedRefComponents (nested : Array Json) : Array (Array Json) := Id.run do
+  let names := nested.filterMap (·.getObjValAs? String "name" |>.toOption)
+  -- Undirected adjacency: `i — j` if def i references def j's name (or vice versa).
+  let refs := nested.map fun n => Id.run do
+    let used := jsonNameIds n
+    return names.filter (used.contains ·)
+  let adj := (Array.range nested.size).map fun i => Id.run do
+    let mut nbrs : Array Nat := #[]
+    for j in [0:nested.size] do
+      if i != j && (refs[i]!.contains names[j]! || refs[j]!.contains names[i]!) then
+        nbrs := nbrs.push j
+    return nbrs
+  let mut comp : Array (Option Nat) := Array.replicate nested.size none
+  let mut groups : Array (Array Json) := #[]
+  for i in [0:nested.size] do
+    if comp[i]!.isNone then
+      -- BFS the component rooted at `i`.
+      let mut members : Array Nat := #[i]
+      comp := comp.set! i (some groups.size)
+      let mut queue := #[i]
+      while !queue.isEmpty do
+        let u := queue.back!
+        queue := queue.pop
+        for v in adj[u]! do
+          if comp[v]!.isNone then
+            comp := comp.set! v (some groups.size)
+            members := members.push v
+            queue := queue.push v
+      groups := groups.push ((members.qsort (· < ·)).map (nested[·]!))
+  return groups
 
-  -- A helper that calls a sibling would have to capture whatever that sibling captures (a fixpoint),
-  -- and mutually recursive siblings would need a `mutual` block. Reject rather than mis-compile.
-  let nestedNames := nested.filterMap (·.getObjValAs? String "name" |>.toOption)
-  for innerJson in nested do
-    let .ok innerName := innerJson.getObjValAs? String "name" | pure ()
-    let used := jsonNameIds innerJson
-    if let some sibling := nestedNames.find? (fun n => n != innerName && used.contains n) then
-      throwError s!"nested function '{innerName}' calls its sibling '{sibling}'; helpers that \
-        reference each other are not supported yet."
+/-- Lift a cluster of mutually-referencing nested defs together. Every member gets the *shared*
+capture set (the union of the members' captures) as extra parameters, so a call to any sibling can
+supply them; the lifted defs reference each other and are emitted in one `mutual` block. Threaded
+(`nonlocal`/mutated) captures across a mutual cluster are not supported yet — rejected loudly. -/
+private def liftMutualGroup (outerName : String) (outerJson : Json) (members : Array Json) :
+    PygenM (Array Json × Json) := do
+  let .ok outerBody := outerJson.getObjValAs? (Array Json) "body" | throwError
+    s!"FunctionDef is missing a 'body': {outerJson}"
+  let memberNames := members.filterMap (·.getObjValAs? String "name" |>.toOption)
+  let outerBound := appendUnique (functionParamNames outerJson) (bodyBoundNames outerBody)
+
+  -- Each member's captures = names it reads that the outer scope binds, minus the siblings (those
+  -- become mutual references, not parameters). The shared set is their union.
+  let mut shared : Array String := #[]
+  for m in members do
+    let .ok mName := m.getObjValAs? String "name" | throwError s!"member is missing a 'name': {m}"
+    unless (nonlocalNames m).isEmpty do
+      throwError s!"mutually-recursive nested function '{mName}' uses `nonlocal`; threading state \
+        across a mutual cluster is not supported yet."
+    let mBody := (m.getObjValAs? (Array Json) "body").toOption.getD #[]
+    let mBound := appendUnique (functionParamNames m) (bodyBoundNames mBody)
+    let mUsed := jsonNameIds m
+    let caps := outerBound.filter fun name =>
+      name != mName && !memberNames.contains name && mUsed.contains name && !mBound.contains name
+    for c in caps do
+      if jsonMutatesCapture m c then
+        throwError s!"mutually-recursive nested function '{mName}' mutates captured '{c}'; not \
+          supported yet."
+    shared := appendUnique shared caps
+
+  let annotations := (localAnnotations outerBody).fold
+    (fun m k v => if m.contains k then m else m.insert k v) (functionParamAnnotations outerJson)
+  let extraArgs := shared.map fun c => argNode c (annotations[c]?)
+  let helperNameOf := fun (nm : String) => s!"_{outerName}_{nm}"
+  for nm in memberNames do
+    userNamesRef.modify (helperNameOf nm :: ·)
 
   let mut helpers := #[]
+  for m in members do
+    let .ok mName := m.getObjValAs? String "name" | throwError s!"member is missing a 'name': {m}"
+    let .ok mArgs := m.getObjVal? "args" | throwError s!"member is missing 'args': {m}"
+    let mArgsArray := (mArgs.getObjValAs? (Array Json) "args").toOption.getD #[]
+    let mArgs := mArgs.setObjVal! "args" (Json.arr (mArgsArray ++ extraArgs))
+    -- Rewrite every call to any sibling (self included) to the lifted name + shared captures.
+    let mut body := (m.getObjVal? "body").toOption.getD (Json.arr #[])
+    for sibName in memberNames do
+      body ← rewriteHelperCalls sibName (helperNameOf sibName) shared body
+    let helper := ((m.setObjVal! "name" (Json.str (helperNameOf mName))).setObjVal! "args" mArgs)
+      |>.setObjVal! "body" body
+    helpers := helpers.push helper
+
+  let remaining := outerBody.filter fun stmt =>
+    !(jsonNodeType? stmt == some "FunctionDef"
+      && memberNames.contains ((stmt.getObjValAs? String "name").toOption.getD ""))
+  let mut outerBodyJson := Json.arr remaining
+  for sibName in memberNames do
+    outerBodyJson ← rewriteHelperCalls sibName (helperNameOf sibName) shared outerBodyJson
+  return (helpers, outerJson.setObjVal! "body" outerBodyJson)
+
+/-- Lift every nested `def` out of `fnJson`, outermost-first. Returns helper **groups** (each a lone
+helper, or a mutual cluster to be emitted in one `mutual` block) and the rewritten function. -/
+partial def closureConvertFunction (fnJson : Json) : PygenM (Array (Array Json) × Json) := do
+  let .ok _ := fnJson.getObjValAs? (Array Json) "body" | return (#[], fnJson)
+  let .ok outerName := fnJson.getObjValAs? String "name" | return (#[], fnJson)
+  let nested := ((fnJson.getObjValAs? (Array Json) "body").toOption.getD #[]).filter
+    (jsonNodeType? · == some "FunctionDef")
+  if nested.isEmpty then return (#[], fnJson)
+
+  let mut groups : Array (Array Json) := #[]
   let mut current := fnJson
-  for innerJson in nested do
-    -- Outermost-first: lift `inner` here, so the names it captures from *this* scope become its
-    -- parameters. Only then convert its own nested defs, which can now capture those parameters —
-    -- `def a: def b: def c` where `c` reads a variable of `a` only works in this order.
-    let (helper, rewritten) ← liftHelper outerName current innerJson
-    let (subHelpers, helper) ← closureConvertFunction helper
-    helpers := (helpers ++ subHelpers).push helper
-    current := rewritten
-  return (helpers, current)
+  for cluster in nestedRefComponents nested do
+    if cluster.size == 1 then
+      -- Outermost-first: lift `inner` here, so the names it captures from *this* scope become its
+      -- parameters. Only then convert its own nested defs, which can now capture those parameters.
+      let (helper, rewritten) ← liftHelper outerName current cluster[0]!
+      let (subGroups, helper) ← closureConvertFunction helper
+      groups := (groups ++ subGroups).push #[helper]
+      current := rewritten
+    else
+      let (helpers, rewritten) ← liftMutualGroup outerName current cluster
+      let mut mutualMembers := #[]
+      for helper in helpers do
+        let (subGroups, helper) ← closureConvertFunction helper
+        groups := groups ++ subGroups
+        mutualMembers := mutualMembers.push helper
+      groups := groups.push mutualMembers
+      current := rewritten
+  return (groups, current)
 
 end PastaLean

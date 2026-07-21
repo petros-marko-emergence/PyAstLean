@@ -88,6 +88,9 @@ def pyFloat {α : Type} [PyFloatCast α] (x : α) : Float :=
   PyFloatCast.pyFloat x
 
 instance : PyFloatCast Float where pyFloat x := x
+-- `@[default_instance]` pins an otherwise-unconstrained `pyFloat x` (e.g. the run twin of
+-- `a / b` with untyped params, emitted as `pyFloat a /ₚ b`) to `Int`.
+@[default_instance]
 instance : PyFloatCast Int where pyFloat x := floatOfInt x
 instance : PyFloatCast Nat where pyFloat x := Float.ofNat x
 instance : PyFloatCast Bool where

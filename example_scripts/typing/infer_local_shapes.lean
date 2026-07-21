@@ -18,14 +18,14 @@ structure Counter where
   tag : String
   deriving Inhabited, Repr, BEq
 
-def Counter.new : Counter := fun (n : Int) ↦ ({ c := PastaLean.pyListRepeat [(0 : Int)] n, tag := "x" } : Counter)
+def Counter.new : Int → Counter := fun (n : Int) ↦ ({ c := PastaLean.pyListRepeat [(0 : Int)] n, tag := "x" } : Counter)
 
 structure Counter'rn where
   c : List Int
   tag : String
   deriving Inhabited, Repr, BEq
 
-def Counter'rn.new : Counter'rn := fun (n : Int) ↦
+def Counter'rn.new : Int → Counter'rn := fun (n : Int) ↦
   ({ c := PastaLean.pyListRepeat [(0 : Int)] n, tag := "x" } : Counter'rn)
 
 private partial def _solve_go : Int → Int → List Int → Int := fun (i : Int) ↦ fun (n : Int) ↦ fun (grid : List Int) ↦

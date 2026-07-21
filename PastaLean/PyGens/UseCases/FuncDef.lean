@@ -621,18 +621,46 @@ def buildWhileFunction (name : String) (json : Json) (sh : WhileShape) :
             (by $oblTac:tactic) (by $oblTac:tactic) (by $oblTac:tactic))
   return #[finalDef, thmCmd]
 
+/-- Build `partial def name : <arg tys → ret> := value` for a member of a mutual group. The
+explicit signature is required for `mutual` and also keeps operators from defaulting (see the
+self-recursive case in `funcDefSyntax`). -/
+def mutualMemberDef (json : Json) : PygenM (TSyntax `command) := do
+  let .ok name := json.getObjValAs? String "name" | throwError
+    s!"FuncDef node does not have a 'name' field: {json}"
+  let nameIdent := mkIdent name.toName
+  let argInfos ← functionArgInfos json
+  let bodyElems ← functionBodyElems json
+  let valueStx ← functionValueSyntax argInfos bodyElems
+  match ← functionReturnTypeSyntax? json with
+  | some retTy =>
+      match ← functionArrowTypeSyntax? argInfos retTy with
+      | some fullTy => `(command| partial def $nameIdent : $fullTy := $valueStx)
+      | none => `(command| partial def $nameIdent := $valueStx)
+  | none => `(command| partial def $nameIdent := $valueStx)
+
+/-- Emit one closure-conversion helper group: a lone helper as a plain command, a mutually-recursive
+cluster (≥ 2 members that reference each other) as one `mutual … end` block of `partial def`s. -/
+def emitHelperGroup (group : Array Json) : PygenM (TSyntax `command) := do
+  if group.size ≥ 2 then
+    let defs ← group.mapM fun j => withFreshVariables do mutualMemberDef j
+    `(command| mutual $defs:command* end)
+  else if let some j := group[0]? then
+    getCode j `command
+  else throwError "closure conversion produced an empty helper group"
+
 @[pygen "FunctionDef"]
 def funcDefSyntax : (kind : SyntaxNodeKind) → Json →
     PygenM (TSyntax kind)
     | `command, json => do
         -- A nested `def` becomes a sibling `partial def` emitted just before this one, with its
-        -- captured variables as extra parameters (`Transform/ClosureConvert.lean`). The rewritten
-        -- function has no nested defs left, so re-entering here terminates.
-        let (helpers, converted) ← closureConvertFunction json
-        if !helpers.isEmpty then
+        -- captured variables as extra parameters (`Transform/ClosureConvert.lean`). Mutually-recursive
+        -- siblings are emitted together in one `mutual` block. The rewritten function has no nested
+        -- defs left, so re-entering here terminates.
+        let (helperGroups, converted) ← closureConvertFunction json
+        if !helperGroups.isEmpty then
           let mut cmds : Array (TSyntax `command) := #[]
-          for helper in helpers do
-            cmds := appendCommandSyntax cmds (← getCode helper `command)
+          for group in helperGroups do
+            cmds := appendCommandSyntax cmds (← emitHelperGroup group)
           cmds := appendCommandSyntax cmds (← getCode converted `command)
           return ⟨mkNullNode (cmds.map TSyntax.raw)⟩
         let .ok rawName := json.getObjValAs? String "name" | throwError
@@ -977,23 +1005,6 @@ such that `nm` reaches `m` and `m` reaches `nm`. A non-mutual function yields a 
 def mutualGroupOf (reach : Array (String × Array String)) (nm : String) : Array String :=
   let reachOf := fun x => ((reach.find? (·.1 == x)).map (·.2)).getD #[]
   (#[nm] ++ (reachOf nm).filter fun m => m != nm && (reachOf m).contains nm)
-
-/-- Build `partial def name : <arg tys → ret> := value` for a member of a mutual group. The
-explicit signature is required for `mutual` and also keeps operators from defaulting (see the
-self-recursive case in `funcDefSyntax`). -/
-def mutualMemberDef (json : Json) : PygenM (TSyntax `command) := do
-  let .ok name := json.getObjValAs? String "name" | throwError
-    s!"FuncDef node does not have a 'name' field: {json}"
-  let nameIdent := mkIdent name.toName
-  let argInfos ← functionArgInfos json
-  let bodyElems ← functionBodyElems json
-  let valueStx ← functionValueSyntax argInfos bodyElems
-  match ← functionReturnTypeSyntax? json with
-  | some retTy =>
-      match ← functionArrowTypeSyntax? argInfos retTy with
-      | some fullTy => `(command| partial def $nameIdent : $fullTy := $valueStx)
-      | none => `(command| partial def $nameIdent := $valueStx)
-  | none => `(command| partial def $nameIdent := $valueStx)
 
 @[pygen "Module"]
 def moduleSyntax : (kind : SyntaxNodeKind) → Json →

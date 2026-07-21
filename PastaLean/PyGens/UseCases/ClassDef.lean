@@ -140,8 +140,16 @@ def classInitConstructor (className : String) (initJson : Json) (hasRealField : 
             result ← match ty? with
               | some ty => `(fun ($argIdent : $ty) ↦ $result)
               | none => `(fun $argIdent ↦ $result)
-          if hasRealField then `(command| noncomputable def $mkIdentC : $classTy := $result)
-          else `(command| def $mkIdentC : $classTy := $result)
+          -- `result` is `fun (n : Int) ↦ …` once there are params, so the ascription must be the
+          -- arrow type `Int → C`, not `C`. No params → the record itself, ascribed `C`; an
+          -- unannotated param → no full arrow, so emit without ascription and let Lean infer.
+          let fullTy? ← if argInfos.isEmpty then pure (some classTy)
+                        else functionArrowTypeSyntax? argInfos classTy
+          match fullTy? with
+          | some ty => if hasRealField then `(command| noncomputable def $mkIdentC : $ty := $result)
+                       else `(command| def $mkIdentC : $ty := $result)
+          | none => if hasRealField then `(command| noncomputable def $mkIdentC := $result)
+                    else `(command| def $mkIdentC := $result)
         else
           let offset := argInfos.size - defaults.size
           let binders ← (Array.range argInfos.size).mapM fun i => do
